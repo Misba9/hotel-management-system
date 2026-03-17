@@ -1,0 +1,19 @@
+{
+  "projects": {
+    "default": "nausheen-fruits",
+    "prod-web": "nausheen-fruits"
+  },
+  "targets": {
+    "nausheen-fruits": {
+      "hosting": {
+        "customer-web": [
+          "customer-web-d85b1"
+        ],
+        "admin-dashboard": [
+          "admin-dashboard-ec439"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

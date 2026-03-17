@@ -1,0 +1,216 @@
+import { z } from "zod";
+import { HttpsError } from "firebase-functions/v2/https";
+import {
+  COLLECTIONS,
+  assertRole,
+  createTimestamp,
+  db,
+  orderStatusSchema,
+  paymentMethodSchema,
+  rtdb,
+  withCallableGuard
+} from "./common";
+
+const createOrderSchema = z.object({
+  branchId: z.string().min(1),
+  orderType: z.enum(["delivery", "pickup", "dine_in"]),
+  paymentMethod: paymentMethodSchema,
+  couponCode: z.string().max(40).optional(),
+  notes: z.string().max(300).optional(),
+  deliveryAddress: z.string().max(300).optional(),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        quantity: z.number().int().positive()
+      })
+    )
+    .min(1)
+});
+
+const updateOrderStatusSchema = z.object({
+  orderId: z.string().min(1),
+  status: orderStatusSchema
+});
+
+const cancelOrderSchema = z.object({
+  orderId: z.string().min(1),
+  reason: z.string().min(3).max(200).optional()
+});
+
+const assignDeliverySchema = z.object({
+  orderId: z.string().min(1),
+  deliveryPartnerId: z.string().min(1)
+});
+
+export const createOrderV1 = withCallableGuard(
+  async (payload, ctx) => {
+    const productSnaps = await Promise.all(
+      payload.items.map((item) => db.collection(COLLECTIONS.products).doc(item.productId).get())
+    );
+    const missing = productSnaps.findIndex((snap) => !snap.exists);
+    if (missing !== -1) {
+      throw new HttpsError("not-found", `Product not found: ${payload.items[missing].productId}`);
+    }
+    const pricedItems = payload.items.map((item, idx) => {
+      const data = productSnaps[idx].data() as { id?: string; name?: string; price?: number; available?: boolean };
+      if (!data.available) {
+        throw new HttpsError("failed-precondition", `Product unavailable: ${item.productId}`);
+      }
+      return {
+        productId: item.productId,
+        name: String(data.name ?? "Item"),
+        unitPrice: Number(data.price ?? 0),
+        quantity: item.quantity
+      };
+    });
+    const subtotal = pricedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const deliveryFee = payload.orderType === "delivery" ? 40 : 0;
+    const discount = 0;
+    const total = Math.max(0, subtotal - discount + deliveryFee);
+    const now = createTimestamp();
+    const orderRef = db.collection(COLLECTIONS.orders).doc();
+    const paymentRef = db.collection(COLLECTIONS.payments).doc();
+    const batch = db.batch();
+
+    batch.set(orderRef, {
+      id: orderRef.id,
+      customerId: ctx.uid,
+      branchId: payload.branchId,
+      orderType: payload.orderType,
+      paymentMethod: payload.paymentMethod,
+      status: "created",
+      notes: payload.notes ?? null,
+      couponCode: payload.couponCode ?? null,
+      deliveryAddress: payload.deliveryAddress ?? null,
+      subtotal,
+      discount,
+      deliveryFee,
+      total,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    pricedItems.forEach((item) => {
+      const ref = db.collection(COLLECTIONS.orderItems).doc();
+      batch.set(ref, {
+        id: ref.id,
+        orderId: orderRef.id,
+        productId: item.productId,
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.unitPrice * item.quantity,
+        createdAt: now
+      });
+    });
+
+    batch.set(paymentRef, {
+      id: paymentRef.id,
+      orderId: orderRef.id,
+      customerId: ctx.uid,
+      method: payload.paymentMethod,
+      status: payload.paymentMethod === "cash" ? "pending" : "pending",
+      amount: total,
+      createdAt: now,
+      updatedAt: now
+    });
+    await batch.commit();
+
+    await rtdb.ref(`orderFeeds/${orderRef.id}`).set({
+      status: "created",
+      total,
+      branchId: payload.branchId,
+      updatedAt: now
+    });
+
+    return {
+      success: true,
+      orderId: orderRef.id,
+      paymentId: paymentRef.id,
+      total
+    };
+  },
+  createOrderSchema
+);
+
+export const updateOrderStatusV1 = withCallableGuard(
+  async (payload, ctx) => {
+    assertRole(ctx.role, ["kitchen_staff", "waiter", "cashier", "delivery_boy", "manager", "admin"]);
+    const orderRef = db.collection(COLLECTIONS.orders).doc(payload.orderId);
+    const snap = await orderRef.get();
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "Order not found.");
+    }
+    const now = createTimestamp();
+    await orderRef.update({
+      status: payload.status,
+      updatedAt: now
+    });
+    await rtdb.ref(`orderFeeds/${payload.orderId}`).update({
+      status: payload.status,
+      updatedAt: now
+    });
+    return { success: true };
+  },
+  updateOrderStatusSchema
+);
+
+export const cancelOrderV1 = withCallableGuard(
+  async (payload, ctx) => {
+    const orderRef = db.collection(COLLECTIONS.orders).doc(payload.orderId);
+    const snap = await orderRef.get();
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "Order not found.");
+    }
+    const order = snap.data() as { customerId?: string; status?: string };
+    const isOwner = order.customerId === ctx.uid;
+    const isPrivileged = ["manager", "admin", "cashier"].includes(ctx.role);
+    if (!isOwner && !isPrivileged) {
+      throw new HttpsError("permission-denied", "Not allowed to cancel this order.");
+    }
+    if (order.status === "delivered" || order.status === "cancelled") {
+      throw new HttpsError("failed-precondition", "Order cannot be cancelled.");
+    }
+    const now = createTimestamp();
+    await orderRef.update({
+      status: "cancelled",
+      cancelReason: payload.reason ?? "cancelled_by_user",
+      updatedAt: now
+    });
+    await rtdb.ref(`orderFeeds/${payload.orderId}`).update({
+      status: "cancelled",
+      updatedAt: now
+    });
+    return { success: true };
+  },
+  cancelOrderSchema
+);
+
+export const assignDeliveryPartnerV1 = withCallableGuard(
+  async (payload, ctx) => {
+    assertRole(ctx.role, ["manager", "admin"]);
+    const now = createTimestamp();
+    const deliveryRef = db.collection(COLLECTIONS.delivery).doc();
+    await deliveryRef.set({
+      id: deliveryRef.id,
+      orderId: payload.orderId,
+      deliveryPartnerId: payload.deliveryPartnerId,
+      status: "assigned",
+      assignedAt: now,
+      updatedAt: now
+    });
+    await db.collection(COLLECTIONS.orders).doc(payload.orderId).update({
+      status: "ready",
+      updatedAt: now
+    });
+    await rtdb.ref(`deliveryTracking/${payload.orderId}`).set({
+      deliveryId: deliveryRef.id,
+      deliveryPartnerId: payload.deliveryPartnerId,
+      status: "assigned",
+      updatedAt: now
+    });
+    return { success: true, deliveryId: deliveryRef.id };
+  },
+  assignDeliverySchema
+);

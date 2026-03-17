@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: #fff8f3;
+  color: #0f172a;
+  font-family: var(--font-inter), ui-sans-serif, system-ui;
+  line-height: 1.6;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+.dark body {
+  background: #0b1220;
+  color: #e2e8f0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-plus-jakarta), ui-sans-serif, system-ui;
+  line-height: 1.2;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.66);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.dark .glass-card {
+  background: rgba(15, 23, 42, 0.66);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+}

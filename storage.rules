@@ -1,0 +1,26 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    function isPrivileged() {
+      return isAuthed() && request.auth.token.role in ["manager", "admin"];
+    }
+
+    match /menu/{allPaths=**} {
+      allow read: if true;
+      allow write: if isPrivileged();
+    }
+
+    match /receipts/{userId}/{allPaths=**} {
+      allow read, write: if isAuthed() && request.auth.uid == userId;
+    }
+
+    match /staff/{allPaths=**} {
+      allow read: if isAuthed();
+      allow write: if isPrivileged();
+    }
+  }
+}

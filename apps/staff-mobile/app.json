@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Nausheen Staff",
+    "slug": "nausheen-staff",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.nausheen.staffmobile"
+    }
+  }
+}

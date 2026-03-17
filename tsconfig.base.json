@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@shared/firebase/*": [
+        "lib/firebase/*"
+      ],
+      "@shared/utils/*": [
+        "lib/utils/*"
+      ],
+      "@shared/hooks/*": [
+        "lib/hooks/*"
+      ],
+      "@shared/types/*": [
+        "lib/types/*"
+      ],
+      "@shared/ui/*": [
+        "components/ui/*"
+      ],
+      "@shared/components/*": [
+        "components/shared/*"
+      ]
+    }
+  }
+}
