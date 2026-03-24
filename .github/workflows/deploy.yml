@@ -37,5 +37,4 @@ jobs:
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
-          firebase use "$FIREBASE_PROJECT_ID"
-          firebase deploy --project "$FIREBASE_PROJECT_ID" --only functions,firestore:rules,storage,hosting
+          firebase deploy --config backend/firebase.json --project "$FIREBASE_PROJECT_ID" --only functions,firestore:rules,storage,hosting

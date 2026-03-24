@@ -3,33 +3,22 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "apps/*",
-    "functions"
+    "admin-dashboard",
+    "customer-web",
+    "staff-mobile",
+    "backend/functions"
   ],
   "scripts": {
-    "dev": "concurrently --names \"customer-web,admin-dashboard,staff-panel\" --prefix \"[{name}]\" --prefix-colors \"cyan,magenta,green\" \"npm run dev --prefix apps/customer-web -- -p 3000\" \"npm run dev --prefix apps/admin-dashboard -- -p 3001\" \"npm run dev --prefix apps/staff-mobile -- --web --port 3002\"",
+    "dev": "npm run dev --prefix customer-web -- -p 3000 & npm run dev --prefix admin-dashboard -- -p 3001 & npm run dev --prefix staff-mobile -- --web --port 3002 & wait",
     "dev:customer": "npm run dev --workspace @nausheen/customer-web",
     "dev:admin": "npm run dev --workspace @nausheen/admin-dashboard",
     "dev:mobile": "npm run start --workspace @nausheen/staff-mobile",
     "build:web": "npm run build --workspace @nausheen/customer-web && npm run build --workspace @nausheen/admin-dashboard",
     "build:functions": "npm run build --workspace @nausheen/functions",
-    "deploy": "firebase deploy --only hosting",
-    "deploy:functions": "firebase deploy --only functions",
-    "deploy:hosting": "firebase deploy --only hosting",
-    "deploy:rules": "firebase deploy --only firestore:rules,storage",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . --ext .js,.cjs,.mjs,.ts,.tsx",
-    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint . --ext .js,.cjs,.mjs,.ts,.tsx --fix",
+    "deploy": "firebase deploy --config backend/firebase.json --project nausheen-fruits --only hosting",
+    "deploy:functions": "firebase deploy --config backend/firebase.json --project nausheen-fruits --only functions",
+    "deploy:hosting": "firebase deploy --config backend/firebase.json --project nausheen-fruits --only hosting",
+    "deploy:rules": "firebase deploy --config backend/firebase.json --project nausheen-fruits --only firestore:rules,storage",
     "typecheck": "npm run typecheck --workspaces --if-present"
-  },
-  "dependencies": {
-    "concurrently": "^9.2.1",
-    "firebase": "^12.10.0"
-  },
-  "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^8.57.1",
-    "@typescript-eslint/parser": "^8.57.1",
-    "eslint": "^9.39.4",
-    "eslint-config-next": "^15.5.13",
-    "eslint-plugin-react-hooks": "^5.2.0"
   }
 }

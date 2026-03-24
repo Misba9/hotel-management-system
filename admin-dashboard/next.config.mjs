@@ -1,0 +1,27 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  compress: true,
+  poweredByHeader: false,
+  eslint: {
+    // Lint runs separately in workspace scripts.
+    ignoreDuringBuilds: true
+  },
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self)" }
+        ]
+      }
+    ];
+  },
+  experimental: {
+    optimizePackageImports: ["lucide-react", "recharts"]
+  }
+};
+
+export default nextConfig;

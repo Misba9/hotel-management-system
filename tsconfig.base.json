@@ -12,16 +12,16 @@
     "baseUrl": ".",
     "paths": {
       "@shared/firebase/*": [
-        "lib/firebase/*"
+        "backend/firebase/*"
       ],
       "@shared/utils/*": [
-        "lib/utils/*"
+        "shared/utils/*"
       ],
       "@shared/hooks/*": [
-        "lib/hooks/*"
+        "shared/hooks/*"
       ],
       "@shared/types/*": [
-        "lib/types/*"
+        "shared/types/*"
       ],
       "@shared/ui/*": [
         "components/ui/*"
