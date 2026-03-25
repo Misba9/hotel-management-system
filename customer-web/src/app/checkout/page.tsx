@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { CheckoutStepper } from "@/components/checkout/checkout-stepper";
 import { useCart } from "@/components/providers/cart-provider";
 import { useToast } from "@/components/providers/toast-provider";
-import { buildAuthHeaders } from "@/lib/user-session";
+import { buildUserHeaders } from "@/lib/user-session";
 
 type CheckoutItem = {
   id: string;
@@ -69,6 +69,7 @@ export default function CheckoutPage() {
   const [phone, setPhone] = useState("+91 9XXXXXXXXX");
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "card" | "cod">("cod");
   const [message, setMessage] = useState("");
+  const [validationErrors, setValidationErrors] = useState<{ name?: string; phone?: string; address?: string }>({});
 
   async function ensureRazorpayScript() {
     if (typeof window === "undefined") return false;
@@ -103,11 +104,27 @@ export default function CheckoutPage() {
   }
 
   async function placeOrder() {
+    if (submitting) return;
     setSubmitting(true);
     setMessage("");
+    setValidationErrors({});
     try {
       if (items.length === 0) {
         throw new Error("Your cart is empty");
+      }
+      const nextErrors: { name?: string; phone?: string; address?: string } = {};
+      if (!name.trim() || name.trim().length < 2) {
+        nextErrors.name = "Enter a valid full name.";
+      }
+      if (!/^[0-9+\-\s()]{8,20}$/.test(phone.trim())) {
+        nextErrors.phone = "Enter a valid phone number.";
+      }
+      if (!address.trim() || address.trim().length < 8) {
+        nextErrors.address = "Enter a complete delivery address.";
+      }
+      if (Object.keys(nextErrors).length > 0) {
+        setValidationErrors(nextErrors);
+        throw new Error("Please fix the highlighted delivery details.");
       }
 
       const checkoutItems: CheckoutItem[] = items.map((item) => ({
@@ -122,9 +139,9 @@ export default function CheckoutPage() {
         branchId: "hyderabad-main",
         orderType: "delivery",
         paymentMethod,
-        address
+        address: address.trim()
       };
-      const headers = await buildAuthHeaders({ "Content-Type": "application/json" });
+      const headers = await buildUserHeaders({ "Content-Type": "application/json" });
 
       const res = await fetch("/api/checkout", {
         method: "POST",
@@ -197,7 +214,7 @@ export default function CheckoutPage() {
         trackingId: data.tracking.id,
         trackingToken: data.tracking.token,
         total: data.order.total,
-        address
+        address: address.trim()
       });
       setMessage("Order placed successfully.");
       showToast({
@@ -232,22 +249,31 @@ export default function CheckoutPage() {
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                className={`w-full rounded-lg border px-3 py-2 text-sm dark:bg-slate-900 ${
+                  validationErrors.name ? "border-red-400" : "border-slate-200 dark:border-slate-700"
+                }`}
                 placeholder="Full name"
               />
               <input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                className={`w-full rounded-lg border px-3 py-2 text-sm dark:bg-slate-900 ${
+                  validationErrors.phone ? "border-red-400" : "border-slate-200 dark:border-slate-700"
+                }`}
                 placeholder="Phone number"
               />
             </div>
+            {validationErrors.name ? <p className="text-xs text-red-600">{validationErrors.name}</p> : null}
+            {validationErrors.phone ? <p className="text-xs text-red-600">{validationErrors.phone}</p> : null}
             <input
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className={`w-full rounded-lg border px-3 py-2 text-sm dark:bg-slate-900 ${
+                validationErrors.address ? "border-red-400" : "border-slate-200 dark:border-slate-700"
+              }`}
               placeholder="Enter delivery address"
             />
+            {validationErrors.address ? <p className="mt-1 text-xs text-red-600">{validationErrors.address}</p> : null}
             <p className="mt-1 text-xs text-slate-500">Estimated delivery: 28 mins</p>
           </div>
           <div className="rounded-2xl border bg-white p-4 shadow-md dark:border-slate-700 dark:bg-slate-900">
@@ -303,6 +329,11 @@ export default function CheckoutPage() {
             >
               {submitting ? "Placing..." : "Place Order"}
             </button>
+            <p className="mt-2 text-xs text-slate-500">
+              {paymentMethod === "cod"
+                ? "Pay in cash at delivery."
+                : "You will be redirected to Razorpay to complete payment securely."}
+            </p>
           </div>
         </motion.div>
         <aside className="rounded-2xl border bg-white p-4 shadow-md dark:border-slate-700 dark:bg-slate-900">
@@ -328,6 +359,19 @@ export default function CheckoutPage() {
       {message && (
         <div className={`rounded-xl p-4 text-sm ${result ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
           {message}
+          {!result ? (
+            <div className="mt-2">
+              <button
+                onClick={() => {
+                  void placeOrder();
+                }}
+                disabled={submitting || items.length === 0}
+                className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-60"
+              >
+                {submitting ? "Retrying..." : "Retry checkout"}
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
       {result && (

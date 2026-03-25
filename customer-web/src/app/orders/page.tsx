@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { buildAuthHeaders } from "@/lib/user-session";
+import { buildUserHeaders } from "@/lib/user-session";
 
 type OrderHistory = {
   id: string;
@@ -18,6 +18,10 @@ export default function OrderHistoryPage() {
   const [orders, setOrders] = useState<OrderHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string>("");
+
+  const cancellableStatuses = new Set(["pending", "confirmed", "preparing", "ready"]);
 
   useEffect(() => {
     const raw = window.localStorage.getItem("nausheen_orders_cache");
@@ -29,7 +33,7 @@ export default function OrderHistoryPage() {
       setLoading(true);
       setError(null);
       try {
-        const headers = await buildAuthHeaders();
+        const headers = await buildUserHeaders();
         const res = await fetch("/api/user/orders", { headers });
         const payload = (await res.json()) as { success?: boolean; items?: OrderHistory[]; error?: string };
         if (!res.ok) {
@@ -48,11 +52,34 @@ export default function OrderHistoryPage() {
     void loadOrders();
   }, []);
 
+  async function cancelOrder(orderId: string) {
+    setActionMessage(null);
+    setCancellingId(orderId);
+    try {
+      const headers = await buildUserHeaders();
+      const res = await fetch(`/api/user/orders/${encodeURIComponent(orderId)}/cancel`, {
+        method: "POST",
+        headers
+      });
+      const payload = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !payload.success) {
+        throw new Error(payload.error ?? "Failed to cancel order.");
+      }
+      setOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status: "cancelled" } : order)));
+      setActionMessage("Order cancelled successfully.");
+    } catch (cancelError) {
+      setActionMessage(cancelError instanceof Error ? cancelError.message : "Failed to cancel order.");
+    } finally {
+      setCancellingId("");
+    }
+  }
+
   return (
     <section className="space-y-4">
       <h1 className="text-3xl font-bold">Order History</h1>
       {loading ? <p className="text-sm text-slate-500">Loading orders...</p> : null}
       {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      {actionMessage ? <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">{actionMessage}</p> : null}
       {orders.length === 0 ? (
         <div className="rounded-2xl border bg-white p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
           No orders yet. Place your first order from menu.
@@ -79,6 +106,15 @@ export default function OrderHistoryPage() {
               <Link href="/menu" className="rounded-lg border px-3 py-1.5 text-xs font-medium dark:border-slate-700">
                 Reorder
               </Link>
+              {cancellableStatuses.has(order.status) ? (
+                <button
+                  onClick={() => void cancelOrder(order.id)}
+                  disabled={cancellingId === order.id}
+                  className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-60"
+                >
+                  {cancellingId === order.id ? "Cancelling..." : "Cancel order"}
+                </button>
+              ) : null}
             </div>
           </div>
         ))

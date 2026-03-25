@@ -102,6 +102,7 @@ export async function GET(request: Request, context: { params: { orderId: string
   const realtimeTracking = realtimeSnap.exists() ? realtimeSnap.val() : null;
 
   return NextResponse.json({
+    orderId: internalOrderId,
     trackingId: order.trackingId ?? trackingId,
     status: order.status,
     updatedAt: order.updatedAt,

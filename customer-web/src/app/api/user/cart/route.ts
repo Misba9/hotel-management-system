@@ -1,5 +1,5 @@
 import { adminDb } from "@shared/firebase/admin";
-import { RequestUserAuthError, resolveAuthenticatedRequestUser } from "@shared/utils/request-user";
+import { resolveRequestUser } from "@shared/utils/request-user";
 import { z } from "zod";
 export const dynamic = "force-dynamic";
 
@@ -31,7 +31,10 @@ function buildEmptyCart(userId: string) {
 
 export async function GET(request: Request) {
   try {
-    const user = await resolveAuthenticatedRequestUser(request);
+    const user = await resolveRequestUser(request);
+    if (user.userId === "guest:anonymous") {
+      return Response.json({ success: true, cart: buildEmptyCart(user.userId) }, { status: 200 });
+    }
 
     const cartRef = adminDb.collection("carts").doc(user.userId);
     const snap = await cartRef.get();
@@ -55,10 +58,6 @@ export async function GET(request: Request) {
 
     return Response.json({ success: true, cart: parsed.data }, { status: 200 });
   } catch (error) {
-    if (error instanceof RequestUserAuthError) {
-      return Response.json({ error: "Unauthorized." }, { status: 401 });
-    }
-
     console.error("Failed to fetch cart.", error);
     return Response.json({ error: "Failed to fetch cart." }, { status: 500 });
   }
@@ -66,7 +65,10 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const user = await resolveAuthenticatedRequestUser(request);
+    const user = await resolveRequestUser(request);
+    if (user.userId === "guest:anonymous") {
+      return Response.json({ success: false, error: "Missing guest identifier." }, { status: 400 });
+    }
 
     const body = cartUpdateSchema.parse(await request.json());
     const cart = {
@@ -77,9 +79,6 @@ export async function PATCH(request: Request) {
     await adminDb.collection("carts").doc(user.userId).set(cart, { merge: true });
     return Response.json({ success: true, cart }, { status: 200 });
   } catch (error) {
-    if (error instanceof RequestUserAuthError) {
-      return Response.json({ error: "Unauthorized." }, { status: 401 });
-    }
     if (error instanceof z.ZodError) {
       return Response.json({ error: "Invalid payload.", details: error.issues }, { status: 400 });
     }

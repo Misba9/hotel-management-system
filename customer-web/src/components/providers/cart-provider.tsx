@@ -1,9 +1,11 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
 import { Product } from "@/lib/menu-data";
 import { useToast } from "@/components/providers/toast-provider";
-import { buildAuthHeaders } from "@/lib/user-session";
+import { buildUserHeaders } from "@/lib/user-session";
+import { auth } from "@shared/firebase/client";
 
 type CartItem = Pick<Product, "id" | "name" | "price" | "image"> & { qty: number };
 type CartPayload = {
@@ -117,7 +119,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
     async function loadCartFromBackend() {
       try {
-        const headers = await buildAuthHeaders();
+        const headers = await buildUserHeaders();
         const res = await fetch("/api/user/cart", { headers });
         const data = (await res.json()) as
           | { success?: boolean; cart?: CartPayload; items?: CartItem[]; discount?: number; couponCode?: string }
@@ -132,6 +134,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
     }
     void loadCartFromBackend();
+  }, []);
+
+  // Keep cart in sync when a user logs in/out (guest cart vs customer cart).
+  useEffect(() => {
+    setReadyToSync(false);
+    const unsubscribe = onAuthStateChanged(auth, async () => {
+      try {
+        setReadyToSync(false);
+        const headers = await buildUserHeaders();
+        const res = await fetch("/api/user/cart", { headers });
+        const data = (await res.json()) as
+          | { success?: boolean; cart?: CartPayload; items?: CartItem[]; discount?: number; couponCode?: string }
+          | { error?: string };
+        if (!res.ok) return;
+        const nextItems = "cart" in data && data.cart ? data.cart.items ?? [] : "items" in data ? data.items ?? [] : [];
+        setItems(nextItems);
+        setDiscount(0);
+        setCouponCode("");
+      } finally {
+        setReadyToSync(true);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -149,7 +174,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (!readyToSync) return;
     const timer = window.setTimeout(() => {
       void (async () => {
-        const headers = await buildAuthHeaders({ "Content-Type": "application/json" });
+        const headers = await buildUserHeaders({ "Content-Type": "application/json" });
         await fetch("/api/user/cart", {
           method: "PATCH",
           headers,

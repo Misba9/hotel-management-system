@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/providers/toast-provider";
-import { buildAuthHeaders } from "@/lib/user-session";
+import { buildUserHeaders } from "@/lib/user-session";
 
 type OrderHistory = {
   id: string;
@@ -11,6 +11,18 @@ type OrderHistory = {
   status: string;
   createdAt: string;
 };
+type RewardsSummary = {
+  points: number;
+  totalSpent: number;
+  tier: "Bronze" | "Silver" | "Gold";
+};
+
+function computeRewards(history: OrderHistory[]): RewardsSummary {
+  const totalSpent = history.reduce((sum, order) => sum + Math.max(Number(order.amount) || 0, 0), 0);
+  const points = Math.floor(totalSpent / 10);
+  const tier: RewardsSummary["tier"] = points >= 500 ? "Gold" : points >= 200 ? "Silver" : "Bronze";
+  return { points, totalSpent, tier };
+}
 
 export default function ProfilePage() {
   const { showToast } = useToast();
@@ -20,6 +32,7 @@ export default function ProfilePage() {
   const [addresses, setAddresses] = useState<string[]>(["Banjara Hills, Hyderabad", "Hitech City, Hyderabad"]);
   const [newAddress, setNewAddress] = useState("");
   const [history, setHistory] = useState<OrderHistory[]>([]);
+  const [rewards, setRewards] = useState<RewardsSummary>({ points: 0, totalSpent: 0, tier: "Bronze" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,11 +49,22 @@ export default function ProfilePage() {
         window.localStorage.removeItem("nausheen_profile_cache");
       }
     }
+    const rewardsRaw = window.localStorage.getItem("nausheen_rewards_cache");
+    if (rewardsRaw) {
+      try {
+        const parsed = JSON.parse(rewardsRaw) as RewardsSummary;
+        if (typeof parsed.points === "number" && typeof parsed.totalSpent === "number") {
+          setRewards(parsed);
+        }
+      } catch {
+        window.localStorage.removeItem("nausheen_rewards_cache");
+      }
+    }
 
     async function loadProfile() {
       setError(null);
       try {
-        const headers = await buildAuthHeaders();
+        const headers = await buildUserHeaders();
         const [profileRes, ordersRes] = await Promise.all([
           fetch("/api/user/profile", { headers }),
           fetch("/api/user/orders", { headers })
@@ -60,8 +84,12 @@ export default function ProfilePage() {
 
         const orderData = (await ordersRes.json()) as { items?: OrderHistory[]; error?: string };
         if (ordersRes.ok && Array.isArray(orderData.items)) {
-          setHistory(orderData.items ?? []);
-          window.localStorage.setItem("nausheen_orders_cache", JSON.stringify(orderData.items ?? []));
+          const nextHistory = orderData.items ?? [];
+          setHistory(nextHistory);
+          window.localStorage.setItem("nausheen_orders_cache", JSON.stringify(nextHistory));
+          const nextRewards = computeRewards(nextHistory);
+          setRewards(nextRewards);
+          window.localStorage.setItem("nausheen_rewards_cache", JSON.stringify(nextRewards));
         } else if (!ordersRes.ok) {
           throw new Error(orderData.error ?? "Failed to load profile data.");
         }
@@ -78,7 +106,7 @@ export default function ProfilePage() {
   async function saveProfile() {
     try {
       const payload = { fullName, email, phone, addresses };
-      const headers = await buildAuthHeaders({ "Content-Type": "application/json" });
+      const headers = await buildUserHeaders({ "Content-Type": "application/json" });
       const response = await fetch("/api/user/profile", {
         method: "PATCH",
         headers,
@@ -181,8 +209,9 @@ export default function ProfilePage() {
         </div>
         <div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
           <h2 className="mb-2 font-semibold">Rewards</h2>
-          <p className="text-2xl font-bold text-brand-accent">{Math.max(120, history.length * 40)} pts</p>
-          <p className="text-sm text-slate-500">Use points on your next order.</p>
+          <p className="text-2xl font-bold text-brand-accent">{rewards.points} pts</p>
+          <p className="text-sm text-slate-500">Tier: {rewards.tier}</p>
+          <p className="text-sm text-slate-500">Total spent: Rs. {rewards.totalSpent}</p>
         </div>
       </div>
       <div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">

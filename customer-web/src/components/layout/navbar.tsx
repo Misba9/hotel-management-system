@@ -1,10 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Moon, Search, ShoppingBag, Sun, UserCircle2 } from "lucide-react";
 import { useCart } from "@/components/providers/cart-provider";
 import { useTheme } from "@/components/providers/theme-provider";
+import { auth } from "@shared/firebase/client";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 
 const links = [
   { href: "/", label: "Home" },
@@ -16,8 +20,17 @@ const links = [
 
 export function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { count, openCart } = useCart();
   const { theme, toggleTheme } = useTheme();
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setSignedIn(Boolean(user));
+    });
+    return () => unsubscribe();
+  }, []);
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80">
@@ -68,6 +81,26 @@ export function Navbar() {
               </span>
             )}
           </button>
+          {!signedIn ? (
+            <Link
+              href="/login"
+              aria-label="Login"
+              className="rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 dark:border-slate-700 dark:text-slate-200"
+            >
+              Login
+            </Link>
+          ) : (
+            <button
+              aria-label="Logout"
+              onClick={async () => {
+                await signOut(auth);
+                router.push("/menu");
+              }}
+              className="rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 dark:border-slate-700 dark:text-slate-200"
+            >
+              Logout
+            </button>
+          )}
           <Link
             href="/profile"
             aria-label="Profile avatar"
