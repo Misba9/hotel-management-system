@@ -1,4 +1,5 @@
-import { initializeApp, getApps } from "firebase/app";
+import { initializeApp, getApp, getApps } from "firebase/app";
+import { getAuth, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getFunctions } from "firebase/functions";
@@ -15,8 +16,19 @@ const firebaseConfig = {
   databaseURL: env.EXPO_PUBLIC_FIREBASE_DATABASE_URL
 };
 
-const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
+function initStaffAuth() {
+  try {
+    // Using default persistence (typically in-memory for RN) to avoid relying
+    // on react-native-specific SDK exports that may not be selected by TS.
+    return initializeAuth(app);
+  } catch {
+    return getAuth(app);
+  }
+}
+
+export const staffAuth = initStaffAuth();
 export const staffDb = getFirestore(app);
 export const staffRtdb = getDatabase(app);
 export const staffFunctions = getFunctions(app);

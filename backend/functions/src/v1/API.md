@@ -32,6 +32,7 @@ This folder provides production-ready backend primitives for:
 ### Delivery
 - `updateDeliveryStatusV1`
 - `updateDeliveryTrackingV1`
+- `updateDeliveryAssignmentTrackingV1`
 
 ### Admin
 - `upsertCategoryV1`

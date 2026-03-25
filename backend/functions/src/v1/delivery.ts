@@ -24,6 +24,14 @@ const updateTrackingSchema = z.object({
   })
 });
 
+const updateAssignmentTrackingSchema = z.object({
+  assignmentId: z.string().min(1),
+  location: z.object({
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180)
+  })
+});
+
 export const updateDeliveryStatusV1 = withCallableGuard(
   async (payload, ctx) => {
     assertRole(ctx.role, ["delivery_boy", "manager", "admin"]);
@@ -86,6 +94,45 @@ export const updateDeliveryTrackingV1 = withCallableGuard(
     return { success: true };
   },
   updateTrackingSchema
+);
+
+// Location updates for the "nearest delivery boy" flow which stores assignment state
+// under the legacy `delivery_assignments` collection and writes to RTDB `deliveryTracking/{orderId}`.
+export const updateDeliveryAssignmentTrackingV1 = withCallableGuard(
+  async (payload, ctx) => {
+    assertRole(ctx.role, ["delivery_boy", "manager", "admin"]);
+
+    const assignmentRef = db.collection("delivery_assignments").doc(payload.assignmentId);
+    const assignmentSnap = await assignmentRef.get();
+    if (!assignmentSnap.exists) {
+      throw new HttpsError("not-found", "Delivery assignment not found.");
+    }
+
+    const assignment = assignmentSnap.data() as { orderId?: string; deliveryBoyId?: string };
+    if (!assignment.orderId) {
+      throw new HttpsError("internal", "Missing orderId on delivery assignment.");
+    }
+    if (ctx.role === "delivery_boy" && assignment.deliveryBoyId !== ctx.uid) {
+      throw new HttpsError("permission-denied", "Delivery partner mismatch.");
+    }
+
+    const now = createTimestamp();
+    await assignmentRef.set(
+      {
+        location: payload.location,
+        updatedAt: now
+      },
+      { merge: true }
+    );
+
+    await rtdb.ref(`deliveryTracking/${assignment.orderId}`).update({
+      location: payload.location,
+      updatedAt: now
+    });
+
+    return { success: true };
+  },
+  updateAssignmentTrackingSchema
 );
 
 function mapDeliveryStatusToOrderStatus(status: z.infer<typeof deliveryStatusSchema>): OrderStatus {

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React from "react";
+import { ScrollView, Text, View } from "react-native";
 import {
   CashierPanel,
   DeliveryPanel,
@@ -7,49 +7,58 @@ import {
   ManagerPanel,
   WaiterPanel
 } from "../components/role-panels";
+import { useStaffAuth, type StaffRole } from "../context/staff-auth-context";
 
-const roles = ["Delivery Boy", "Kitchen Staff", "Waiter", "Cashier", "Manager"] as const;
-type Role = (typeof roles)[number];
+function roleLabel(role: StaffRole | null) {
+  switch (role) {
+    case "delivery_boy":
+      return "Delivery";
+    case "kitchen_staff":
+      return "Kitchen";
+    case "waiter":
+      return "Waiter";
+    case "cashier":
+      return "Counter / POS";
+    case "manager":
+      return "Manager";
+    case "admin":
+      return "Admin";
+    default:
+      return "Staff";
+  }
+}
 
 export function RoleHomeScreen() {
-  const [role, setRole] = useState<Role>("Kitchen Staff");
-  const content = useMemo(() => {
+  const { role } = useStaffAuth();
+
+  const content = (() => {
     switch (role) {
-      case "Delivery Boy":
+      case "delivery_boy":
         return <DeliveryPanel />;
-      case "Kitchen Staff":
+      case "kitchen_staff":
         return <KitchenPanel />;
-      case "Waiter":
+      case "waiter":
         return <WaiterPanel />;
-      case "Cashier":
+      case "cashier":
         return <CashierPanel />;
-      case "Manager":
+      case "manager":
+      case "admin":
         return <ManagerPanel />;
       default:
-        return null;
+        return (
+          <View style={{ padding: 16 }}>
+            <Text style={{ color: "#64748b" }}>No panel is available for this account.</Text>
+          </View>
+        );
     }
-  }, [role]);
+  })();
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: "#FFF8F3", padding: 16 }}>
-      <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 12 }}>Role-based Staff App</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-        {roles.map((option) => (
-          <TouchableOpacity
-            key={option}
-            onPress={() => setRole(option)}
-            style={{
-              marginRight: 8,
-              borderRadius: 20,
-              backgroundColor: role === option ? "#FF6B35" : "white",
-              paddingHorizontal: 14,
-              paddingVertical: 8
-            }}
-          >
-            <Text style={{ color: role === option ? "white" : "#111827" }}>{option}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 4 }}>{roleLabel(role)} workspace</Text>
+      <Text style={{ color: "#64748b", marginBottom: 16, fontSize: 13 }}>
+        Signed in as {role?.replace(/_/g, " ") ?? "—"} — only features for your role are shown.
+      </Text>
       {content}
     </ScrollView>
   );

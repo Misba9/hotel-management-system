@@ -17,7 +17,7 @@ import {
 } from "./v1/auth";
 import { assignDeliveryPartnerV1, cancelOrderV1, createOrderV1, updateOrderStatusV1 } from "./v1/orders";
 import { initiateOnlinePaymentV1, markCashPaymentV1, verifyOnlinePaymentV1 } from "./v1/payments";
-import { updateDeliveryStatusV1, updateDeliveryTrackingV1 } from "./v1/delivery";
+import { updateDeliveryAssignmentTrackingV1, updateDeliveryStatusV1, updateDeliveryTrackingV1 } from "./v1/delivery";
 import {
   createAdminUserV1,
   getSalesReportV1,
@@ -59,6 +59,7 @@ export {
   verifyOnlinePaymentV1,
   markCashPaymentV1,
   updateDeliveryStatusV1,
+  updateDeliveryAssignmentTrackingV1,
   updateDeliveryTrackingV1,
   upsertCategoryV1,
   upsertProductV1,
