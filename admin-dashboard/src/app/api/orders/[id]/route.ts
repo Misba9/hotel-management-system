@@ -4,7 +4,7 @@ import { z } from "zod";
 
 const updateOrderSchema = z
   .object({
-    status: z.enum(["pending", "preparing", "ready", "out_for_delivery", "delivered", "cancelled"]).optional(),
+    status: z.enum(["pending", "preparing", "completed"]).optional(),
     refund: z.boolean().optional(),
     refundReason: z.string().max(300).optional(),
     deliveryPartnerId: z.string().min(1).optional()

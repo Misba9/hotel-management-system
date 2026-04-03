@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { ProductCard } from "@/components/menu/product-card";
 import { ProductQuickViewModal } from "@/components/menu/product-quick-view-modal";
-import { useCart } from "@/components/providers/cart-provider";
+import { useCart } from "@/components/cart/cart-provider";
 import { Product, getMenuPayload } from "@/lib/menu-data";
 import { useEffect, useState } from "react";
 
-type UpsellResponse =
-  | { itemIds?: string[]; recommendations?: string[]; products?: Array<{ id?: string }> }
-  | { suggestions?: Array<{ productId?: string; id?: string }>; itemIds?: string[] };
+type UpsellResponse = {
+  itemIds?: string[];
+  recommendations?: string[];
+  products?: Array<{ id?: string }>;
+  suggestions?: Array<{ productId?: string; id?: string }>;
+};
 
 export default function CartPage() {
   const { items, subtotal, total, discount, openCart } = useCart();

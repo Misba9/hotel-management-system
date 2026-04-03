@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ProductCard } from "@/components/menu/product-card";
 import dynamic from "next/dynamic";
@@ -23,26 +22,32 @@ export default function MenuPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [categories, setCategories] = useState<Array<{ id: string; name: string; count: number }>>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
-  useEffect(() => {
-    async function loadMenu() {
-      setLoading(true);
-      setError(null);
-      try {
-        const payload = await getMenuPayload();
-        setProducts(payload.products);
-        setCategories(payload.categories.map((category) => ({ id: category.id, name: category.name })));
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load menu.");
-      } finally {
-        setLoading(false);
-      }
+  const loadMenu = useCallback(async (forceRefresh = false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = await getMenuPayload(forceRefresh);
+      setProducts(payload.products);
+      setCategories(
+        payload.categories.map((category) => ({
+          id: category.id,
+          name: category.name,
+          count: category.count
+        }))
+      );
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load menu from Firestore.");
+    } finally {
+      setLoading(false);
     }
-
-    void loadMenu();
   }, []);
+
+  useEffect(() => {
+    void loadMenu();
+  }, [loadMenu]);
 
   const filtered = useMemo(() => {
     let data = products.filter((item) => {
@@ -79,42 +84,79 @@ export default function MenuPage() {
         </select>
       </div>
 
-      <div className="sticky top-16 z-30 -mx-4 bg-brand-background/95 px-4 py-2 backdrop-blur dark:bg-slate-950/95">
-        <div className="no-scrollbar flex gap-2 overflow-x-auto">
+      <div className="sticky top-16 z-30 -mx-4 border-b border-slate-200/80 bg-brand-background/95 px-4 py-3 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+        <div
+          className="no-scrollbar flex gap-2 overflow-x-auto pb-1"
+          role="tablist"
+          aria-label="Menu categories"
+        >
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeCategory === "all"}
             onClick={() => setActiveCategory("all")}
-            className={`rounded-full px-4 py-1.5 text-sm ${
-              activeCategory === "all" ? "bg-orange-500 text-white" : "bg-white dark:bg-slate-900"
+            className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium shadow-sm transition ${
+              activeCategory === "all"
+                ? "bg-orange-500 text-white shadow-orange-500/25"
+                : "border border-slate-200 bg-white text-slate-700 hover:border-orange-200 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-orange-800"
             }`}
           >
             All
+            {products.length > 0 ? (
+              <span className="ml-1.5 tabular-nums opacity-90">({products.length})</span>
+            ) : null}
           </button>
           {categories.map((category) => (
             <button
+              type="button"
+              role="tab"
               key={category.id}
+              aria-selected={activeCategory === category.id}
               onClick={() => setActiveCategory(category.id)}
-              className={`whitespace-nowrap rounded-full px-4 py-1.5 text-sm ${
-                activeCategory === category.id ? "bg-orange-500 text-white" : "bg-white dark:bg-slate-900"
+              className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium shadow-sm transition ${
+                activeCategory === category.id
+                  ? "bg-orange-500 text-white shadow-orange-500/25"
+                  : "border border-slate-200 bg-white text-slate-700 hover:border-orange-200 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-orange-800"
               }`}
             >
               {category.name}
+              {category.count > 0 ? (
+                <span className="ml-1.5 tabular-nums opacity-90">({category.count})</span>
+              ) : null}
             </button>
           ))}
         </div>
       </div>
+
+      {!loading && error ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={() => void loadMenu(true)}
+            className="self-start rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {loading
           ? Array.from({ length: 6 }).map((_, idx) => <SkeletonCard key={idx} />)
           : filtered.map((item) => <ProductCard key={item.id} product={item} onQuickView={setSelectedProduct} />)}
       </div>
-      {!loading && error ? (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      {!loading && !error && products.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-slate-200 bg-white/80 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900/80">
+          <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">No menu items yet</p>
+          <p className="mt-2 text-sm text-slate-500">Check back soon — we&apos;re updating our Firestore catalog.</p>
+        </div>
       ) : null}
-      {!loading && !error && filtered.length === 0 ? (
-        <p className="rounded-xl border bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900">
-          No products found for this filter.
-        </p>
+      {!loading && !error && products.length > 0 && filtered.length === 0 ? (
+        <div className="rounded-3xl border border-slate-200 bg-white/80 px-6 py-10 text-center dark:border-slate-700 dark:bg-slate-900/80">
+          <p className="font-medium text-slate-800 dark:text-slate-100">Nothing matches this filter</p>
+          <p className="mt-1 text-sm text-slate-500">Try another category or adjust your search.</p>
+        </div>
       ) : null}
       {selectedProduct ? (
         <ProductQuickViewModal

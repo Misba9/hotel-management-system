@@ -1,63 +1,23 @@
-"use client";
+import type { Category, MenuPayload, Product } from "@/lib/menu-data-types";
 
-export type Product = {
-  id: string;
-  name: string;
-  description: string;
-  categoryId: string;
-  categoryName: string;
-  price: number;
-  rating: number;
-  image: string;
-  ingredients: string[];
-  sizes: Array<{ label: "Small" | "Medium" | "Large"; multiplier: number }>;
-  available: boolean;
-  featured?: boolean;
-  popular?: boolean;
-};
-
-export type Category = {
-  id: string;
-  name: string;
-  image: string;
-  count: number;
-};
-
-export type MenuPayload = {
-  products: Product[];
-  categories: Category[];
-  fetchedAt: string;
-};
-
-type MenuApiResponse =
-  | { success: true; data: MenuPayload | Product[] }
-  | { success?: false; error?: string }
-  | MenuPayload;
+export type { Category, MenuPayload, Product } from "@/lib/menu-data-types";
 
 let cachedPayload: MenuPayload | null = null;
 let inFlightRequest: Promise<MenuPayload> | null = null;
 
 export async function getMenuPayload(forceRefresh = false): Promise<MenuPayload> {
+  if (forceRefresh) {
+    cachedPayload = null;
+    inFlightRequest = null;
+  }
   if (cachedPayload && !forceRefresh) {
     return cachedPayload;
   }
-  if (inFlightRequest) {
+  if (inFlightRequest && !forceRefresh) {
     return inFlightRequest;
   }
 
-  inFlightRequest = fetch("/api/menu")
-    .then(async (response) => {
-      const payload = (await response.json()) as MenuApiResponse;
-      if (!response.ok) {
-        const message =
-          typeof payload === "object" && payload && "error" in payload && typeof payload.error === "string"
-            ? payload.error
-            : "Failed to load menu.";
-        throw new Error(message);
-      }
-
-      return normalizePayload(payload);
-    })
+  inFlightRequest = fetchMenuFromApi(forceRefresh)
     .then((payload) => {
       cachedPayload = payload;
       return payload;
@@ -69,50 +29,29 @@ export async function getMenuPayload(forceRefresh = false): Promise<MenuPayload>
   return inFlightRequest;
 }
 
-function normalizePayload(payload: MenuApiResponse): MenuPayload {
-  if (isMenuPayload(payload)) return payload;
-  if (typeof payload === "object" && payload && "success" in payload && payload.success === true) {
-    const data = payload.data;
-    if (isMenuPayload(data)) return data;
-    if (Array.isArray(data)) {
-      const products = data.filter(isProduct);
-      return {
-        products,
-        categories: buildCategories(products),
-        fetchedAt: new Date().toISOString()
-      };
-    }
+async function fetchMenuFromApi(forceRefresh: boolean): Promise<MenuPayload> {
+  const url = forceRefresh ? `/api/menu?t=${Date.now()}` : "/api/menu";
+  const res = await fetch(url, {
+    cache: forceRefresh ? "no-store" : "default"
+  });
+
+  if (!res.ok) {
+    const message = res.status === 500 ? "Server error while loading the menu." : `Menu request failed (${res.status}).`;
+    throw new Error(message);
   }
 
-  throw new Error("Failed to load menu.");
-}
+  const data = (await res.json()) as { categories?: Category[]; products?: Product[]; error?: string };
 
-function isMenuPayload(value: unknown): value is MenuPayload {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<MenuPayload>;
-  return Array.isArray(candidate.products) && Array.isArray(candidate.categories) && typeof candidate.fetchedAt === "string";
-}
-
-function isProduct(value: unknown): value is Product {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<Product>;
-  return typeof candidate.id === "string" && typeof candidate.name === "string" && typeof candidate.categoryId === "string";
-}
-
-function buildCategories(products: Product[]): Category[] {
-  const grouped = new Map<string, Category>();
-  for (const product of products) {
-    const existing = grouped.get(product.categoryId);
-    if (existing) {
-      existing.count += 1;
-      continue;
-    }
-    grouped.set(product.categoryId, {
-      id: product.categoryId,
-      name: product.categoryName,
-      image: "",
-      count: 1
-    });
+  if (data.error) {
+    throw new Error(data.error);
   }
-  return Array.from(grouped.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+  const categories = Array.isArray(data.categories) ? data.categories : [];
+  const products = Array.isArray(data.products) ? data.products : [];
+
+  return {
+    categories,
+    products,
+    fetchedAt: new Date().toISOString()
+  };
 }

@@ -4,7 +4,7 @@ import { ReactNode } from "react";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import { AppShell } from "@/components/layout/app-shell";
 import { Footer } from "@/components/layout/footer";
-import { CartProvider } from "@/components/providers/cart-provider";
+import { CartProvider } from "@/components/cart/cart-provider";
 import { FavoritesProvider } from "@/components/providers/favorites-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ToastProvider } from "@/components/providers/toast-provider";

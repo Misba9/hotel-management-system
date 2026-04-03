@@ -1,4 +1,5 @@
-import { adminDb, adminRtdb } from "@shared/firebase/admin";
+import { adminDb } from "@shared/firebase/admin";
+import { updateOrderFeed } from "@shared/utils/order-feed-rtdb";
 import { resolveRequestUser } from "@shared/utils/request-user";
 
 const CANCELLABLE_STATUSES = new Set(["pending", "confirmed", "preparing", "ready"]);
@@ -37,7 +38,7 @@ export async function POST(request: Request, context: { params: { orderId: strin
       cancelledAt: now,
       updatedAt: now
     });
-    await adminRtdb.ref(`orderFeeds/${orderId}`).update({
+    await updateOrderFeed(orderId, {
       status: "cancelled",
       updatedAt: now
     });

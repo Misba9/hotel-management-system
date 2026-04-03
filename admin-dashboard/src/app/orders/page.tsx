@@ -1,5 +1,5 @@
-import { OrdersPageFeature } from "@/features/orders/orders-page";
+import { redirect } from "next/navigation";
 
 export default function OrdersPage() {
-  return <OrdersPageFeature />;
+  redirect("/admin/orders");
 }

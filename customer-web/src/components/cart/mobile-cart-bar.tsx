@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { useCart } from "@/components/providers/cart-provider";
+import { useCart } from "@/components/cart/cart-provider";
 
 export function MobileCartBar() {
   const { count, total } = useCart();

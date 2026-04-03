@@ -1,12 +1,58 @@
+import { Timestamp, type Query, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { adminDb } from "@shared/firebase/admin";
 import { enforceApiSecurity } from "@shared/utils/api-security";
 import { z } from "zod";
-const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=20, stale-while-revalidate=60" };
 
-const orderStatusFilterSchema = z
-  .enum(["all", "pending", "preparing", "ready", "out_for_delivery", "delivered", "cancelled"])
-  .optional();
+export const dynamic = "force-dynamic";
+
+const CACHE_HEADERS = { "Cache-Control": "no-store" };
+
+/** Filters: `completed` includes legacy terminal statuses still in Firestore. */
+const orderStatusFilterSchema = z.enum(["all", "pending", "preparing", "completed"]).optional();
+
+const COMPLETED_STATUS_ALIASES = ["completed", "delivered", "ready", "out_for_delivery"] as const;
 const MAX_ORDER_PAGE_SIZE = 100;
+
+export type OrderListItem = {
+  id: string;
+  customerName: string;
+  phone: string;
+  items: unknown[];
+  totalAmount: number;
+  status: string;
+  createdAt: string | null;
+};
+
+function serializeCreatedAt(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && "seconds" in value) {
+    const s = (value as { seconds: number; nanoseconds?: number }).seconds;
+    const ns = (value as { nanoseconds?: number }).nanoseconds ?? 0;
+    if (typeof s === "number") return new Timestamp(s, ns).toDate().toISOString();
+  }
+  return null;
+}
+
+function mapOrderDoc(doc: QueryDocumentSnapshot): OrderListItem {
+  const d = doc.data();
+  const totalAmount =
+    typeof d.totalAmount === "number"
+      ? d.totalAmount
+      : typeof d.total === "number"
+        ? d.total
+        : 0;
+  return {
+    id: doc.id,
+    customerName: String(d.customerName ?? ""),
+    phone: String(d.phone ?? ""),
+    items: Array.isArray(d.items) ? d.items : [],
+    totalAmount,
+    status: String(d.status ?? ""),
+    createdAt: serializeCreatedAt(d.createdAt)
+  };
+}
 
 export async function GET(request: Request) {
   const secure = await enforceApiSecurity(request, {
@@ -21,20 +67,32 @@ export async function GET(request: Request) {
       return Response.json({ error: "Invalid status filter." }, { status: 400 });
     }
     const status = parsedStatus.data;
-    const cursor = searchParams.get("cursor");
-    const pageSize = Math.min(Number(searchParams.get("limit") ?? 30), MAX_ORDER_PAGE_SIZE);
-    let query = adminDb.collection("orders").orderBy("createdAt", "desc");
-    if (status && status !== "all") {
+    const cursorId = searchParams.get("cursor");
+    const pageSize = Math.min(Number(searchParams.get("limit") ?? 30) || 30, MAX_ORDER_PAGE_SIZE);
+
+    let query: Query = adminDb.collection("orders").orderBy("createdAt", "desc");
+    if (status === "pending" || status === "preparing") {
       query = adminDb.collection("orders").where("status", "==", status).orderBy("createdAt", "desc");
+    } else if (status === "completed") {
+      query = adminDb
+        .collection("orders")
+        .where("status", "in", [...COMPLETED_STATUS_ALIASES])
+        .orderBy("createdAt", "desc");
     }
-    if (cursor) {
-      query = query.startAfter(cursor);
+
+    if (cursorId) {
+      const cursorSnap = await adminDb.collection("orders").doc(cursorId).get();
+      if (cursorSnap.exists) {
+        query = query.startAfter(cursorSnap);
+      }
     }
+
     const snap = await query.limit(pageSize + 1).get();
     const hasMore = snap.docs.length > pageSize;
     const pageDocs = hasMore ? snap.docs.slice(0, pageSize) : snap.docs;
-    const items = pageDocs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    const nextCursor = hasMore ? String(pageDocs[pageDocs.length - 1].data().createdAt ?? "") : null;
+    const items = pageDocs.map((doc) => mapOrderDoc(doc));
+    const nextCursor = hasMore && pageDocs.length > 0 ? pageDocs[pageDocs.length - 1].id : null;
+
     return Response.json({ items, hasMore, nextCursor }, { status: 200, headers: CACHE_HEADERS });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {

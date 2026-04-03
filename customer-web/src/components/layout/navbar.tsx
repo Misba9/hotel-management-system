@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { Moon, Search, ShoppingBag, Sun, UserCircle2 } from "lucide-react";
-import { useCart } from "@/components/providers/cart-provider";
+import { Moon, Search, Sun, UserCircle2 } from "lucide-react";
+import { CartIconButton } from "@/components/cart/cart-icon-button";
+import { useCart } from "@/components/cart/cart-provider";
 import { useTheme } from "@/components/providers/theme-provider";
 import { auth } from "@shared/firebase/client";
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -69,18 +70,11 @@ export function Navbar() {
           >
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
-          <button
-            aria-label="Open cart"
+          <CartIconButton
+            count={count}
             onClick={openCart}
-            className="relative rounded-full border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200"
-          >
-            <ShoppingBag className="h-4 w-4" />
-            {count > 0 && (
-              <span className="absolute -right-1 -top-1 rounded-full bg-orange-500 px-1.5 text-[10px] text-white">
-                {count}
-              </span>
-            )}
-          </button>
+            className="rounded-full border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200"
+          />
           {!signedIn ? (
             <Link
               href="/login"

@@ -2,20 +2,24 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { Product } from "@/lib/menu-data";
+import type { Product } from "@/lib/menu-data-types";
 import { useToast } from "@/components/providers/toast-provider";
 import { buildUserHeaders } from "@/lib/user-session";
+import {
+  type CartLine,
+  type CartPayload,
+  CART_STORAGE_KEY,
+  computeLineItemCount,
+  computeSubtotal,
+  computeTotalAfterDiscount,
+  getItemQuantity,
+  loadPersistedCart,
+  persistCart
+} from "@/lib/cart";
 import { auth } from "@shared/firebase/client";
 
-type CartItem = Pick<Product, "id" | "name" | "price" | "image"> & { qty: number };
-type CartPayload = {
-  userId?: string;
-  items?: CartItem[];
-  updatedAt?: string;
-};
-
-type CartContextValue = {
-  items: CartItem[];
+export type CartContextValue = {
+  items: CartLine[];
   isOpen: boolean;
   count: number;
   subtotal: number;
@@ -34,17 +38,18 @@ type CartContextValue = {
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
-const KEY = "nausheen_cart_cache";
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
+  const [items, setItems] = useState<CartLine[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [discount, setDiscount] = useState(0);
   const [couponCode, setCouponCode] = useState("");
   const [readyToSync, setReadyToSync] = useState(false);
   const { showToast } = useToast();
+
   const openCart = useCallback(() => setIsOpen(true), []);
   const closeCart = useCallback(() => setIsOpen(false), []);
+
   const addItem = useCallback(
     (product: Product) =>
       setItems((prev) => {
@@ -60,10 +65,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           title: "Added to cart",
           description: `${product.name} is now in your cart`
         });
-        return [...prev, { id: product.id, name: product.name, price: product.price, image: product.image, qty: 1 }];
+        return [
+          ...prev,
+          { id: product.id, name: product.name, price: product.price, image: product.image, qty: 1 }
+        ];
       }),
     [showToast]
   );
+
   const removeItem = useCallback(
     (productId: string) =>
       setItems((prev) => {
@@ -78,23 +87,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }),
     [showToast]
   );
-  const updateQty = useCallback(
-    (productId: string, qty: number) =>
-      setItems((prev) =>
-        prev
-          .map((item) => (item.id === productId ? { ...item, qty } : item))
-          .filter((item) => item.qty > 0)
-      ),
-    []
-  );
+
+  const updateQty = useCallback((productId: string, qty: number) => {
+    setItems((prev) =>
+      prev
+        .map((item) => (item.id === productId ? { ...item, qty } : item))
+        .filter((item) => item.qty > 0)
+    );
+  }, []);
+
   const applyCoupon = useCallback((code: string, discountAmount: number) => {
     setCouponCode(code.toUpperCase());
     setDiscount(Math.max(0, Math.floor(discountAmount)));
   }, []);
+
   const clearCoupon = useCallback(() => {
     setCouponCode("");
     setDiscount(0);
   }, []);
+
   const clearCart = useCallback(() => {
     setItems([]);
     setCouponCode("");
@@ -106,27 +117,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [showToast]);
 
   useEffect(() => {
-    const raw = window.localStorage.getItem(KEY);
-    if (raw) {
-      try {
-        const cached = JSON.parse(raw) as { items?: CartItem[]; discount?: number; couponCode?: string };
-        setItems(cached.items ?? []);
-        setDiscount(Number(cached.discount ?? 0));
-        setCouponCode(String(cached.couponCode ?? ""));
-      } catch {
-        window.localStorage.removeItem(KEY);
-      }
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(CART_STORAGE_KEY) : null;
+    const parsed = loadPersistedCart(raw);
+    if (parsed) {
+      setItems(parsed.items);
+      setDiscount(parsed.discount);
+      setCouponCode(parsed.couponCode);
     }
+
     async function loadCartFromBackend() {
       try {
         const headers = await buildUserHeaders();
         const res = await fetch("/api/user/cart", { headers });
         const data = (await res.json()) as
-          | { success?: boolean; cart?: CartPayload; items?: CartItem[]; discount?: number; couponCode?: string }
+          | { success?: boolean; cart?: CartPayload; items?: CartLine[]; discount?: number; couponCode?: string }
           | { error?: string };
         if (!res.ok) return;
-        const items = "cart" in data && data.cart ? data.cart.items ?? [] : "items" in data ? data.items ?? [] : [];
-        setItems(items);
+        const nextItems =
+          "cart" in data && data.cart ? (data.cart.items ?? []) : "items" in data ? (data.items ?? []) : [];
+        setItems(nextItems);
         setDiscount(0);
         setCouponCode("");
       } finally {
@@ -136,7 +145,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     void loadCartFromBackend();
   }, []);
 
-  // Keep cart in sync when a user logs in/out (guest cart vs customer cart).
   useEffect(() => {
     setReadyToSync(false);
     const unsubscribe = onAuthStateChanged(auth, async () => {
@@ -145,10 +153,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const headers = await buildUserHeaders();
         const res = await fetch("/api/user/cart", { headers });
         const data = (await res.json()) as
-          | { success?: boolean; cart?: CartPayload; items?: CartItem[]; discount?: number; couponCode?: string }
+          | { success?: boolean; cart?: CartPayload; items?: CartLine[]; discount?: number; couponCode?: string }
           | { error?: string };
         if (!res.ok) return;
-        const nextItems = "cart" in data && data.cart ? data.cart.items ?? [] : "items" in data ? data.items ?? [] : [];
+        const nextItems =
+          "cart" in data && data.cart ? (data.cart.items ?? []) : "items" in data ? (data.items ?? []) : [];
         setItems(nextItems);
         setDiscount(0);
         setCouponCode("");
@@ -160,14 +169,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      KEY,
-      JSON.stringify({
-        items,
-        discount,
-        couponCode
-      })
-    );
+    persistCart({ items, discount, couponCode });
   }, [couponCode, discount, items]);
 
   useEffect(() => {
@@ -178,14 +180,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         await fetch("/api/user/cart", {
           method: "PATCH",
           headers,
-          body: JSON.stringify({
-            items
-          })
+          body: JSON.stringify({ items })
         });
       })();
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [couponCode, discount, items, readyToSync]);
+  }, [items, readyToSync]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -225,10 +225,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isOpen]);
 
+  const itemQty = useCallback((productId: string) => getItemQuantity(items, productId), [items]);
+
   const value = useMemo<CartContextValue>(() => {
-    const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
-    const count = items.reduce((sum, item) => sum + item.qty, 0);
-    const total = Math.max(subtotal - discount, 0);
+    const subtotal = computeSubtotal(items);
+    const count = computeLineItemCount(items);
+    const total = computeTotalAfterDiscount(subtotal, discount);
     return {
       items,
       isOpen,
@@ -237,7 +239,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       discount,
       couponCode,
       total,
-      itemQty: (productId) => items.find((item) => item.id === productId)?.qty ?? 0,
+      itemQty,
       openCart,
       closeCart,
       addItem,
@@ -247,7 +249,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       clearCoupon,
       clearCart
     };
-  }, [addItem, applyCoupon, clearCart, clearCoupon, closeCart, couponCode, discount, isOpen, items, openCart, removeItem, updateQty]);
+  }, [
+    addItem,
+    applyCoupon,
+    clearCart,
+    clearCoupon,
+    closeCart,
+    couponCode,
+    discount,
+    isOpen,
+    itemQty,
+    items,
+    openCart,
+    removeItem,
+    updateQty
+  ]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

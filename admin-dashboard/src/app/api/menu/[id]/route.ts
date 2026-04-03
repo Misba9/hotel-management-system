@@ -2,13 +2,15 @@ import { adminDb } from "@shared/firebase/admin";
 import { enforceApiSecurity } from "@shared/utils/api-security";
 import { z } from "zod";
 
+const optionalImageUrl = z.union([z.literal(""), z.string().url()]);
+
 const menuUpdateSchema = z
   .object({
     name: z.string().min(2).max(120).optional(),
     price: z.number().nonnegative().optional(),
     categoryId: z.string().min(1).optional(),
     description: z.string().max(500).optional(),
-    imageUrl: z.string().url().optional(),
+    imageUrl: optionalImageUrl.optional(),
     available: z.boolean().optional()
   })
   .refine((value) => Object.keys(value).length > 0, { message: "At least one field is required." });

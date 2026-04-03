@@ -1,5 +1,5 @@
-import { adminAuth } from "../firebase/admin";
-import { logServerInfo } from "../utils/monitoring";
+import { adminAuth } from "../../backend/firebase/admin";
+import { logServerInfo } from "./monitoring";
 import type { DecodedIdToken } from "firebase-admin/auth";
 
 type Role =

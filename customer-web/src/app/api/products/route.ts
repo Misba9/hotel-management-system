@@ -36,7 +36,6 @@ let menuCache: { payload: ProductsPayload; expiresAt: number } | null = null;
 
 export async function GET() {
   try {
-    console.log("Menu API called");
     const now = Date.now();
     if (menuCache && menuCache.expiresAt > now) {
       return Response.json({ success: true, data: menuCache.payload }, { status: 200, headers: CACHE_HEADERS });

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { adminAuth, adminDb, adminRtdb } from "@shared/firebase/admin";
+import { adminAuth, adminDb } from "@shared/firebase/admin";
+import { adminRtdb } from "@shared/firebase/rtdb-admin";
 import { enforceApiSecurity } from "@shared/utils/api-security";
 import { verifySignedTrackingToken } from "@shared/utils/tracking-token";
+
+export const dynamic = "force-dynamic";
 
 const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=5, stale-while-revalidate=30" };
 
@@ -98,8 +101,13 @@ export async function GET(request: Request, context: { params: { orderId: string
 
   const assignmentSnap = await adminDb.collection("delivery_assignments").where("orderId", "==", internalOrderId).limit(1).get();
   const delivery = assignmentSnap.empty ? null : assignmentSnap.docs[0].data();
-  const realtimeSnap = await adminRtdb.ref(`deliveryTracking/${internalOrderId}`).get();
-  const realtimeTracking = realtimeSnap.exists() ? realtimeSnap.val() : null;
+  let realtimeTracking: unknown = null;
+  try {
+    const realtimeSnap = await adminRtdb.ref(`deliveryTracking/${internalOrderId}`).get();
+    realtimeTracking = realtimeSnap.exists() ? realtimeSnap.val() : null;
+  } catch {
+    realtimeTracking = null;
+  }
 
   return NextResponse.json({
     orderId: internalOrderId,

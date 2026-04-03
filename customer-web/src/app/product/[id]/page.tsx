@@ -7,7 +7,7 @@ import { Minus, Plus, ShoppingBag } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect } from "react";
 import { Product, getMenuPayload } from "@/lib/menu-data";
-import { useCart } from "@/components/providers/cart-provider";
+import { useCart } from "@/components/cart/cart-provider";
 
 export default function ProductDetailPage() {
   const params = useParams<{ id: string }>();

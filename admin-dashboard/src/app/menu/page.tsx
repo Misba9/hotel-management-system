@@ -1,5 +1,5 @@
-import { MenuPageFeature } from "@/features/menu/menu-page";
+import { redirect } from "next/navigation";
 
 export default function MenuManagementPage() {
-  return <MenuPageFeature />;
+  redirect("/admin/menu");
 }

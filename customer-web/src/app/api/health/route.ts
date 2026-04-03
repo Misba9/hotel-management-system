@@ -1,4 +1,5 @@
-import { adminAuth, adminDb, adminMessaging, adminRtdb } from "@shared/firebase/admin";
+import { adminAuth, adminDb, adminMessaging } from "@shared/firebase/admin";
+import { adminRtdb } from "@shared/firebase/rtdb-admin";
 
 type ServiceStatus = "connected" | "working" | "reachable" | "configured" | "error" | "not_configured";
 

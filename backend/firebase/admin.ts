@@ -1,6 +1,5 @@
 import { cert, getApp, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
-import { getDatabase, type Database } from "firebase-admin/database";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getMessaging, type Messaging } from "firebase-admin/messaging";
 
@@ -39,10 +38,11 @@ function sanitizePrivateKey(value: string | undefined): string | undefined {
 let cachedInitErrorMessage = "";
 
 function initializeAdminApp(): App {
-  if (getApps().length > 0) return getApp();
+  if (getApps().length > 0) {
+    return getApp();
+  }
 
   const missing = getMissingServiceAccountEnv();
-  const databaseURL = process.env.FIREBASE_DATABASE_URL;
 
   if (missing.length === 0) {
     return initializeApp({
@@ -50,8 +50,7 @@ function initializeAdminApp(): App {
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
         privateKey: sanitizePrivateKey(process.env.FIREBASE_PRIVATE_KEY)
-      }),
-      ...(databaseURL ? { databaseURL } : {})
+      })
     });
   }
 
@@ -64,9 +63,11 @@ function initializeAdminApp(): App {
     console.warn(`${missingEnvError.message} Falling back to runtime default credentials.`);
   }
 
-  return initializeApp({
-    ...(databaseURL ? { databaseURL } : {})
-  });
+  return initializeApp();
+}
+
+export function getFirebaseAdminApp(): App | null {
+  return getAdminAppSafely();
 }
 
 function getAdminAppSafely(): App | null {
@@ -104,6 +105,11 @@ function createLazyServiceProxy<T extends object>(serviceName: string, factory: 
   });
 }
 
+/** Use for optional Admin services (e.g. Realtime Database in `rtdb-admin.ts`). */
+export function createLazyAdminService<T extends object>(serviceName: string, factory: (app: App) => T): T {
+  return createLazyServiceProxy(serviceName, factory);
+}
+
 const app = getAdminAppSafely();
 
 export const adminDb: Firestore = app
@@ -112,9 +118,6 @@ export const adminDb: Firestore = app
 export const adminAuth: Auth = app
   ? getAuth(app)
   : createLazyServiceProxy<Auth>("Auth", (adminApp) => getAuth(adminApp));
-export const adminRtdb: Database = app
-  ? getDatabase(app)
-  : createLazyServiceProxy<Database>("Realtime Database", (adminApp) => getDatabase(adminApp));
 export const adminMessaging: Messaging = app
   ? getMessaging(app)
   : createLazyServiceProxy<Messaging>("Messaging", (adminApp) => getMessaging(adminApp));

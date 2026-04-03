@@ -24,7 +24,7 @@
         "./src/*"
       ],
       "@shared/components/*": [
-        "../components/shared/*"
+        "./src/shared/components/*"
       ],
       "@shared/firebase/*": [
         "../backend/firebase/*"

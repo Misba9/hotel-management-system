@@ -1,11 +1,15 @@
 "use client";
 
+import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { Minus, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useCart } from "@/components/providers/cart-provider";
+import { useCart } from "@/components/cart/cart-provider";
 import { useToast } from "@/components/providers/toast-provider";
+
+const PLACEHOLDER_IMAGE =
+  "https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=800";
 
 export function CartDrawer() {
   const {
@@ -109,29 +113,86 @@ export function CartDrawer() {
                 </button>
               </div>
               <div className="flex-1 space-y-3 overflow-auto p-4">
-                {items.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-300">Your cart is empty.</p>}
-                {items.map((item) => (
-                  <div key={item.id} className="rounded-2xl border p-3 dark:border-slate-700">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">{item.name}</p>
-                        <p className="text-sm text-slate-500 dark:text-slate-300">Rs. {item.price}</p>
-                      </div>
-                      <button aria-label="Remove item" onClick={() => removeItem(item.id)} className="text-red-500">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">
-                      <button aria-label="Decrease quantity" onClick={() => updateQty(item.id, item.qty - 1)}>
-                        <Minus className="h-4 w-4" />
-                      </button>
-                      <span className="min-w-6 text-center text-sm">{item.qty}</span>
-                      <button aria-label="Increase quantity" onClick={() => updateQty(item.id, item.qty + 1)}>
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    </div>
+                {items.length === 0 && (
+                  <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center dark:border-slate-700 dark:bg-slate-900/60">
+                    <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                      Your cart is empty
+                    </p>
+                    <p className="text-sm text-slate-500 dark:text-slate-300">
+                      Add something tasty from the menu to get started.
+                    </p>
+                    <Link
+                      href="/menu"
+                      onClick={closeCart}
+                      className="mt-1 inline-flex items-center justify-center rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 active:scale-[0.97] dark:bg-orange-500 dark:hover:bg-orange-400"
+                    >
+                      Browse menu
+                    </Link>
                   </div>
-                ))}
+                )}
+                {items.map((item) => {
+                  const imageSrc = item.image && item.image.trim().length > 0 ? item.image : PLACEHOLDER_IMAGE;
+                  const lineTotal = item.price * item.qty;
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                    >
+                      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-100 dark:bg-slate-800">
+                        <Image
+                          src={imageSrc}
+                          alt={item.name}
+                          fill
+                          sizes="80px"
+                          className="object-cover"
+                        />
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col justify-between">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
+                              {item.name}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-300">
+                              Rs. {item.price} each
+                            </p>
+                          </div>
+                          <button
+                            aria-label="Remove item"
+                            onClick={() => removeItem(item.id)}
+                            className="rounded-full p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">
+                            <button
+                              aria-label="Decrease quantity"
+                              onClick={() => updateQty(item.id, item.qty - 1)}
+                              className="rounded-full p-1 text-slate-700 hover:bg-slate-200 dark:text-slate-200 dark:hover:bg-slate-700"
+                            >
+                              <Minus className="h-4 w-4" />
+                            </button>
+                            <span className="min-w-6 text-center text-sm font-semibold tabular-nums">
+                              {item.qty}
+                            </span>
+                            <button
+                              aria-label="Increase quantity"
+                              onClick={() => updateQty(item.id, item.qty + 1)}
+                              className="rounded-full p-1 text-slate-700 hover:bg-slate-200 dark:text-slate-200 dark:hover:bg-slate-700"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <p className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+                            Rs. {lineTotal}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
               <div className="space-y-3 border-t p-4 dark:border-slate-800">
                 <div className="space-y-2">
@@ -178,9 +239,9 @@ export function CartDrawer() {
                 <Link
                   href="/checkout"
                   onClick={closeCart}
-                  className="block rounded-xl bg-orange-500 px-4 py-3 text-center font-medium text-white"
+                  className="block rounded-xl bg-orange-500 px-4 py-3 text-center text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 active:scale-[0.98] dark:bg-orange-500 dark:hover:bg-orange-400"
                 >
-                  Checkout
+                  Proceed to Checkout
                 </Link>
               </div>
             </div>

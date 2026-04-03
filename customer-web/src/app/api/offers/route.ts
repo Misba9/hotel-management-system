@@ -1,5 +1,8 @@
 import { adminDb } from "@shared/firebase/admin";
 
+/** Avoid composite-index requirement (active + range on expiryAt + orderBy). */
+export const dynamic = "force-dynamic";
+
 type CouponRecord = {
   code: string;
   discountType: "flat" | "percent";
@@ -17,18 +20,18 @@ function formatOfferTitle(coupon: CouponRecord): string {
 
 export async function GET() {
   try {
-    const now = new Date();
-    const snap = await adminDb
-      .collection("coupons")
-      .where("active", "==", true)
-      .where("expiryAt", ">=", now.toISOString())
-      .orderBy("expiryAt", "asc")
-      .limit(20)
-      .get();
+    const nowIso = new Date().toISOString();
+    const snap = await adminDb.collection("coupons").where("active", "==", true).limit(200).get();
 
     const offers = snap.docs
       .map((doc) => doc.data() as Partial<CouponRecord>)
       .filter((coupon) => typeof coupon.code === "string" && typeof coupon.discountValue === "number")
+      .filter((coupon) => {
+        const exp = coupon.expiryAt;
+        return typeof exp === "string" && exp >= nowIso;
+      })
+      .sort((a, b) => String(a.expiryAt).localeCompare(String(b.expiryAt)))
+      .slice(0, 20)
       .map((coupon) => {
         const normalized: CouponRecord = {
           code: coupon.code!,

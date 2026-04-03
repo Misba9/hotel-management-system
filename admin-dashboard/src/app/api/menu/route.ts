@@ -3,13 +3,15 @@ import { enforceApiSecurity } from "@shared/utils/api-security";
 import { z } from "zod";
 const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" };
 
+const optionalImageUrl = z.union([z.literal(""), z.string().url()]);
+
 const menuCreateSchema = z.object({
   name: z.string().min(2).max(120),
   price: z.number().nonnegative(),
   categoryId: z.string().min(1).optional(),
   branchId: z.string().min(1).optional(),
   description: z.string().max(500).optional(),
-  imageUrl: z.string().url().optional(),
+  imageUrl: optionalImageUrl.optional(),
   available: z.boolean().optional()
 });
 

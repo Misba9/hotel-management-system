@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { Eye, Heart, Minus, Plus, Star } from "lucide-react";
 import { memo } from "react";
 import { Product } from "@/lib/menu-data";
-import { useCart } from "@/components/providers/cart-provider";
+import { useCart } from "@/components/cart/cart-provider";
 import { useFavorites } from "@/components/providers/favorites-provider";
 
 function ProductCardComponent({

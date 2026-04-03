@@ -6,7 +6,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Star, X } from "lucide-react";
 import { Product } from "@/lib/menu-data";
-import { useCart } from "@/components/providers/cart-provider";
+import { useCart } from "@/components/cart/cart-provider";
 
 type ProductQuickViewModalProps = {
   product: Product | null;

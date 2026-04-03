@@ -1,5 +1,5 @@
-import { DashboardPageFeature } from "@/features/dashboard/dashboard-page";
+import { redirect } from "next/navigation";
 
-export default function AdminDashboardPage() {
-  return <DashboardPageFeature />;
+export default function HomePage() {
+  redirect("/admin");
 }
