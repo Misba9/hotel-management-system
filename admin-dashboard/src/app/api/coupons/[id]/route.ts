@@ -1,5 +1,5 @@
 import { adminDb } from "@shared/firebase/admin";
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 import { z } from "zod";
 
 const couponUpdateSchema = z
@@ -19,11 +19,10 @@ const couponUpdateSchema = z
   .refine((value) => Object.keys(value).length > 0, { message: "At least one field is required." });
 
 export async function PATCH(request: Request, context: { params: { id: string } }) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_coupons_patch", limit: 80, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const id = context.params.id;
     const body = couponUpdateSchema.parse(await request.json());

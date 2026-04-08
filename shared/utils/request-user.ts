@@ -1,8 +1,5 @@
 import { adminAuth } from "@shared/firebase/admin";
 
-const GUEST_ID_HEADER = "x-guest-id";
-const GUEST_ID_REGEX = /^[a-zA-Z0-9_-]{8,80}$/;
-
 export type RequestUser = {
   userId: string;
   isAuthenticated: boolean;
@@ -10,37 +7,25 @@ export type RequestUser = {
 
 export class RequestUserAuthError extends Error {}
 
+/** Resolves the caller from a valid Firebase ID token only (no guest / anonymous IDs). */
 export async function resolveRequestUser(request: Request): Promise<RequestUser> {
   const authHeader = request.headers.get("authorization") ?? "";
-  if (authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice("Bearer ".length).trim();
-    if (!token) {
-      throw new RequestUserAuthError("Missing bearer token.");
-    }
-    let decoded;
-    try {
-      decoded = await adminAuth.verifyIdToken(token);
-    } catch {
-      throw new RequestUserAuthError("Invalid bearer token.");
-    }
+  if (!authHeader.startsWith("Bearer ")) {
+    throw new RequestUserAuthError("Authentication required.");
+  }
+  const token = authHeader.slice("Bearer ".length).trim();
+  if (!token) {
+    throw new RequestUserAuthError("Authentication required.");
+  }
+  try {
+    const decoded = await adminAuth.verifyIdToken(token);
     return {
       userId: decoded.uid,
       isAuthenticated: true
     };
+  } catch {
+    throw new RequestUserAuthError("Invalid or expired token.");
   }
-
-  const guestId = request.headers.get(GUEST_ID_HEADER)?.trim() ?? "";
-  if (guestId && GUEST_ID_REGEX.test(guestId)) {
-    return {
-      userId: `guest:${guestId}`,
-      isAuthenticated: false
-    };
-  }
-
-  return {
-    userId: "guest:anonymous",
-    isAuthenticated: false
-  };
 }
 
 export async function resolveAuthenticatedRequestUser(request: Request): Promise<RequestUser> {

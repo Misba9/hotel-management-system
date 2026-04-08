@@ -1,8 +1,7 @@
 import { adminDb } from "@shared/firebase/admin";
-import { updateOrderFeed } from "@shared/utils/order-feed-rtdb";
-import { resolveRequestUser } from "@shared/utils/request-user";
-
-const CANCELLABLE_STATUSES = new Set(["pending", "confirmed", "preparing", "ready"]);
+import { updateOrderFeed } from "@shared/utils/order-feed-firestore";
+import { RequestUserAuthError, resolveRequestUser } from "@shared/utils/request-user";
+import { CANCELLABLE_ORDER_STATUSES } from "@/lib/order-status-ui";
 
 export async function POST(request: Request, context: { params: { orderId: string } }) {
   try {
@@ -12,9 +11,6 @@ export async function POST(request: Request, context: { params: { orderId: strin
     }
 
     const user = await resolveRequestUser(request);
-    if (user.userId === "guest:anonymous") {
-      return Response.json({ success: false, error: "Missing guest identifier." }, { status: 400 });
-    }
 
     const orderRef = adminDb.collection("orders").doc(orderId);
     const orderSnap = await orderRef.get();
@@ -27,7 +23,7 @@ export async function POST(request: Request, context: { params: { orderId: strin
       return Response.json({ success: false, error: "Forbidden." }, { status: 403 });
     }
     const currentStatus = String(order.status ?? "pending");
-    if (!CANCELLABLE_STATUSES.has(currentStatus)) {
+    if (!CANCELLABLE_ORDER_STATUSES.has(currentStatus)) {
       return Response.json({ success: false, error: "Order can no longer be cancelled." }, { status: 400 });
     }
 
@@ -45,6 +41,9 @@ export async function POST(request: Request, context: { params: { orderId: strin
 
     return Response.json({ success: true }, { status: 200 });
   } catch (error) {
+    if (error instanceof RequestUserAuthError) {
+      return Response.json({ success: false, error: "Authentication required." }, { status: 401 });
+    }
     console.error("Failed to cancel order.", error);
     return Response.json({ success: false, error: "Failed to cancel order." }, { status: 500 });
   }

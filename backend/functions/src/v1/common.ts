@@ -1,13 +1,54 @@
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
-import { getDatabase } from "firebase-admin/database";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import { z, ZodError } from "zod";
 import type { Request } from "firebase-functions/v2/https";
 
 export const db = getFirestore();
-export const rtdb = getDatabase();
 export const auth = getAuth();
+
+/** Firestore mirrors for former RTDB paths `orderFeeds/{orderId}` and `deliveryTracking/{orderId}`. */
+export async function syncOrderFeedDoc(orderId: string, data: Record<string, unknown>, merge = true) {
+  await db.collection("orderFeeds").doc(orderId).set(data, { merge });
+}
+
+async function mergeDeliveryLocationMirror(orderId: string, data: Record<string, unknown>) {
+  const lat = data.lat;
+  const lng = data.lng;
+  if (typeof lat !== "number" || typeof lng !== "number") return;
+  const orderSnap = await db.collection("orders").doc(orderId).get();
+  const userId = String(orderSnap.data()?.userId ?? "");
+  const etaRaw = data.etaMinutes ?? data.estimatedMinutes;
+  const etaMinutes = typeof etaRaw === "number" && Number.isFinite(etaRaw) ? etaRaw : undefined;
+  await db
+    .collection("deliveryLocations")
+    .doc(orderId)
+    .set(
+      {
+        orderId,
+        userId,
+        lat,
+        lng,
+        ...(etaMinutes !== undefined ? { etaMinutes } : {}),
+        updatedAt: FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+}
+
+export async function syncDeliveryTrackingDoc(orderId: string, data: Record<string, unknown>, merge = true) {
+  await db.collection("deliveryTracking").doc(orderId).set(data, { merge });
+  try {
+    await mergeDeliveryLocationMirror(orderId, data);
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "[deliveryLocations] mirror skipped:",
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+}
 
 export const COLLECTIONS = {
   users: "users",

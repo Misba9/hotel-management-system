@@ -7,7 +7,8 @@ import {
   db,
   orderStatusSchema,
   paymentMethodSchema,
-  rtdb,
+  syncDeliveryTrackingDoc,
+  syncOrderFeedDoc,
   withCallableGuard
 } from "./common";
 
@@ -117,12 +118,12 @@ export const createOrderV1 = withCallableGuard(
     });
     await batch.commit();
 
-    await rtdb.ref(`orderFeeds/${orderRef.id}`).set({
+    await syncOrderFeedDoc(orderRef.id, {
       status: "created",
       total,
       branchId: payload.branchId,
       updatedAt: now
-    });
+    }, false);
 
     return {
       success: true,
@@ -147,7 +148,7 @@ export const updateOrderStatusV1 = withCallableGuard(
       status: payload.status,
       updatedAt: now
     });
-    await rtdb.ref(`orderFeeds/${payload.orderId}`).update({
+    await syncOrderFeedDoc(payload.orderId, {
       status: payload.status,
       updatedAt: now
     });
@@ -178,7 +179,7 @@ export const cancelOrderV1 = withCallableGuard(
       cancelReason: payload.reason ?? "cancelled_by_user",
       updatedAt: now
     });
-    await rtdb.ref(`orderFeeds/${payload.orderId}`).update({
+    await syncOrderFeedDoc(payload.orderId, {
       status: "cancelled",
       updatedAt: now
     });
@@ -204,12 +205,16 @@ export const assignDeliveryPartnerV1 = withCallableGuard(
       status: "ready",
       updatedAt: now
     });
-    await rtdb.ref(`deliveryTracking/${payload.orderId}`).set({
-      deliveryId: deliveryRef.id,
-      deliveryPartnerId: payload.deliveryPartnerId,
-      status: "assigned",
-      updatedAt: now
-    });
+    await syncDeliveryTrackingDoc(
+      payload.orderId,
+      {
+        deliveryId: deliveryRef.id,
+        deliveryPartnerId: payload.deliveryPartnerId,
+        status: "assigned",
+        updatedAt: now
+      },
+      false
+    );
     return { success: true, deliveryId: deliveryRef.id };
   },
   assignDeliverySchema

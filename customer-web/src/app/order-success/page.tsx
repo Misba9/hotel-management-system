@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Package } from "lucide-react";
+import { OrderStatusTracker } from "@/components/orders/order-status-tracker";
 import { ORDER_SUCCESS_STORAGE_KEY, type OrderSuccessSnapshot } from "@/lib/order-success-storage";
 
 export default function OrderSuccessPage() {
@@ -70,6 +71,12 @@ export default function OrderSuccessPage() {
         </div>
 
         <div className="space-y-4 border-t border-slate-100 px-5 py-6 dark:border-slate-800">
+          <OrderStatusTracker
+            orderId={snapshot.orderId}
+            trackingToken={snapshot.trackingToken}
+            initialStatus="pending"
+          />
+
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span className="text-slate-500 dark:text-slate-400">Order ID</span>
             <span className="font-mono text-xs font-medium text-slate-900 dark:text-slate-100 sm:text-sm">{snapshot.orderId}</span>

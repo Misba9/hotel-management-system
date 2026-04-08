@@ -1,5 +1,5 @@
 import { adminDb } from "@shared/firebase/admin";
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 import { z } from "zod";
 
 const branchCreateSchema = z.object({
@@ -9,11 +9,10 @@ const branchCreateSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_branches_get", limit: 120, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const snap = await adminDb.collection("branches").orderBy("name").get();
     const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -27,11 +26,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_branches_post", limit: 30, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const body = branchCreateSchema.parse(await request.json());
     const ref = adminDb.collection("branches").doc();

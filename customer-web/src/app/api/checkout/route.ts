@@ -1,6 +1,6 @@
 import { adminDb } from "@shared/firebase/admin";
 import { enforceApiSecurity } from "@shared/utils/api-security";
-import { setOrderFeed } from "@shared/utils/order-feed-rtdb";
+import { setOrderFeed } from "@shared/utils/order-feed-firestore";
 import { RequestUserAuthError, resolveRequestUser } from "@shared/utils/request-user";
 import { resolveServerPricing } from "@shared/utils/server-order-pricing";
 import { generateSignedTrackingToken } from "@shared/utils/tracking-token";

@@ -1,9 +1,9 @@
 import { getAuth } from "firebase-admin/auth";
-import { getDatabase } from "firebase-admin/database";
+import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 import { z } from "zod";
 
-const rtdb = getDatabase();
+const db = getFirestore();
 
 export async function assertRole(uid: string, roles: string[]) {
   const auth = getAuth();
@@ -20,32 +20,36 @@ export async function setUserRole(uid: string, role: string) {
 }
 
 export async function rateLimit(key: string, maxRequests: number, windowSeconds: number) {
-  const ref = rtdb.ref(`rateLimits/${key}`);
+  const ref = db.collection("rateLimits").doc(key);
   const now = Date.now();
-  const snapshot = await ref.get();
-  const data = (snapshot.val() ?? {}) as { count?: number; firstAt?: number };
-  const firstAt = Number(data.firstAt ?? now);
-  const count = Number(data.count ?? 0);
+  await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    const data = (snapshot.data() ?? {}) as { count?: number; firstAt?: number };
+    const firstAt = Number(data.firstAt ?? now);
+    const count = Number(data.count ?? 0);
 
-  if (now - firstAt > windowSeconds * 1000) {
-    await ref.set({ count: 1, firstAt: now });
-    return;
-  }
+    if (!snapshot.exists || now - firstAt > windowSeconds * 1000) {
+      tx.set(ref, { count: 1, firstAt: now });
+      return;
+    }
 
-  if (count >= maxRequests) {
-    throw new HttpsError("resource-exhausted", "Too many requests.");
-  }
+    if (count >= maxRequests) {
+      throw new HttpsError("resource-exhausted", "Too many requests.");
+    }
 
-  await ref.update({ count: count + 1 });
+    tx.update(ref, { count: count + 1 });
+  });
 }
 
 export async function withIdempotency(idempotencyKey: string) {
-  const ref = rtdb.ref(`idempotency/${idempotencyKey}`);
-  const existing = await ref.get();
-  if (existing.exists()) {
-    throw new HttpsError("already-exists", "Duplicate request.");
-  }
-  await ref.set({ createdAt: Date.now() });
+  const ref = db.collection("idempotency").doc(idempotencyKey);
+  await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    if (snapshot.exists) {
+      throw new HttpsError("already-exists", "Duplicate request.");
+    }
+    tx.set(ref, { createdAt: Date.now() });
+  });
 }
 
 export const placeOrderSchema = z.object({

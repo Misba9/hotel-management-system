@@ -9,14 +9,17 @@ import {
   type CartLine,
   type CartPayload,
   CART_STORAGE_KEY,
+  computeDeliveryFee,
+  computeGrandTotal,
   computeLineItemCount,
   computeSubtotal,
   computeTotalAfterDiscount,
   getItemQuantity,
   loadPersistedCart,
+  normalizeCartLine,
   persistCart
 } from "@/lib/cart";
-import { auth } from "@shared/firebase/client";
+import { auth } from "@/lib/firebase";
 
 export type CartContextValue = {
   items: CartLine[];
@@ -25,19 +28,28 @@ export type CartContextValue = {
   subtotal: number;
   discount: number;
   couponCode: string;
+  /** Subtotal minus discount (no delivery). */
   total: number;
+  deliveryFee: number;
+  /** Discounted subtotal + delivery. */
+  grandTotal: number;
   itemQty: (productId: string) => number;
   openCart: () => void;
   closeCart: () => void;
   addItem: (product: Product) => void;
   removeItem: (productId: string) => void;
-  updateQty: (productId: string, qty: number) => void;
+  updateQty: (productId: string, quantity: number) => void;
   applyCoupon: (code: string, discountAmount: number) => void;
   clearCoupon: () => void;
-  clearCart: () => void;
+  clearCart: (options?: { silent?: boolean }) => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
+
+function normalizeItemsList(raw: unknown): CartLine[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeCartLine).filter((line): line is CartLine => Boolean(line));
+}
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartLine[]>([]);
@@ -45,6 +57,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [discount, setDiscount] = useState(0);
   const [couponCode, setCouponCode] = useState("");
   const [readyToSync, setReadyToSync] = useState(false);
+  const [authUid, setAuthUid] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const { showToast } = useToast();
 
   const openCart = useCallback(() => setIsOpen(true), []);
@@ -53,13 +67,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const addItem = useCallback(
     (product: Product) =>
       setItems((prev) => {
-        const exists = prev.find((item) => item.id === product.id);
+        const exists = prev.find((item) => item.productId === product.id);
         if (exists) {
           showToast({
             title: "Updated cart",
             description: `${product.name} quantity increased`
           });
-          return prev.map((item) => (item.id === product.id ? { ...item, qty: item.qty + 1 } : item));
+          return prev.map((item) =>
+            item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          );
         }
         showToast({
           title: "Added to cart",
@@ -67,7 +83,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         });
         return [
           ...prev,
-          { id: product.id, name: product.name, price: product.price, image: product.image, qty: 1 }
+          {
+            productId: product.id,
+            name: product.name,
+            price: product.price,
+            image: product.image ?? "",
+            quantity: 1
+          }
         ];
       }),
     [showToast]
@@ -76,23 +98,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const removeItem = useCallback(
     (productId: string) =>
       setItems((prev) => {
-        const item = prev.find((entry) => entry.id === productId);
+        const item = prev.find((entry) => entry.productId === productId);
         if (item) {
           showToast({
             title: "Removed from cart",
             description: item.name
           });
         }
-        return prev.filter((entry) => entry.id !== productId);
+        return prev.filter((entry) => entry.productId !== productId);
       }),
     [showToast]
   );
 
-  const updateQty = useCallback((productId: string, qty: number) => {
+  const updateQty = useCallback((productId: string, quantity: number) => {
     setItems((prev) =>
       prev
-        .map((item) => (item.id === productId ? { ...item, qty } : item))
-        .filter((item) => item.qty > 0)
+        .map((item) => (item.productId === productId ? { ...item, quantity } : item))
+        .filter((item) => item.quantity > 0)
     );
   }, []);
 
@@ -106,15 +128,41 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setDiscount(0);
   }, []);
 
-  const clearCart = useCallback(() => {
-    setItems([]);
-    setCouponCode("");
-    setDiscount(0);
-    showToast({
-      title: "Cart cleared",
-      description: "Your cart is now empty"
+  const clearCart = useCallback(
+    (options?: { silent?: boolean }) => {
+      setItems([]);
+      setCouponCode("");
+      setDiscount(0);
+      if (authUid) {
+        void (async () => {
+          try {
+            const headers = await buildUserHeaders({ "Content-Type": "application/json" });
+            await fetch("/api/user/cart", {
+              method: "PATCH",
+              headers,
+              body: JSON.stringify({ items: [] })
+            });
+          } catch {
+            /* Best-effort; debounced sync also persists [] when the session is active */
+          }
+        })();
+      }
+      if (!options?.silent) {
+        showToast({
+          title: "Cart cleared",
+          description: "Your cart is now empty"
+        });
+      }
+    },
+    [showToast, authUid]
+  );
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, (user) => {
+      setAuthUid(user?.uid ?? null);
+      setAuthReady(true);
     });
-  }, [showToast]);
+  }, []);
 
   useEffect(() => {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(CART_STORAGE_KEY) : null;
@@ -124,56 +172,50 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setDiscount(parsed.discount);
       setCouponCode(parsed.couponCode);
     }
-
-    async function loadCartFromBackend() {
-      try {
-        const headers = await buildUserHeaders();
-        const res = await fetch("/api/user/cart", { headers });
-        const data = (await res.json()) as
-          | { success?: boolean; cart?: CartPayload; items?: CartLine[]; discount?: number; couponCode?: string }
-          | { error?: string };
-        if (!res.ok) return;
-        const nextItems =
-          "cart" in data && data.cart ? (data.cart.items ?? []) : "items" in data ? (data.items ?? []) : [];
-        setItems(nextItems);
-        setDiscount(0);
-        setCouponCode("");
-      } finally {
-        setReadyToSync(true);
-      }
-    }
-    void loadCartFromBackend();
   }, []);
 
   useEffect(() => {
+    if (!authReady) return;
+    if (!authUid) {
+      setReadyToSync(true);
+      return;
+    }
+
+    let cancelled = false;
     setReadyToSync(false);
-    const unsubscribe = onAuthStateChanged(auth, async () => {
+    void (async () => {
       try {
-        setReadyToSync(false);
         const headers = await buildUserHeaders();
         const res = await fetch("/api/user/cart", { headers });
         const data = (await res.json()) as
-          | { success?: boolean; cart?: CartPayload; items?: CartLine[]; discount?: number; couponCode?: string }
+          | { success?: boolean; cart?: CartPayload; items?: unknown[]; discount?: number; couponCode?: string }
           | { error?: string };
-        if (!res.ok) return;
-        const nextItems =
-          "cart" in data && data.cart ? (data.cart.items ?? []) : "items" in data ? (data.items ?? []) : [];
+        if (cancelled) return;
+        if (!res.ok) {
+          setReadyToSync(true);
+          return;
+        }
+        const rawItems =
+          "cart" in data && data.cart ? data.cart.items : "items" in data ? data.items : [];
+        const nextItems = normalizeItemsList(rawItems);
         setItems(nextItems);
         setDiscount(0);
         setCouponCode("");
       } finally {
-        setReadyToSync(true);
+        if (!cancelled) setReadyToSync(true);
       }
-    });
-    return () => unsubscribe();
-  }, []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, authUid]);
 
   useEffect(() => {
     persistCart({ items, discount, couponCode });
   }, [couponCode, discount, items]);
 
   useEffect(() => {
-    if (!readyToSync) return;
+    if (!readyToSync || !authUid) return;
     const timer = window.setTimeout(() => {
       void (async () => {
         const headers = await buildUserHeaders({ "Content-Type": "application/json" });
@@ -185,7 +227,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       })();
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [items, readyToSync]);
+  }, [items, readyToSync, authUid]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -231,6 +273,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const subtotal = computeSubtotal(items);
     const count = computeLineItemCount(items);
     const total = computeTotalAfterDiscount(subtotal, discount);
+    const deliveryFee = computeDeliveryFee(items);
+    const grandTotal = computeGrandTotal(items, discount);
     return {
       items,
       isOpen,
@@ -239,6 +283,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       discount,
       couponCode,
       total,
+      deliveryFee,
+      grandTotal,
       itemQty,
       openCart,
       closeCart,

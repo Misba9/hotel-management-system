@@ -1,4 +1,5 @@
 import { adminDb } from "@shared/firebase/admin";
+import { evaluateCouponDiscount } from "@shared/utils/coupon-eval";
 
 const SETTINGS_DOC = "business";
 export const DEFAULT_TAX_PERCENT = 5;
@@ -28,12 +29,18 @@ export async function getMenuItemById(
 ): Promise<{ name: string; price: number; available: boolean } | null> {
   const dbSnap = await adminDb.collection("products").doc(id).get();
   if (dbSnap.exists) {
-    const data = dbSnap.data() as { name?: string; price?: number; available?: boolean };
+    const data = dbSnap.data() as {
+      name?: string;
+      price?: number;
+      available?: boolean;
+      isAvailable?: boolean;
+    };
     if (typeof data.price !== "number" || !data.name) return null;
+    const available = data.available !== false && data.isAvailable !== false;
     return {
       name: data.name,
       price: data.price,
-      available: data.available !== false
+      available
     };
   }
   return null;
@@ -64,28 +71,8 @@ export async function resolveDiscountAmount(
     return { ok: false, error: "Coupon not found." };
   }
 
-  const coupon = snap.docs[0].data() as {
-    active?: boolean;
-    minOrderAmount?: number;
-    expiryAt?: string;
-    usageLimit?: number;
-    usedCount?: number;
-    discountType?: "flat" | "percent";
-    discountValue?: number;
-  };
-
-  const isExpired = coupon.expiryAt ? new Date(coupon.expiryAt) < new Date() : true;
-  if (!coupon.active || isExpired) return { ok: false, error: "Coupon expired or inactive." };
-  if (Number(coupon.usedCount ?? 0) >= Number(coupon.usageLimit ?? 0))
-    return { ok: false, error: "Coupon usage limit reached." };
-  if (subtotal < Number(coupon.minOrderAmount ?? 0)) return { ok: false, error: "Minimum amount not met for coupon." };
-
-  const rawDiscount =
-    coupon.discountType === "flat"
-      ? Number(coupon.discountValue ?? 0)
-      : Math.floor((subtotal * Number(coupon.discountValue ?? 0)) / 100);
-
-  return { ok: true, discount: Math.min(Math.max(rawDiscount, 0), subtotal) };
+  const coupon = snap.docs[0].data() as Record<string, unknown>;
+  return evaluateCouponDiscount(coupon, subtotal);
 }
 
 export async function resolveServerPricing(

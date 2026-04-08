@@ -1,5 +1,5 @@
 import { adminDb } from "@shared/firebase/admin";
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 import { z } from "zod";
 
 const SETTINGS_DOC = "business";
@@ -12,11 +12,10 @@ const settingsSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_settings_get", limit: 120, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const snap = await adminDb.collection("settings").doc(SETTINGS_DOC).get();
     if (!snap.exists) {
@@ -42,11 +41,10 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_settings_patch", limit: 40, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const body = settingsSchema.parse(await request.json());
     await adminDb.collection("settings").doc(SETTINGS_DOC).set(

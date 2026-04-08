@@ -1,5 +1,5 @@
 import { adminDb } from "@shared/firebase/admin";
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 import { z } from "zod";
 const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=600" };
 
@@ -10,11 +10,10 @@ const createCategorySchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_categories_get", limit: 120, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const snap = await adminDb.collection("menu_categories").orderBy("priority", "asc").get();
     const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -28,11 +27,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_categories_post", limit: 30, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const body = createCategorySchema.parse(await request.json());
     const ref = adminDb.collection("menu_categories").doc();

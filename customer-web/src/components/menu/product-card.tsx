@@ -11,29 +11,35 @@ import { useFavorites } from "@/components/providers/favorites-provider";
 
 function ProductCardComponent({
   product,
-  onQuickView
+  onQuickView,
+  reviewAverage,
+  reviewCount
 }: {
   product: Product;
   onQuickView?: (product: Product) => void;
+  reviewAverage?: number | null;
+  reviewCount?: number | null;
 }) {
   const { addItem, itemQty, updateQty } = useCart();
   const { isFavorite, toggleFavorite } = useFavorites();
   const qty = itemQty(product.id);
+  const hasReviewStats = reviewCount != null && reviewCount > 0 && reviewAverage != null;
+  const ratingLabel = hasReviewStats ? reviewAverage.toFixed(1) : Number(product.rating).toFixed(1);
 
   return (
     <motion.article
-      whileHover={{ y: -4 }}
-      transition={{ duration: 0.25 }}
-      className="group overflow-hidden rounded-3xl border border-white/50 bg-white/70 shadow-md backdrop-blur transition hover:-translate-y-1 hover:shadow-xl"
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.2 }}
+      className="group overflow-hidden rounded-xl border border-white/50 bg-white/70 shadow-md backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg md:rounded-2xl md:hover:-translate-y-1"
     >
-      <Link href={`/product/${product.id}`} className="relative block h-44 w-full">
+      <Link href={`/product/${product.id}`} className="relative block h-32 w-full sm:h-40 md:h-44 lg:h-48">
         <Image
           src={product.image}
           alt={product.name}
           fill
           loading="lazy"
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-          className="object-cover transition group-hover:scale-105"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          className="object-cover transition-all duration-200 group-hover:scale-105"
         />
         <button
           aria-label="Toggle favorite"
@@ -53,30 +59,34 @@ function ProductCardComponent({
           </button>
         )}
       </Link>
-      <div className="space-y-3 p-4">
+      <div className="space-y-2 p-3 sm:space-y-3 sm:p-4">
         <div className="flex items-start justify-between gap-2">
-          <Link href={`/product/${product.id}`} className="font-semibold hover:text-orange-600">
+          <Link
+            href={`/product/${product.id}`}
+            className="line-clamp-2 text-sm font-semibold hover:text-orange-600 sm:text-base lg:text-lg"
+          >
             {product.name}
           </Link>
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium">
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium tabular-nums dark:bg-amber-950/40">
             <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-            {product.rating}
+            {ratingLabel}
+            {hasReviewStats ? <span className="font-normal opacity-75">({reviewCount})</span> : null}
           </span>
         </div>
-        <p className="text-sm text-slate-600">{product.description}</p>
-        <div className="flex items-center justify-between">
-          <p className="font-semibold text-orange-600">Rs. {product.price}</p>
+        <p className="line-clamp-2 text-xs text-slate-600 sm:text-sm">{product.description}</p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-semibold text-orange-600 sm:text-base">Rs. {product.price}</p>
           {qty === 0 ? (
             <motion.button
               whileTap={{ scale: 0.95 }}
               onClick={() => addItem(product)}
-              className="inline-flex items-center gap-1 rounded-full bg-orange-500 px-3 py-1.5 text-sm font-medium text-white"
+              className="inline-flex w-full items-center justify-center gap-1 rounded-xl bg-orange-500 px-3 py-2 text-sm font-medium text-white shadow-md transition-all duration-200 hover:bg-orange-600 hover:shadow-lg sm:w-auto sm:rounded-full sm:py-1.5"
             >
               <Plus className="h-4 w-4" />
               Add
             </motion.button>
           ) : (
-            <div className="inline-flex items-center gap-2 rounded-full bg-orange-50 px-2 py-1">
+            <div className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-orange-50 px-2 py-1 sm:w-auto">
               <button
                 aria-label="Decrease quantity"
                 onClick={() => updateQty(product.id, qty - 1)}

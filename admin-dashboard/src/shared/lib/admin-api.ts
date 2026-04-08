@@ -1,11 +1,16 @@
 "use client";
 
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { auth } from "@shared/firebase/client";
+import { getFirebaseAuth } from "@/lib/firebase";
 
 let pendingUserPromise: Promise<User> | null = null;
 
-async function waitForSignedInUser(timeoutMs = 5000): Promise<User> {
+/**
+ * Waits until Firebase Auth has a signed-in user (e.g. right after redirect into /admin).
+ * Safe to call from `useEffect` async loaders — pairs with `onAuthStateChanged` until user exists.
+ */
+async function waitForSignedInUser(timeoutMs = 10_000): Promise<User> {
+  const auth = getFirebaseAuth();
   if (auth.currentUser) {
     return auth.currentUser;
   }
@@ -31,28 +36,89 @@ async function waitForSignedInUser(timeoutMs = 5000): Promise<User> {
   return pendingUserPromise;
 }
 
-export async function getAdminIdToken(): Promise<string> {
-  const user = await waitForSignedInUser();
-  return user.getIdToken();
+/**
+ * Firebase client SDK: resolve current user, then `getIdToken()`.
+ */
+export async function getAdminIdToken(options?: { forceRefresh?: boolean }): Promise<string> {
+  const auth = getFirebaseAuth();
+  const user = auth.currentUser ?? (await waitForSignedInUser());
+  return user.getIdToken(Boolean(options?.forceRefresh));
 }
 
-export async function adminApiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const token = await getAdminIdToken();
+const AUTH_HEADER = "Authorization";
+
+/**
+ * Headers including `Authorization: Bearer <Firebase ID token>`.
+ * Use with raw `fetch` when you cannot use {@link adminApiFetch}.
+ *
+ * @example
+ * ```ts
+ * useEffect(() => {
+ *   void (async () => {
+ *     const headers = await getAdminAuthHeaders();
+ *     const res = await fetch("/api/dashboard/summary", { headers });
+ *   })();
+ * }, []);
+ * ```
+ */
+export async function getAdminAuthHeaders(extra?: HeadersInit): Promise<Headers> {
+  const token = await getAdminIdToken({ forceRefresh: false });
+  const headers = new Headers(extra);
+  headers.set(AUTH_HEADER, `Bearer ${token}`);
+  return headers;
+}
+
+function buildRequestInit(init: RequestInit | undefined, bearerToken: string): RequestInit {
   const headers = new Headers(init?.headers);
-  headers.set("Authorization", `Bearer ${token}`);
+  headers.set(AUTH_HEADER, `Bearer ${bearerToken}`);
 
   if (init?.body && !headers.has("Content-Type") && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(input, { ...init, headers });
+  return { ...init, headers };
+}
+
+async function readJsonErrorMessage(response: Response): Promise<string | null> {
+  try {
+    const data: unknown = await response.clone().json();
+    if (data && typeof data === "object" && "error" in data && typeof (data as { error: unknown }).error === "string") {
+      return (data as { error: string }).error;
+    }
+  } catch {
+    /* not JSON */
+  }
+  return null;
+}
+
+/**
+ * `fetch` to admin API routes with Firebase ID token:
+ * `Authorization: Bearer <token>`.
+ *
+ * Use from React `useEffect`, event handlers, or any client-only async code.
+ * On 401 or 403, retries once with `getIdToken(true)` so new custom claims (e.g. admin role) apply.
+ */
+export async function adminApiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const token = await getAdminIdToken();
+  let response = await fetch(input, buildRequestInit(init, token));
+
+  if (response.status === 401) {
+    const refreshed = await getAdminIdToken({ forceRefresh: true });
+    response = await fetch(input, buildRequestInit(init, refreshed));
+  }
+
+  if (response.status === 403) {
+    const refreshed = await getAdminIdToken({ forceRefresh: true });
+    response = await fetch(input, buildRequestInit(init, refreshed));
+  }
 
   if (response.status === 401) {
     throw new Error("Unauthorized (401): invalid or missing admin token.");
   }
 
   if (response.status === 403) {
-    throw new Error("Forbidden (403): admin role required.");
+    const serverMsg = await readJsonErrorMessage(response);
+    throw new Error(serverMsg ?? "Forbidden (403): admin access denied.");
   }
 
   return response;

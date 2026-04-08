@@ -104,7 +104,7 @@ export async function enforceApiSecurity(
     return {
       ok: true,
       uid: decoded.uid,
-      role,
+      role
     };
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
@@ -138,6 +138,18 @@ function isRole(value: unknown): value is Role {
     value === "manager" ||
     value === "admin"
   );
+}
+
+/** @returns true if the request should be blocked (429). */
+export function consumeRateLimit(
+  request: Request,
+  config: {
+    keyPrefix: string;
+    limit: number;
+    windowMs: number;
+  },
+): boolean {
+  return applyRateLimit(request, config);
 }
 
 function applyRateLimit(

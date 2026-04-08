@@ -1,5 +1,4 @@
 import { adminAuth, adminDb, adminMessaging } from "@shared/firebase/admin";
-import { adminRtdb } from "@shared/firebase/rtdb-admin";
 
 type ServiceStatus = "connected" | "working" | "reachable" | "configured" | "error" | "not_configured";
 
@@ -15,10 +14,7 @@ type HealthPayload = {
 
 function hasAdminEnv() {
   return Boolean(
-    process.env.FIREBASE_PROJECT_ID &&
-      process.env.FIREBASE_CLIENT_EMAIL &&
-      process.env.FIREBASE_PRIVATE_KEY &&
-      process.env.FIREBASE_DATABASE_URL
+    process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY
   );
 }
 
@@ -42,16 +38,18 @@ export async function GET() {
     result.messaging = "not_configured";
     result.functions = "not_configured";
     details.config =
-      "Missing FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY/FIREBASE_DATABASE_URL in server env.";
+      "Missing FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY in server env.";
     return Response.json(result, { status: 200 });
   }
 
   try {
     await adminDb.collection("branches").limit(1).get();
     result.database = "connected";
+    result.realtime = "connected";
   } catch (error) {
     result.status = "degraded";
     result.database = "error";
+    result.realtime = "error";
     details.database = error instanceof Error ? error.message : "Unknown Firestore error";
   }
 
@@ -65,17 +63,6 @@ export async function GET() {
   }
 
   try {
-    await adminRtdb.ref("health_check/ping").get();
-    result.realtime = "connected";
-  } catch (error) {
-    result.status = "degraded";
-    result.realtime = "error";
-    details.realtime = error instanceof Error ? error.message : "Unknown Realtime DB error";
-  }
-
-  try {
-    // If messaging app instance exists and SDK is initialized, consider FCM configured.
-    // End-to-end send requires a real device token, so this is a readiness check.
     const appName = adminMessaging.app.name;
     result.messaging = appName ? "configured" : "error";
   } catch (error) {

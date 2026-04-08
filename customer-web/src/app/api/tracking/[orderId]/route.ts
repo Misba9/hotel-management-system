@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@shared/firebase/admin";
-import { adminRtdb } from "@shared/firebase/rtdb-admin";
 import { enforceApiSecurity } from "@shared/utils/api-security";
 import { verifySignedTrackingToken } from "@shared/utils/tracking-token";
 
@@ -101,19 +100,57 @@ export async function GET(request: Request, context: { params: { orderId: string
 
   const assignmentSnap = await adminDb.collection("delivery_assignments").where("orderId", "==", internalOrderId).limit(1).get();
   const delivery = assignmentSnap.empty ? null : assignmentSnap.docs[0].data();
-  let realtimeTracking: unknown = null;
+  let realtimeTracking: Record<string, unknown> | null = null;
   try {
-    const realtimeSnap = await adminRtdb.ref(`deliveryTracking/${internalOrderId}`).get();
-    realtimeTracking = realtimeSnap.exists() ? realtimeSnap.val() : null;
+    const realtimeSnap = await adminDb.collection("deliveryTracking").doc(internalOrderId).get();
+    realtimeTracking = realtimeSnap.exists ? { ...(realtimeSnap.data() as Record<string, unknown>) } : null;
   } catch {
     realtimeTracking = null;
   }
+
+  try {
+    const locSnap = await adminDb.collection("deliveryLocations").doc(internalOrderId).get();
+    if (locSnap.exists) {
+      const L = locSnap.data() as Record<string, unknown>;
+      const base = realtimeTracking ?? {};
+      realtimeTracking = {
+        ...base,
+        ...(typeof L.lat === "number" ? { lat: L.lat } : {}),
+        ...(typeof L.lng === "number" ? { lng: L.lng } : {}),
+        ...(typeof L.etaMinutes === "number" ? { etaMinutes: L.etaMinutes } : {})
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const raw = byTrackingSnap.empty ? (await adminDb.collection("orders").doc(internalOrderId).get()).data() : byTrackingSnap.docs[0].data();
+  const createdAtRaw = raw && typeof raw === "object" && "createdAt" in raw ? (raw as { createdAt?: unknown }).createdAt : undefined;
+  let createdAtIso = "";
+  if (createdAtRaw && typeof createdAtRaw === "object" && createdAtRaw !== null && "toDate" in createdAtRaw) {
+    createdAtIso = (createdAtRaw as { toDate: () => Date }).toDate().toISOString();
+  } else if (typeof createdAtRaw === "string") {
+    createdAtIso = createdAtRaw;
+  }
+  const estRaw =
+    raw && typeof raw === "object"
+      ? (raw as { estimatedDeliveryAt?: unknown; estimatedDeliveryBy?: unknown }).estimatedDeliveryAt ??
+        (raw as { estimatedDeliveryBy?: unknown }).estimatedDeliveryBy
+      : undefined;
+  const estimatedDeliveryAt =
+    typeof estRaw === "string"
+      ? estRaw
+      : estRaw && typeof estRaw === "object" && estRaw !== null && "toDate" in estRaw
+        ? (estRaw as { toDate: () => Date }).toDate().toISOString()
+        : undefined;
 
   return NextResponse.json({
     orderId: internalOrderId,
     trackingId: order.trackingId ?? trackingId,
     status: order.status,
     updatedAt: order.updatedAt,
+    createdAt: createdAtIso || undefined,
+    estimatedDeliveryAt,
     orderType: order.orderType,
     delivery,
     realtimeTracking

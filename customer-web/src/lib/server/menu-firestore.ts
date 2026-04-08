@@ -4,11 +4,16 @@ import type { Category, Product } from "@/lib/menu-data-types";
 const DEFAULT_PLACEHOLDER_IMAGE =
   "https://images.unsplash.com/photo-1544145945-f90425340c7e?auto=format&fit=crop&w=800&q=80";
 
+/** Storefront catalog collections (see `backend/firestore.rules` — `categories`, `products`). */
+const CATEGORIES_COLLECTION = "categories";
+const PRODUCTS_COLLECTION = "products";
+
 type FirestoreCategoryDoc = {
   name?: unknown;
-  image?: unknown;
   active?: unknown;
+  image?: unknown;
   sortOrder?: unknown;
+  priority?: unknown;
 };
 
 type FirestoreProductDoc = Record<string, unknown>;
@@ -22,17 +27,26 @@ type CategoryRow = {
 };
 
 /**
- * Loads categories and available products from Firestore via Admin SDK.
- * Collections: `categories` (name, image), `products` (name, price, categoryId, image, available, …).
+ * Loads menu for the storefront from Firestore `categories` and `products`.
+ * Product fields: id, name, price, image, categoryId, isPopular, isAvailable (plus optional legacy aliases).
  */
 export async function fetchMenuFromFirestoreAdmin(): Promise<{
   categories: Category[];
   products: Product[];
 }> {
   const [categorySnap, productSnap] = await Promise.all([
-    adminDb.collection("categories").get(),
-    adminDb.collection("products").get()
+    adminDb.collection(CATEGORIES_COLLECTION).get(),
+    adminDb.collection(PRODUCTS_COLLECTION).get()
   ]);
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[menu-firestore] raw Firestore snapshot", {
+      collectionCategories: CATEGORIES_COLLECTION,
+      collectionItems: PRODUCTS_COLLECTION,
+      categoryDocs: categorySnap.size,
+      itemDocs: productSnap.size
+    });
+  }
 
   const categoryRows: CategoryRow[] = [];
   for (const docSnap of categorySnap.docs) {
@@ -50,7 +64,16 @@ export async function fetchMenuFromFirestoreAdmin(): Promise<{
     }
   }
 
+  products.sort((a, b) => a.name.localeCompare(b.name));
+
   const categories = buildCategoryList(categoryRows, products);
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[menu-firestore] mapped menu", {
+      categories: categories.length,
+      products: products.length
+    });
+  }
 
   return { categories, products };
 }
@@ -59,7 +82,9 @@ function mapCategoryDoc(id: string, data: FirestoreCategoryDoc): CategoryRow | n
   const name = String(data.name ?? "").trim();
   if (!id || !name) return null;
   const active = data.active !== false;
-  const sortOrder = typeof data.sortOrder === "number" && Number.isFinite(data.sortOrder) ? data.sortOrder : 0;
+  const sortRaw = data.sortOrder ?? data.priority;
+  const sortOrder =
+    typeof sortRaw === "number" && Number.isFinite(sortRaw) ? sortRaw : Number(sortRaw) || 50;
   const image = String(data.image ?? "").trim();
   return { id, name, image, sortOrder, active };
 }
@@ -72,11 +97,20 @@ function mapProductDoc(
   const name = String(raw.name ?? "").trim();
   const categoryId = String(raw.categoryId ?? "").trim();
   const price = Number(raw.price ?? NaN);
-  if (!name || !categoryId || !Number.isFinite(price)) return null;
+  if (!name || !Number.isFinite(price) || price < 0) return null;
 
+  const available =
+    raw.isAvailable !== false &&
+    raw.available !== false &&
+    raw.is_available !== false;
+
+  const popular = Boolean(raw.isPopular ?? raw.popular ?? raw.is_popular);
+  const featured = Boolean(raw.featured ?? raw.isFeatured);
+
+  const effectiveCategoryId = categoryId || "uncategorized";
   const categoryNameFromDoc = String(raw.categoryName ?? "").trim();
   const categoryName =
-    categoryNameFromDoc || categories.get(categoryId)?.name || "Menu";
+    categoryNameFromDoc || categories.get(effectiveCategoryId)?.name || humanizeId(effectiveCategoryId);
 
   const sizesRaw = Array.isArray(raw.sizes) ? raw.sizes : [];
   const sizes = sizesRaw
@@ -100,23 +134,30 @@ function mapProductDoc(
     id,
     name,
     description: String(raw.description ?? ""),
-    categoryId,
+    categoryId: effectiveCategoryId,
     categoryName,
     price,
     rating: Number.isFinite(Number(raw.rating)) ? Number(raw.rating) : 4.5,
     image: imageRaw || DEFAULT_PLACEHOLDER_IMAGE,
     ingredients: Array.isArray(raw.ingredients) ? raw.ingredients.map((item) => String(item)) : [],
     sizes: sizes.length > 0 ? sizes : [{ label: "Medium", multiplier: 1 }],
-    available: raw.available !== false,
-    featured: Boolean(raw.featured),
-    popular: Boolean(raw.popular)
+    available,
+    featured,
+    popular
   };
+}
+
+function humanizeId(id: string): string {
+  if (!id) return "Menu";
+  return id
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function buildCategoryList(categoryRows: CategoryRow[], products: Product[]): Category[] {
   const fromFirestore = categoryRows
     .filter((c) => c.active)
-    .map((c) => ({ id: c.id, name: c.name, image: c.image, sortOrder: c.sortOrder }));
+    .map((c) => ({ id: c.id, name: c.name, image: c.image || DEFAULT_PLACEHOLDER_IMAGE, sortOrder: c.sortOrder }));
 
   const idSet = new Set(fromFirestore.map((c) => c.id));
 
@@ -125,7 +166,7 @@ function buildCategoryList(categoryRows: CategoryRow[], products: Product[]): Ca
       fromFirestore.push({
         id: product.categoryId,
         name: product.categoryName,
-        image: "",
+        image: DEFAULT_PLACEHOLDER_IMAGE,
         sortOrder: 9999
       });
       idSet.add(product.categoryId);
@@ -145,7 +186,7 @@ function buildCategoryList(categoryRows: CategoryRow[], products: Product[]): Ca
     .map((c) => ({
       id: c.id,
       name: c.name,
-      image: c.image || DEFAULT_PLACEHOLDER_IMAGE,
+      image: c.image,
       count: counts.get(c.id) ?? 0
     }));
 }

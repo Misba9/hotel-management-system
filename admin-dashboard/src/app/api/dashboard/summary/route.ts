@@ -1,163 +1,105 @@
+import { Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "@shared/firebase/admin";
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 
-type DayBucket = { day: string; orders: number; revenue: number };
-const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120" };
-const ANALYTICS_DAYS = 30;
-const MAX_ORDERS_FOR_TOP_ITEMS = 250;
+export const dynamic = "force-dynamic";
 
-type DashboardSummaryPayload = {
-  totalOrders: number;
-  revenue: number;
-  dailySales: number;
-  totalOrdersToday: number;
+const CACHE_HEADERS = { "Cache-Control": "no-store" };
+
+const ERROR_MESSAGE = "Failed to load dashboard summary.";
+
+export type DashboardSummaryPayload = {
+  ordersToday: number;
+  pendingOrders: number;
   revenueToday: number;
-  onlineOrdersToday: number;
-  storeOrdersToday: number;
-  dailyRevenue: number;
-  weeklyRevenue: number;
-  monthlyRevenue: number;
-  topSellingItems: Array<{ name: string; qty: number }>;
-  ordersPerDay: DayBucket[];
-  revenuePerDay: Array<{ day: string; revenue: number }>;
+  /** Orders currently in pipeline (not delivered / cancelled / rejected). */
+  activeOrders: number;
+  /** Distinct user profiles in `users` (best-effort count). */
+  customers: number;
 };
 
-let summaryCache: { expiresAt: number; payload: DashboardSummaryPayload } | null = null;
+let summaryCache: { cacheKey: string; expiresAt: number; payload: DashboardSummaryPayload } | null = null;
+
+function totalAmountOf(data: Record<string, unknown>): number {
+  const n = Number(data.totalAmount);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function localDayKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+
+function serverError() {
+  return Response.json({ success: false, error: ERROR_MESSAGE }, { status: 500, headers: CACHE_HEADERS });
+}
 
 export async function GET(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
-    rateLimit: { keyPrefix: "admin_dashboard_summary", limit: 60, windowMs: 60_000 }
-  });
-  if (!secure.ok) {
-    return secure.response;
-  }
-  if (summaryCache && summaryCache.expiresAt > Date.now()) {
-    return Response.json(summaryCache.payload, { status: 200, headers: CACHE_HEADERS });
-  }
   try {
-    const today = new Date();
-    const todayStart = new Date(today);
-    todayStart.setHours(0, 0, 0, 0);
-    const weekStart = new Date(todayStart);
-    weekStart.setDate(todayStart.getDate() - 6);
-    const monthStart = new Date(todayStart);
-    monthStart.setDate(todayStart.getDate() - 29);
-    const monthStartKey = monthStart.toISOString().slice(0, 10);
-    const todayDayKey = today.toISOString().slice(0, 10);
-    const start = new Date(today);
-    start.setDate(today.getDate() - (ANALYTICS_DAYS - 1));
-    const todayKey = today.toISOString().slice(0, 10);
-
-    const ordersSnap = await adminDb
-      .collection("orders")
-      .where("dayKey", ">=", monthStartKey)
-      .where("dayKey", "<=", todayDayKey)
-      .orderBy("dayKey", "asc")
-      .get();
-
-    const orders = ordersSnap.docs.map((doc) =>
-      doc.data() as {
-        total?: number;
-        dayKey?: string;
-        createdAt?: string;
-        paymentMethod?: string;
-        orderType?: string;
-        status?: string;
-      }
-    );
-    const totalOrders = orders.length;
-    const revenue = orders.reduce((sum: number, order) => sum + Number(order.total ?? 0), 0);
-    const dailySales = orders
-      .filter((order) => String(order.dayKey ?? "").slice(0, 10) === todayKey)
-      .reduce((sum: number, order) => sum + Number(order.total ?? 0), 0);
-
-    const todaysOrders = orders.filter((order) => {
-      const createdAt = order.createdAt ? new Date(order.createdAt) : null;
-      return createdAt ? createdAt >= todayStart : false;
+    const auth = await requireAdmin(request, {
+      rateLimit: { keyPrefix: "admin_dashboard_summary", limit: 120, windowMs: 60_000 }
     });
-    const totalOrdersToday = todaysOrders.length;
-    const revenueToday = todaysOrders.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
-    const onlineOrdersToday = todaysOrders.filter((order) => order.paymentMethod === "card" || order.paymentMethod === "upi").length;
-    const storeOrdersToday = todaysOrders.length - onlineOrdersToday;
+    if (!auth.ok) return auth.response;
 
-    const weeklyRevenue = orders
-      .filter((order) => {
-        const createdAt = order.createdAt ? new Date(order.createdAt) : null;
-        return createdAt ? createdAt >= weekStart : false;
-      })
-      .reduce((sum, order) => sum + Number(order.total ?? 0), 0);
-    const monthlyRevenue = orders
-      .filter((order) => {
-        const createdAt = order.createdAt ? new Date(order.createdAt) : null;
-        return createdAt ? createdAt >= monthStart : false;
-      })
-      .reduce((sum, order) => sum + Number(order.total ?? 0), 0);
+    const now = new Date();
+    const todayStart = startOfLocalDay(now);
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    const cacheDay = localDayKey(now);
 
-    const days: Record<string, DayBucket> = {};
-    for (let i = 0; i < ANALYTICS_DAYS; i++) {
-      const date = new Date(start);
-      date.setDate(start.getDate() + i);
-      const key = date.toISOString().slice(0, 10);
-      days[key] = { day: key, orders: 0, revenue: 0 };
+    const cacheKey = cacheDay;
+
+    if (summaryCache && summaryCache.cacheKey === cacheKey && summaryCache.expiresAt > Date.now()) {
+      return Response.json(summaryCache.payload, { status: 200, headers: CACHE_HEADERS });
     }
-    orders.forEach((order) => {
-      const day = String(order.dayKey ?? "").slice(0, 10);
-      if (!days[day]) return;
-      days[day].orders += 1;
-      days[day].revenue += Number(order.total ?? 0);
-    });
 
-    const orderIds = ordersSnap.docs.slice(-MAX_ORDERS_FOR_TOP_ITEMS).map((doc) => doc.id);
-    const orderItemDocs: Array<{ name?: string; qty?: number }> = [];
-    const orderIdBatches: string[][] = [];
-    for (let index = 0; index < orderIds.length; index += 30) {
-      orderIdBatches.push(orderIds.slice(index, index + 30));
+    const tsStart = Timestamp.fromDate(todayStart);
+    const tsEnd = Timestamp.fromDate(tomorrowStart);
+
+    const activeStatuses = ["pending", "accepted", "preparing", "ready", "out_for_delivery"];
+
+    const [todaySnap, pendingSnap, activeSnap, usersCountSnap] = await Promise.all([
+      adminDb
+        .collection("orders")
+        .where("createdAt", ">=", tsStart)
+        .where("createdAt", "<", tsEnd)
+        .get(),
+      adminDb.collection("orders").where("status", "==", "pending").get(),
+      adminDb.collection("orders").where("status", "in", activeStatuses).get(),
+      adminDb.collection("users").count().get().catch(() => null)
+    ]);
+
+    let revenueToday = 0;
+    for (const doc of todaySnap.docs) {
+      revenueToday += totalAmountOf(doc.data() as Record<string, unknown>);
     }
-    const batchSnaps = await Promise.all(
-      orderIdBatches.map((batchIds) => adminDb.collection("order_items").where("orderId", "in", batchIds).get())
-    );
-    batchSnaps.forEach((batchSnap) => {
-      batchSnap.docs.forEach((doc) => {
-        orderItemDocs.push(doc.data() as { name?: string; qty?: number });
-      });
-    });
-    const topItemsMap: Record<string, { name: string; qty: number }> = {};
-    orderItemDocs.forEach((data) => {
-      const name = String(data.name ?? "Unknown");
-      if (!topItemsMap[name]) topItemsMap[name] = { name, qty: 0 };
-      topItemsMap[name].qty += Number(data.qty ?? 0);
-    });
-    const topSellingItems = Object.values(topItemsMap)
-      .sort((a, b) => b.qty - a.qty)
-      .slice(0, 5);
+
+    const customers = usersCountSnap?.data().count ?? 0;
 
     const payload: DashboardSummaryPayload = {
-      totalOrders,
-      revenue,
-      dailySales,
-      totalOrdersToday,
-      revenueToday,
-      onlineOrdersToday,
-      storeOrdersToday,
-      dailyRevenue: revenueToday,
-      weeklyRevenue,
-      monthlyRevenue,
-      topSellingItems,
-      ordersPerDay: Object.values(days),
-      revenuePerDay: Object.values(days).map((d) => ({ day: d.day, revenue: d.revenue }))
+      ordersToday: todaySnap.size,
+      pendingOrders: pendingSnap.size,
+      revenueToday: Math.round(revenueToday * 100) / 100,
+      activeOrders: activeSnap.size,
+      customers
     };
 
     summaryCache = {
+      cacheKey,
       payload,
-      expiresAt: Date.now() + 30_000
+      expiresAt: Date.now() + 45_000
     };
 
     return Response.json(payload, { status: 200, headers: CACHE_HEADERS });
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("Dashboard summary error:", error);
-    }
-    return Response.json({ error: "Failed to load dashboard summary." }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[api/dashboard/summary]", message, error);
+    return serverError();
   }
 }

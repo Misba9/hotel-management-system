@@ -1,4 +1,4 @@
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 import { captureApiError } from "@shared/utils/monitoring";
 import { z } from "zod";
 
@@ -10,11 +10,10 @@ const payloadSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_monitoring_error", limit: 20, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
 
   const parsed = payloadSchema.safeParse(await request.json());
   if (!parsed.success) {

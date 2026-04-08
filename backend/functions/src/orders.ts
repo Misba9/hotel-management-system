@@ -1,11 +1,14 @@
 import { getFirestore } from "firebase-admin/firestore";
-import { getDatabase } from "firebase-admin/database";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { assignNearestDeliveryBoy } from "./delivery";
 import { assertRole, placeOrderSchema, rateLimit, withIdempotency } from "./security";
+import { syncDeliveryTrackingDoc } from "./v1/common";
 
 const db = getFirestore();
-const rtdb = getDatabase();
+
+async function syncOrderFeedDoc(orderId: string, data: Record<string, unknown>, merge = true) {
+  await db.collection("orderFeeds").doc(orderId).set(data, { merge });
+}
 
 export const placeOrder = onCall(async (request) => {
   if (!request.auth?.uid) {
@@ -51,10 +54,14 @@ export const placeOrder = onCall(async (request) => {
     createdAt: now.toISOString(),
     updatedAt: now.toISOString()
   });
-  await rtdb.ref(`orderFeeds/${orderRef.id}`).set({
-    status: "pending",
-    updatedAt: now.toISOString()
-  });
+  await syncOrderFeedDoc(
+    orderRef.id,
+    {
+      status: "pending",
+      updatedAt: now.toISOString()
+    },
+    false
+  );
 
   const batch = db.batch();
   menuItems.forEach((item) => {
@@ -94,7 +101,7 @@ export const updateKitchenStatus = onCall(async (request) => {
     status,
     updatedAt: new Date().toISOString()
   });
-  await rtdb.ref(`orderFeeds/${orderId}`).update({
+  await syncOrderFeedDoc(orderId, {
     status,
     updatedAt: new Date().toISOString()
   });
@@ -111,7 +118,7 @@ export const updateKitchenStatus = onCall(async (request) => {
           branchLocation: branch.location
         });
         if (assignment) {
-          await rtdb.ref(`orderFeeds/${orderId}`).update({
+          await syncOrderFeedDoc(orderId, {
             deliveryStatus: "assigned",
             deliveryBoyId: assignment.riderId,
             updatedAt: new Date().toISOString()
@@ -145,11 +152,11 @@ export const updateDeliveryStatus = onCall(async (request) => {
 
   if (status === "picked_up") {
     await db.collection("orders").doc(assignment.orderId).update({ status: "out_for_delivery" });
-    await rtdb.ref(`orderFeeds/${assignment.orderId}`).update({
+    await syncOrderFeedDoc(assignment.orderId, {
       status: "out_for_delivery",
       updatedAt: new Date().toISOString()
     });
-    await rtdb.ref(`deliveryTracking/${assignment.orderId}`).update({
+    await syncDeliveryTrackingDoc(assignment.orderId, {
       status: "picked_up",
       updatedAt: new Date().toISOString()
     });
@@ -167,11 +174,11 @@ export const updateDeliveryStatus = onCall(async (request) => {
       const current = Number(staffSnap.data()?.activeOrders ?? 0);
       tx.update(staffRef, { activeOrders: Math.max(0, current - 1) });
     });
-    await rtdb.ref(`orderFeeds/${assignment.orderId}`).update({
+    await syncOrderFeedDoc(assignment.orderId, {
       status: "delivered",
       updatedAt: new Date().toISOString()
     });
-    await rtdb.ref(`deliveryTracking/${assignment.orderId}`).update({
+    await syncDeliveryTrackingDoc(assignment.orderId, {
       status: "delivered",
       updatedAt: new Date().toISOString()
     });

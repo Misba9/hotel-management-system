@@ -5,21 +5,26 @@ export type { Category, MenuPayload, Product } from "@/lib/menu-data-types";
 let cachedPayload: MenuPayload | null = null;
 let inFlightRequest: Promise<MenuPayload> | null = null;
 
+const isDevClient = process.env.NODE_ENV === "development";
+
 export async function getMenuPayload(forceRefresh = false): Promise<MenuPayload> {
+  const bustCache = forceRefresh || isDevClient;
+
   if (forceRefresh) {
     cachedPayload = null;
     inFlightRequest = null;
   }
-  if (cachedPayload && !forceRefresh) {
+
+  if (!isDevClient && cachedPayload && !forceRefresh) {
     return cachedPayload;
   }
   if (inFlightRequest && !forceRefresh) {
     return inFlightRequest;
   }
 
-  inFlightRequest = fetchMenuFromApi(forceRefresh)
+  inFlightRequest = fetchMenuFromApi(bustCache)
     .then((payload) => {
-      cachedPayload = payload;
+      if (!isDevClient) cachedPayload = payload;
       return payload;
     })
     .finally(() => {
@@ -29,10 +34,10 @@ export async function getMenuPayload(forceRefresh = false): Promise<MenuPayload>
   return inFlightRequest;
 }
 
-async function fetchMenuFromApi(forceRefresh: boolean): Promise<MenuPayload> {
-  const url = forceRefresh ? `/api/menu?t=${Date.now()}` : "/api/menu";
+async function fetchMenuFromApi(bustCache: boolean): Promise<MenuPayload> {
+  const url = bustCache ? `/api/menu?t=${Date.now()}` : "/api/menu";
   const res = await fetch(url, {
-    cache: forceRefresh ? "no-store" : "default"
+    cache: bustCache ? "no-store" : "default"
   });
 
   if (!res.ok) {
@@ -48,6 +53,13 @@ async function fetchMenuFromApi(forceRefresh: boolean): Promise<MenuPayload> {
 
   const categories = Array.isArray(data.categories) ? data.categories : [];
   const products = Array.isArray(data.products) ? data.products : [];
+
+  if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
+    console.info("[menu-data] /api/menu response", {
+      categories: categories.length,
+      products: products.length
+    });
+  }
 
   return {
     categories,

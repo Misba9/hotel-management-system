@@ -1,16 +1,13 @@
 import { Timestamp, type Query, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { adminDb } from "@shared/firebase/admin";
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
 const CACHE_HEADERS = { "Cache-Control": "no-store" };
 
-/** Filters: `completed` includes legacy terminal statuses still in Firestore. */
-const orderStatusFilterSchema = z.enum(["all", "pending", "preparing", "completed"]).optional();
-
-const COMPLETED_STATUS_ALIASES = ["completed", "delivered", "ready", "out_for_delivery"] as const;
+const orderStatusFilterSchema = z.enum(["all", "pending", "preparing", "ready", "delivered"]).optional();
 const MAX_ORDER_PAGE_SIZE = 100;
 
 export type OrderListItem = {
@@ -55,11 +52,11 @@ function mapOrderDoc(doc: QueryDocumentSnapshot): OrderListItem {
 }
 
 export async function GET(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_orders_get", limit: 120, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const parsedStatus = orderStatusFilterSchema.safeParse(searchParams.get("status") ?? undefined);
@@ -70,14 +67,11 @@ export async function GET(request: Request) {
     const cursorId = searchParams.get("cursor");
     const pageSize = Math.min(Number(searchParams.get("limit") ?? 30) || 30, MAX_ORDER_PAGE_SIZE);
 
-    let query: Query = adminDb.collection("orders").orderBy("createdAt", "desc");
-    if (status === "pending" || status === "preparing") {
-      query = adminDb.collection("orders").where("status", "==", status).orderBy("createdAt", "desc");
-    } else if (status === "completed") {
-      query = adminDb
-        .collection("orders")
-        .where("status", "in", [...COMPLETED_STATUS_ALIASES])
-        .orderBy("createdAt", "desc");
+    const base = () => adminDb.collection("orders");
+
+    let query: Query = base().orderBy("createdAt", "desc");
+    if (status === "pending" || status === "preparing" || status === "ready" || status === "delivered") {
+      query = base().where("status", "==", status).orderBy("createdAt", "desc");
     }
 
     if (cursorId) {

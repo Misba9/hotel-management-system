@@ -1,5 +1,5 @@
 import { adminDb } from "@shared/firebase/admin";
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 import { z } from "zod";
 const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=20, stale-while-revalidate=60" };
 const MAX_STAFF_PAGE_SIZE = 50;
@@ -11,11 +11,10 @@ const createStaffSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_staff_get", limit: 120, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const { searchParams } = new URL(request.url);
     const pageSize = Math.min(Number(searchParams.get("limit") ?? 20), MAX_STAFF_PAGE_SIZE);
@@ -46,11 +45,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_staff_post", limit: 30, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const body = createStaffSchema.parse(await request.json());
     const ref = adminDb.collection("staff").doc();

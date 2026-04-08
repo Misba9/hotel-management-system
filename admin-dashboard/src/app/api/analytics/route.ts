@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { initializeApp, getApps } from "firebase/app";
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 
 const app =
   getApps()[0] ??
@@ -13,11 +13,10 @@ const app =
   });
 
 export async function GET(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_analytics_get", limit: 60, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   const fn = httpsCallable(getFunctions(app), "getAdminAnalytics");
   const result = await fn({
     dayKey: new Date().toISOString().slice(0, 10)

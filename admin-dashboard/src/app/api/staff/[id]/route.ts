@@ -1,5 +1,5 @@
 import { adminDb } from "@shared/firebase/admin";
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 import { z } from "zod";
 
 const updateStaffSchema = z
@@ -12,11 +12,10 @@ const updateStaffSchema = z
   .refine((value) => Object.keys(value).length > 0, { message: "At least one field is required." });
 
 export async function PATCH(request: Request, context: { params: { id: string } }) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_staff_patch", limit: 60, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const id = context.params.id;
     const body = updateStaffSchema.parse(await request.json());

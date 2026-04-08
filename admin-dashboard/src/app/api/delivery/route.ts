@@ -1,5 +1,5 @@
 import { adminDb } from "@shared/firebase/admin";
-import { enforceApiSecurity } from "@shared/utils/api-security";
+import { requireAdmin } from "@shared/utils/admin-api-auth";
 import { z } from "zod";
 
 const addPartnerSchema = z.object({
@@ -15,11 +15,10 @@ const assignOrderSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_delivery_get", limit: 120, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const partnersSnap = await adminDb.collection("staff").where("role", "==", "delivery_boy").orderBy("name").get();
     const assignmentsSnap = await adminDb.collection("delivery_assignments").orderBy("updatedAt", "desc").limit(50).get();
@@ -39,11 +38,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const secure = await enforceApiSecurity(request, {
-    roles: ["admin"],
+  const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_delivery_post", limit: 60, windowMs: 60_000 }
   });
-  if (!secure.ok) return secure.response;
+  if (!auth.ok) return auth.response;
   try {
     const rawBody = (await request.json()) as Record<string, unknown>;
     const body =

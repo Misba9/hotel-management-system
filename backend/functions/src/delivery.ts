@@ -1,9 +1,8 @@
 import { getFirestore } from "firebase-admin/firestore";
-import { getDatabase } from "firebase-admin/database";
 import { getDistance } from "geolib";
+import { syncDeliveryTrackingDoc } from "./v1/common";
 
 const db = getFirestore();
-const rtdb = getDatabase();
 
 type RiderCandidate = {
   id: string;
@@ -62,12 +61,15 @@ export async function assignNearestDeliveryBoy(params: {
     activeOrders: best.rider.activeOrders + 1
   });
 
-  await rtdb.ref(`deliveryTracking/${orderId}`).set({
+  await syncDeliveryTrackingDoc(orderId, {
     assignmentId: assignmentRef.id,
     deliveryBoyId: best.rider.id,
     status: "assigned",
     distanceKm: Number(best.distanceKm.toFixed(2)),
     estimatedMinutes,
+    etaMinutes: estimatedMinutes,
+    lat: best.rider.location!.lat,
+    lng: best.rider.location!.lng,
     updatedAt: nowIso
   });
 

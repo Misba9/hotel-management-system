@@ -1,8 +1,6 @@
-import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "@shared/firebase/admin";
+import { adminAuth } from "@shared/firebase/admin";
 import { enforceApiSecurity } from "@shared/utils/api-security";
-import { setOrderFeed } from "@shared/utils/order-feed-rtdb";
-import { resolveServerPricing } from "@shared/utils/server-order-pricing";
+import { persistStorefrontOrder } from "@/lib/server/persist-storefront-order";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -20,17 +18,29 @@ const createOrderSchema = z.object({
       })
     )
     .min(1),
-  /** Used only to compute `totalAmount` server-side; not stored on the order. */
   couponCode: z.string().max(40).optional(),
-  /** Delivery fee Rs. 40 unless pickup / dine-in. */
   orderType: z.enum(["delivery", "pickup", "dine_in"]).optional(),
-  /** Optional delivery address from checkout (stored when provided). */
-  address: z.string().max(300).optional()
+  /** Full delivery address string (required for storefront checkout). */
+  address: z.string().min(5).max(500),
+  paymentMethod: z.enum(["cod"]).default("cod")
 });
 
+async function tryVerifyCustomerUid(request: Request): Promise<string | null> {
+  const authHeader = request.headers.get("authorization") ?? "";
+  if (!authHeader.startsWith("Bearer ")) return null;
+  const token = authHeader.slice("Bearer ".length).trim();
+  if (!token) return null;
+  try {
+    const decoded = await adminAuth.verifyIdToken(token);
+    return decoded.uid;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * POST — Create an order in Firestore `orders` with:
- * customerName, phone, items[], totalAmount, status: pending, createdAt
+ * POST — Create an order in Firestore `orders` (Admin SDK).
+ * COD: paymentStatus `pending` until cash is collected on delivery.
  */
 export async function POST(request: Request) {
   const secure = await enforceApiSecurity(request, {
@@ -40,52 +50,31 @@ export async function POST(request: Request) {
 
   try {
     const body = createOrderSchema.parse(await request.json());
-
-    const pricing = await resolveServerPricing(body.items, body.couponCode);
-    if ("error" in pricing) {
-      return Response.json({ success: false, error: pricing.error }, { status: pricing.status });
+    const customerUid = await tryVerifyCustomerUid(request);
+    if (!customerUid) {
+      return Response.json({ success: false, error: "Authentication required." }, { status: 401 });
     }
 
-    const { items, subtotal, discount, taxAmount } = pricing;
-    const deliveryFee =
-      body.orderType === "pickup" || body.orderType === "dine_in" ? 0 : 40;
-    const totalAmount = Math.max(subtotal - discount, 0) + taxAmount + deliveryFee;
-
-    const orderDoc: Record<string, unknown> = {
-      customerName: body.customerName.trim(),
-      phone: body.phone.trim(),
-      items: items.map((i) => ({
-        id: i.id,
-        name: i.name,
-        price: i.price,
-        quantity: i.quantity
-      })),
-      totalAmount,
-      status: "pending",
-      createdAt: FieldValue.serverTimestamp()
-    };
-
-    const trimmedAddress = body.address?.trim();
-    if (trimmedAddress) {
-      orderDoc.address = trimmedAddress;
-    }
-
-    const docRef = await adminDb.collection("orders").add(orderDoc);
-
-    const createdAtIso = new Date().toISOString();
-    await setOrderFeed(docRef.id, {
-      status: "pending",
-      updatedAt: createdAtIso,
-      createdAt: createdAtIso,
-      orderType: body.orderType ?? "delivery",
-      total: totalAmount
+    const result = await persistStorefrontOrder({
+      userId: customerUid,
+      body: {
+        customerName: body.customerName,
+        phone: body.phone,
+        items: body.items,
+        couponCode: body.couponCode,
+        orderType: body.orderType,
+        address: body.address
+      },
+      paymentMethod: "cod",
+      paymentStatus: "pending"
     });
 
     return Response.json({
       success: true,
       message: "Order placed successfully.",
-      orderId: docRef.id,
-      totalAmount
+      orderId: result.orderId,
+      totalAmount: result.totalAmount,
+      ...(result.trackingToken ? { trackingToken: result.trackingToken } : {})
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -94,9 +83,15 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    const message = error instanceof Error ? error.message : "Could not create order.";
+    const lower = message.toLowerCase();
+    const status =
+      lower.includes("not found") || lower.includes("mismatch") || lower.includes("not available")
+        ? 400
+        : 500;
     if (process.env.NODE_ENV !== "production") {
       console.error("Create order error:", error);
     }
-    return Response.json({ success: false, error: "Could not create order." }, { status: 500 });
+    return Response.json({ success: false, error: message }, { status });
   }
 }

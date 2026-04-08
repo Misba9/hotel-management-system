@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@shared/firebase/admin";
+import { evaluateCouponDiscount } from "@shared/utils/coupon-eval";
 import { enforceApiSecurity } from "@shared/utils/api-security";
 import { z } from "zod";
 
@@ -26,27 +27,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ valid: false, message: "Coupon not found." }, { status: 404 });
   }
 
-  const coupon = snap.docs[0].data() as {
-    active: boolean;
-    minOrderAmount: number;
-    expiryAt: string;
-    usageLimit: number;
-    usedCount: number;
-    discountType: "flat" | "percent";
-    discountValue: number;
-  };
-
-  if (!coupon.active || new Date(coupon.expiryAt) < new Date()) {
-    return NextResponse.json({ valid: false, message: "Coupon expired or inactive." }, { status: 400 });
-  }
-  if (coupon.usedCount >= coupon.usageLimit) {
-    return NextResponse.json({ valid: false, message: "Usage limit reached." }, { status: 400 });
-  }
-  if (subtotal < coupon.minOrderAmount) {
-    return NextResponse.json({ valid: false, message: "Minimum amount not met." }, { status: 400 });
+  const coupon = snap.docs[0].data() as Record<string, unknown>;
+  const result = evaluateCouponDiscount(coupon, subtotal);
+  if (!result.ok) {
+    return NextResponse.json({ valid: false, message: result.error }, { status: 400 });
   }
 
-  const discount =
-    coupon.discountType === "flat" ? coupon.discountValue : Math.floor((subtotal * coupon.discountValue) / 100);
-  return NextResponse.json({ valid: true, discount });
+  return NextResponse.json({ valid: true, discount: result.discount });
 }

@@ -22,7 +22,7 @@ service cloud.firestore {
     }
 
     function validOrderStatus(status) {
-      return status in ["created", "confirmed", "pending", "preparing", "ready", "out_for_delivery", "delivered", "cancelled"];
+      return status in ["created", "confirmed", "pending", "accepted", "rejected", "preparing", "ready", "out_for_delivery", "delivered", "cancelled"];
     }
 
     function validOrderWrite() {
@@ -59,7 +59,13 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read, write: if isOwner(userId) || hasAnyRole(["manager", "admin"]);
+      /** Own profile + FCM tokens; staff use Admin SDK in dashboard. */
+      allow read, write: if isOwner(userId);
+
+      /** Customer delivery addresses saved under the user document. */
+      match /addresses/{addressId} {
+        allow read, create, update, delete: if isAuthed() && request.auth.uid == userId;
+      }
     }
 
     match /roles/{roleId} {
@@ -83,10 +89,8 @@ service cloud.firestore {
         hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy"])
       );
       allow create: if isAuthed() && request.resource.data.userId == request.auth.uid && validOrderWrite();
-      allow update: if isAuthed() && (
-        hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy"]) ||
-        resource.data.userId == request.auth.uid
-      ) && validOrderWrite();
+      /** Customers create via API/Functions; status changes are staff or Admin SDK. */
+      allow update: if isAuthed() && hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy"]) && validOrderWrite();
     }
 
     match /order_items/{id} {
@@ -127,7 +131,9 @@ service cloud.firestore {
 
     match /notifications/{id} {
       allow read: if isAuthed() && resource.data.userId == request.auth.uid;
-      allow write: if hasAnyRole(["manager", "admin"]);
+      allow create, delete: if hasAnyRole(["manager", "admin"]);
+      allow update: if isAuthed() && resource.data.userId == request.auth.uid &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(['seen']);
     }
 
     match /branches/{id} {
@@ -167,6 +173,62 @@ service cloud.firestore {
       allow read: if hasAnyRole(["manager", "admin"]);
       allow write: if hasRole("admin") &&
         hasOnlyKeys(["id", "storeName", "currency", "timezone", "businessHours", "deliveryRadiusKm", "taxPercent", "discountPercent", "updatedAt", "createdAt"]);
+    }
+
+    // Mirrors / sync collections (written by Admin SDK or Cloud Functions only)
+    match /orderFeeds/{orderId} {
+      allow read: if isAuthed();
+      allow write: if false;
+    }
+
+    match /deliveryTracking/{orderId} {
+      allow read: if isAuthed();
+      allow write: if false;
+    }
+
+    /** Live rider position: order owner or delivery staff (writes restricted below). */
+    match /deliveryLocations/{orderId} {
+      allow read: if isAuthed() && (
+        resource.data.userId == request.auth.uid ||
+        hasAnyRole(["delivery_boy", "manager", "admin"])
+      );
+      allow create: if hasAnyRole(["delivery_boy", "manager", "admin"]) &&
+        request.resource.data.orderId == orderId &&
+        request.resource.data.userId is string &&
+        request.resource.data.lat is number &&
+        request.resource.data.lng is number;
+      allow update: if hasAnyRole(["delivery_boy", "manager", "admin"]) &&
+        request.resource.data.orderId == orderId &&
+        request.resource.data.userId == resource.data.userId;
+    }
+
+    match /customerOrderNotifications/{id} {
+      allow read: if isAuthed();
+      allow write: if false;
+    }
+
+    match /staffNewOrderEvents/{id} {
+      allow read: if hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy"]);
+      allow write: if false;
+    }
+
+    match /adminAlerts/{docId} {
+      allow read: if hasRole("admin");
+      allow write: if false;
+    }
+
+    match /rateLimits/{id} {
+      allow read, write: if false;
+    }
+
+    match /idempotency/{id} {
+      allow read, write: if false;
+    }
+
+    // Customer reviews (writes via Admin SDK / Next API only)
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }

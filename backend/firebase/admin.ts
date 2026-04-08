@@ -105,7 +105,7 @@ function createLazyServiceProxy<T extends object>(serviceName: string, factory: 
   });
 }
 
-/** Use for optional Admin services (e.g. Realtime Database in `rtdb-admin.ts`). */
+/** Use for optional lazy-initialized Admin services beyond Firestore. */
 export function createLazyAdminService<T extends object>(serviceName: string, factory: (app: App) => T): T {
   return createLazyServiceProxy(serviceName, factory);
 }

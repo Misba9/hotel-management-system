@@ -1,4 +1,15 @@
-import { OrderStatus, OrderType, PaymentMethod, StaffRole } from "./domain";
+import type { Timestamp } from "firebase/firestore";
+import {
+  OrderStatus,
+  OrderType,
+  PaymentMethod,
+  SaaSOrderLineItem,
+  SaaSOrderStatus,
+  StaffRole
+} from "./domain";
+
+/** Root collection path for SaaS tenant orders: `orders/{orderId}` */
+export const SAAS_ORDERS_COLLECTION = "orders" as const;
 
 export interface UserDoc {
   id: string;
@@ -33,6 +44,21 @@ export interface MenuItemDoc {
   price: number;
   available: boolean;
   tags: string[];
+}
+
+/**
+ * Firestore document for SaaS `orders` collection.
+ * Use document id as `id` when writing for idempotent client mapping.
+ */
+export interface SaaSOrderDoc {
+  id: string;
+  /** @deprecated Legacy multi-tenant field; optional on existing documents. */
+  tenantId?: string;
+  items: SaaSOrderLineItem[];
+  totalAmount: number;
+  status: SaaSOrderStatus;
+  createdAt: Timestamp;
+  customerName: string;
 }
 
 export interface OrderDoc {

@@ -7,7 +7,8 @@ import {
   createTimestamp,
   db,
   deliveryStatusSchema,
-  rtdb,
+  syncDeliveryTrackingDoc,
+  syncOrderFeedDoc,
   withCallableGuard
 } from "./common";
 
@@ -54,11 +55,11 @@ export const updateDeliveryStatusV1 = withCallableGuard(
       status: mappedOrderStatus,
       updatedAt: now
     });
-    await rtdb.ref(`deliveryTracking/${delivery.orderId}`).update({
+    await syncDeliveryTrackingDoc(delivery.orderId, {
       status: payload.status,
       updatedAt: now
     });
-    await rtdb.ref(`orderFeeds/${delivery.orderId}`).update({
+    await syncOrderFeedDoc(delivery.orderId, {
       status: mappedOrderStatus,
       updatedAt: now
     });
@@ -87,7 +88,7 @@ export const updateDeliveryTrackingV1 = withCallableGuard(
       },
       { merge: true }
     );
-    await rtdb.ref(`deliveryTracking/${delivery.orderId}`).update({
+    await syncDeliveryTrackingDoc(delivery.orderId, {
       location: payload.location,
       updatedAt: now
     });
@@ -125,7 +126,7 @@ export const updateDeliveryAssignmentTrackingV1 = withCallableGuard(
       { merge: true }
     );
 
-    await rtdb.ref(`deliveryTracking/${assignment.orderId}`).update({
+    await syncDeliveryTrackingDoc(assignment.orderId, {
       location: payload.location,
       updatedAt: now
     });

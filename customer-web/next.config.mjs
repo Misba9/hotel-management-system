@@ -1,3 +1,11 @@
+import nextEnv from "@next/env";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const { loadEnvConfig } = nextEnv;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+loadEnvConfig(__dirname);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   compress: true,
@@ -16,23 +24,14 @@ const nextConfig = {
     ];
   },
   images: {
+    domains: ["images.unsplash.com", "plus.unsplash.com", "images.pexels.com", "as1.ftcdn.net"],
     remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "images.unsplash.com"
-      },
-      {
-        protocol: "https",
-        hostname: "plus.unsplash.com"
-      },
-      {
-        protocol: "https",
-        hostname: "as1.ftcdn.net"
-      },
-      {
-        protocol: "https",
-        hostname: "images.pexels.com"
-      }
+      { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
+      { protocol: "https", hostname: "plus.unsplash.com", pathname: "/**" },
+      { protocol: "https", hostname: "as1.ftcdn.net", pathname: "/**" },
+      { protocol: "https", hostname: "images.pexels.com", pathname: "/**" },
+      { protocol: "https", hostname: "firebasestorage.googleapis.com", pathname: "/**" },
+      { protocol: "https", hostname: "lh3.googleusercontent.com", pathname: "/**" }
     ]
   },
   experimental: {

@@ -8,6 +8,7 @@ build
 .env
 .env.local
 .env.*.local
+serviceAccountKey.json
 coverage
 .DS_Store
 firebase-debug.log

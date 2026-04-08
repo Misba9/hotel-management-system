@@ -1,7 +1,6 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getDatabase } from "firebase/database";
 import { getFunctions } from "firebase/functions";
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
@@ -12,8 +11,7 @@ const firebaseConfig = {
   projectId: env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: env.EXPO_PUBLIC_FIREBASE_APP_ID,
-  databaseURL: env.EXPO_PUBLIC_FIREBASE_DATABASE_URL
+  appId: env.EXPO_PUBLIC_FIREBASE_APP_ID
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -30,5 +28,4 @@ function initStaffAuth() {
 
 export const staffAuth = initStaffAuth();
 export const staffDb = getFirestore(app);
-export const staffRtdb = getDatabase(app);
 export const staffFunctions = getFunctions(app);

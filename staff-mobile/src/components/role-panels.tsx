@@ -2,10 +2,19 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Linking, ScrollView, Text, TouchableOpacity, TextInput, View } from "react-native";
 import { Audio } from "expo-av";
 import * as Location from "expo-location";
-import { ref, onValue, query as rtdbQuery, limitToLast, orderByKey } from "firebase/database";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
+  limit
+} from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { staffDb, staffFunctions, staffRtdb } from "../lib/firebase";
+import { staffDb, staffFunctions } from "../lib/firebase";
 import { useStaffAuth } from "../context/staff-auth-context";
 
 function Card({ text }: { text: string }) {
@@ -42,9 +51,11 @@ export function DeliveryPanel() {
   const assignmentIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const deliveryTrackingRef = ref(staffRtdb, "deliveryTracking");
-    const stopListening = onValue(deliveryTrackingRef, (snapshot) => {
-      const payload = (snapshot.val() ?? {}) as Record<string, DeliveryTrackingValue>;
+    const stopListening = onSnapshot(collection(staffDb, "deliveryTracking"), (snapshot) => {
+      const payload: Record<string, DeliveryTrackingValue> = {};
+      snapshot.docs.forEach((d) => {
+        payload[d.id] = d.data() as DeliveryTrackingValue;
+      });
       setTrackingByOrderId(payload);
       setLoading(false);
     });
@@ -339,15 +350,17 @@ export function KitchenPanel() {
   const lastStaffEventKey = useRef<string>("");
 
   useEffect(() => {
-    const orderFeedRef = ref(staffRtdb, "orderFeeds");
-    const stopListening = onValue(orderFeedRef, async (snapshot) => {
-      const payload = (snapshot.val() ?? {}) as Record<
+    const stopListening = onSnapshot(collection(staffDb, "orderFeeds"), async (snapshot) => {
+      const payload = {} as Record<
         string,
         {
           status?: "created" | "confirmed" | "pending" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "cancelled";
           updatedAt?: string;
         }
       >;
+      snapshot.docs.forEach((d) => {
+        payload[d.id] = d.data() as (typeof payload)[string];
+      });
 
       const entries = Object.entries(payload);
 
@@ -406,15 +419,20 @@ export function KitchenPanel() {
   }, []);
 
   useEffect(() => {
-    const newOrderEventsRef = rtdbQuery(ref(staffRtdb, "notifications/staff/newOrders"), orderByKey(), limitToLast(1));
-    const stop = onValue(newOrderEventsRef, async (snapshot) => {
-      const payload = (snapshot.val() ?? {}) as Record<string, { orderId?: string; total?: number }>;
-      const keys = Object.keys(payload);
-      if (keys.length === 0) return;
-      const latestKey = keys[0];
-      if (!latestKey || latestKey === lastStaffEventKey.current) return;
-      lastStaffEventKey.current = latestKey;
-      const event = payload[latestKey];
+    let primed = false;
+    const q = query(collection(staffDb, "staffNewOrderEvents"), orderBy("createdAt", "desc"), limit(1));
+    const stop = onSnapshot(q, async (snapshot) => {
+      const docSnap = snapshot.docs[0];
+      if (!docSnap) return;
+      const id = docSnap.id;
+      if (!primed) {
+        primed = true;
+        lastStaffEventKey.current = id;
+        return;
+      }
+      if (id === lastStaffEventKey.current) return;
+      lastStaffEventKey.current = id;
+      const event = docSnap.data() as { orderId?: string; total?: number };
       setLatestStaffAlert(`New order received: ${event.orderId ?? "Unknown"}`);
       await playKitchenAlertSound();
     });
@@ -874,15 +892,17 @@ export function WaiterPanel() {
   }, [selectedCategoryId]);
 
   useEffect(() => {
-    const orderFeedRef = ref(staffRtdb, "orderFeeds");
-    const stopListening = onValue(orderFeedRef, async (snapshot) => {
-      const payload = (snapshot.val() ?? {}) as Record<
+    const stopListening = onSnapshot(collection(staffDb, "orderFeeds"), async (snapshot) => {
+      const payload = {} as Record<
         string,
         {
           status?: "created" | "confirmed" | "pending" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "cancelled";
           updatedAt?: string;
         }
       >;
+      snapshot.docs.forEach((d) => {
+        payload[d.id] = d.data() as (typeof payload)[string];
+      });
 
       const entries = Object.entries(payload);
 

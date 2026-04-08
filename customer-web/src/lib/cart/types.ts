@@ -2,11 +2,11 @@ import type { Product } from "@/lib/menu-data-types";
 
 /** One line in the shopping cart */
 export type CartLine = {
-  id: string;
+  productId: string;
   name: string;
   price: number;
+  quantity: number;
   image: string;
-  qty: number;
 };
 
 /** Alias for consumers that expect `CartItem` */
@@ -19,3 +19,21 @@ export type CartPayload = {
   items?: CartLine[];
   updatedAt?: string;
 };
+
+/** Accept Firestore/API/localStorage lines that used `id` + `qty`. */
+export function normalizeCartLine(raw: unknown): CartLine | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const productIdRaw = o.productId ?? o.id;
+  const productId = typeof productIdRaw === "string" ? productIdRaw.trim() : "";
+  if (!productId) return null;
+  const name = typeof o.name === "string" ? o.name.trim() : "";
+  if (!name) return null;
+  const price = Number(o.price);
+  if (!Number.isFinite(price) || price < 0) return null;
+  const qtyRaw = o.quantity ?? o.qty;
+  const quantity = typeof qtyRaw === "number" && Number.isInteger(qtyRaw) ? qtyRaw : NaN;
+  if (!Number.isFinite(quantity) || quantity < 1) return null;
+  const image = typeof o.image === "string" ? o.image : "";
+  return { productId, name, price, quantity, image };
+}

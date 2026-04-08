@@ -19,13 +19,13 @@ export function CartDrawer() {
     subtotal,
     discount,
     couponCode,
-    total,
+    deliveryFee,
+    grandTotal,
     updateQty,
     removeItem,
     applyCoupon,
     clearCoupon
   } = useCart();
-  const deliveryFee = subtotal > 0 ? 40 : 0;
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState("");
   const { showToast } = useToast();
@@ -105,14 +105,14 @@ export function CartDrawer() {
             exit={{ x: "100%" }}
             transition={{ type: "spring", stiffness: 320, damping: 34, mass: 0.6 }}
           >
-            <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between border-b p-4 dark:border-slate-800">
-                <h2 className="text-lg font-semibold">Your Cart</h2>
+            <div className="flex h-full min-w-0 flex-col">
+              <div className="flex items-center justify-between border-b p-3 dark:border-slate-800 sm:p-4">
+                <h2 className="text-base font-semibold sm:text-lg">Your Cart</h2>
                 <button onClick={closeCart} aria-label="Close cart drawer">
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="flex-1 space-y-3 overflow-auto p-4">
+              <div className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-3 sm:p-4">
                 {items.length === 0 && (
                   <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center dark:border-slate-700 dark:bg-slate-900/60">
                     <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
@@ -132,11 +132,11 @@ export function CartDrawer() {
                 )}
                 {items.map((item) => {
                   const imageSrc = item.image && item.image.trim().length > 0 ? item.image : PLACEHOLDER_IMAGE;
-                  const lineTotal = item.price * item.qty;
+                  const lineTotal = item.price * item.quantity;
                   return (
                     <div
-                      key={item.id}
-                      className="flex gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                      key={item.productId}
+                      className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-md transition-all duration-200 dark:border-slate-700 dark:bg-slate-900 hover:shadow-lg"
                     >
                       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-100 dark:bg-slate-800">
                         <Image
@@ -159,7 +159,7 @@ export function CartDrawer() {
                           </div>
                           <button
                             aria-label="Remove item"
-                            onClick={() => removeItem(item.id)}
+                            onClick={() => removeItem(item.productId)}
                             className="rounded-full p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -169,17 +169,17 @@ export function CartDrawer() {
                           <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">
                             <button
                               aria-label="Decrease quantity"
-                              onClick={() => updateQty(item.id, item.qty - 1)}
+                              onClick={() => updateQty(item.productId, item.quantity - 1)}
                               className="rounded-full p-1 text-slate-700 hover:bg-slate-200 dark:text-slate-200 dark:hover:bg-slate-700"
                             >
                               <Minus className="h-4 w-4" />
                             </button>
                             <span className="min-w-6 text-center text-sm font-semibold tabular-nums">
-                              {item.qty}
+                              {item.quantity}
                             </span>
                             <button
                               aria-label="Increase quantity"
-                              onClick={() => updateQty(item.id, item.qty + 1)}
+                              onClick={() => updateQty(item.productId, item.quantity + 1)}
                               className="rounded-full p-1 text-slate-700 hover:bg-slate-200 dark:text-slate-200 dark:hover:bg-slate-700"
                             >
                               <Plus className="h-4 w-4" />
@@ -194,16 +194,20 @@ export function CartDrawer() {
                   );
                 })}
               </div>
-              <div className="space-y-3 border-t p-4 dark:border-slate-800">
+              <div className="space-y-3 border-t p-3 dark:border-slate-800 sm:p-4">
                 <div className="space-y-2">
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <input
                       value={couponInput}
                       onChange={(e) => setCouponInput(e.target.value)}
                       placeholder="Coupon code"
-                      className="w-full rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      className="w-full rounded-xl border px-3 py-2 text-sm sm:text-base dark:border-slate-700 dark:bg-slate-900"
                     />
-                    <button onClick={validateCoupon} className="rounded-lg border px-3 py-2 text-sm font-medium dark:border-slate-700">
+                    <button
+                      type="button"
+                      onClick={validateCoupon}
+                      className="w-full shrink-0 rounded-xl border px-3 py-2 text-sm font-medium transition-all duration-200 dark:border-slate-700 sm:w-auto"
+                    >
                       Apply
                     </button>
                   </div>
@@ -233,13 +237,13 @@ export function CartDrawer() {
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Total</span>
-                  <span>Rs. {total + deliveryFee}</span>
+                  <span>Rs. {grandTotal}</span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-300">Estimated delivery: 25-35 mins</p>
                 <Link
                   href="/checkout"
                   onClick={closeCart}
-                  className="block rounded-xl bg-orange-500 px-4 py-3 text-center text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 active:scale-[0.98] dark:bg-orange-500 dark:hover:bg-orange-400"
+                  className="block w-full rounded-xl bg-orange-500 px-4 py-3 text-center text-sm font-semibold text-white shadow-md transition-all duration-200 hover:bg-orange-600 hover:shadow-lg active:scale-[0.98] dark:bg-orange-500 dark:hover:bg-orange-400"
                 >
                   Proceed to Checkout
                 </Link>

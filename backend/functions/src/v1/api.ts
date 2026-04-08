@@ -10,7 +10,8 @@ import {
   logInfo,
   orderStatusSchema,
   paymentMethodSchema,
-  rtdb
+  syncDeliveryTrackingDoc,
+  syncOrderFeedDoc
 } from "./common";
 
 const createOrderHttpSchema = z.object({
@@ -106,10 +107,10 @@ export const platformApiV1 = onRequest(async (request, response) => {
         updatedAt: now
       });
       await batch.commit();
-      await rtdb.ref(`orderFeeds/${orderRef.id}`).set({
+      await syncOrderFeedDoc(orderRef.id, {
         status: "created",
         updatedAt: now
-      });
+      }, false);
       response.status(201).json({ success: true, orderId: orderRef.id, paymentId: paymentRef.id, total });
       return;
     }
@@ -124,7 +125,7 @@ export const platformApiV1 = onRequest(async (request, response) => {
         status: payload.status,
         updatedAt: now
       });
-      await rtdb.ref(`orderFeeds/${orderId}`).update({
+      await syncOrderFeedDoc(orderId, {
         status: payload.status,
         updatedAt: now
       });
@@ -149,7 +150,7 @@ export const platformApiV1 = onRequest(async (request, response) => {
         status: "cancelled",
         updatedAt: now
       });
-      await rtdb.ref(`orderFeeds/${orderId}`).update({
+      await syncOrderFeedDoc(orderId, {
         status: "cancelled",
         updatedAt: now
       });
@@ -170,12 +171,16 @@ export const platformApiV1 = onRequest(async (request, response) => {
         assignedAt: now,
         updatedAt: now
       });
-      await rtdb.ref(`deliveryTracking/${payload.orderId}`).set({
-        deliveryId: deliveryRef.id,
-        deliveryPartnerId: payload.deliveryPartnerId,
-        status: "assigned",
-        updatedAt: now
-      });
+      await syncDeliveryTrackingDoc(
+        payload.orderId,
+        {
+          deliveryId: deliveryRef.id,
+          deliveryPartnerId: payload.deliveryPartnerId,
+          status: "assigned",
+          updatedAt: now
+        },
+        false
+      );
       response.status(201).json({ success: true, deliveryId: deliveryRef.id });
       return;
     }

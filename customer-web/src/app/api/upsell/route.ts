@@ -25,8 +25,15 @@ export async function POST(request: Request) {
     return NextResponse.json(result.data, { status: 200 });
   } catch {
     // Fallback: return a few popular products from catalog if cloud function is unavailable.
-    const snap = await adminDb.collection("products").where("popular", "==", true).where("available", "==", true).limit(6).get();
-    const ids = snap.docs.map((doc) => doc.id).filter((id) => !itemIds.includes(id)).slice(0, 3);
+    const snap = await adminDb.collection("products").limit(24).get();
+    const ids = snap.docs
+      .filter((doc) => {
+        const data = doc.data() as { isAvailable?: boolean; available?: boolean };
+        return data.isAvailable !== false && data.available !== false;
+      })
+      .map((doc) => doc.id)
+      .filter((id) => !itemIds.includes(id))
+      .slice(0, 3);
     return NextResponse.json({ itemIds: ids }, { status: 200 });
   }
 }

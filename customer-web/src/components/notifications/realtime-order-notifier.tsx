@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { onValue, ref } from "firebase/database";
-import { rtdb } from "@shared/firebase/client";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { useToast } from "@/components/providers/toast-provider";
 
 const STATUS_LABELS: Record<string, { title: string; description: string }> = {
@@ -15,19 +15,31 @@ const STATUS_LABELS: Record<string, { title: string; description: string }> = {
   delivered: { title: "Delivered", description: "Order delivered successfully." }
 };
 
+function eventTimeMs(data: Record<string, unknown>): number {
+  const c = data.createdAt;
+  if (c && typeof c === "object" && c !== null && "toMillis" in c && typeof (c as { toMillis?: () => number }).toMillis === "function") {
+    return (c as { toMillis: () => number }).toMillis();
+  }
+  if (typeof c === "string") {
+    const t = new Date(c).getTime();
+    return Number.isNaN(t) ? 0 : t;
+  }
+  return 0;
+}
+
 export function RealtimeOrderNotifier() {
   const { showToast } = useToast();
   const lastStatusRef = useRef<string>("");
   const lastOrderIdRef = useRef<string>("");
   const lastEventKeyRef = useRef<string>("");
+  const notificationsPrimedRef = useRef(false);
 
   useEffect(() => {
     const orderId = window.localStorage.getItem("nausheen_last_order_id");
     if (!orderId) return;
     lastOrderIdRef.current = orderId;
-    const statusRef = ref(rtdb, `orderFeeds/${orderId}`);
-    const unsubscribe = onValue(statusRef, (snapshot) => {
-      const status = String(snapshot.val()?.status ?? "");
+    const unsub = onSnapshot(doc(db, "orderFeeds", orderId), (snapshot) => {
+      const status = String(snapshot.data()?.status ?? "");
       if (!status || status === lastStatusRef.current) return;
       const labels = STATUS_LABELS[status];
       if (!labels) return;
@@ -39,32 +51,38 @@ export function RealtimeOrderNotifier() {
       }
       lastStatusRef.current = status;
     });
-    return () => unsubscribe();
+    return () => unsub();
   }, [showToast]);
 
   useEffect(() => {
-    const orderNotificationsRoot = ref(rtdb, "notifications/customers/orders");
-    const unsubscribe = onValue(orderNotificationsRoot, (snapshot) => {
-      const payload = (snapshot.val() ?? {}) as Record<
-        string,
-        Record<string, { orderId?: string; title?: string; body?: string }>
-      >;
-      if (!lastOrderIdRef.current) return;
-      const orderEvents = payload[lastOrderIdRef.current];
-      if (!orderEvents) return;
-      const eventKeys = Object.keys(orderEvents);
-      if (eventKeys.length === 0) return;
-      const latestEventKey = eventKeys[eventKeys.length - 1];
-      if (latestEventKey === lastEventKeyRef.current) return;
-      const latestEvent = orderEvents[latestEventKey];
-      if (!latestEvent?.title || !latestEvent?.body) return;
-      lastEventKeyRef.current = latestEventKey;
+    const orderId = window.localStorage.getItem("nausheen_last_order_id");
+    if (!orderId) return;
+    lastOrderIdRef.current = orderId;
+
+    const q = query(collection(db, "customerOrderNotifications"), where("orderId", "==", orderId));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map((d) => {
+        const data = d.data() as Record<string, unknown>;
+        return { id: d.id, ...data } as Record<string, unknown> & { id: string };
+      });
+      if (docs.length === 0) return;
+      docs.sort((a, b) => eventTimeMs(a) - eventTimeMs(b));
+      const latest = docs[docs.length - 1];
+      if (!latest?.title || !latest?.body) return;
+      const latestKey = latest.id;
+      if (!notificationsPrimedRef.current) {
+        notificationsPrimedRef.current = true;
+        lastEventKeyRef.current = latestKey;
+        return;
+      }
+      if (latestKey === lastEventKeyRef.current) return;
+      lastEventKeyRef.current = latestKey;
       showToast({
-        title: latestEvent.title,
-        description: latestEvent.body
+        title: String(latest.title),
+        description: String(latest.body)
       });
     });
-    return () => unsubscribe();
+    return () => unsub();
   }, [showToast]);
 
   return null;
