@@ -69,10 +69,8 @@ export async function GET(request: Request) {
 
     const base = () => adminDb.collection("orders");
 
+    /** Single-field timeline only — avoids composite indexes; optional `status` filters this page in memory. */
     let query: Query = base().orderBy("createdAt", "desc");
-    if (status === "pending" || status === "preparing" || status === "ready" || status === "delivered") {
-      query = base().where("status", "==", status).orderBy("createdAt", "desc");
-    }
 
     if (cursorId) {
       const cursorSnap = await adminDb.collection("orders").doc(cursorId).get();
@@ -84,7 +82,11 @@ export async function GET(request: Request) {
     const snap = await query.limit(pageSize + 1).get();
     const hasMore = snap.docs.length > pageSize;
     const pageDocs = hasMore ? snap.docs.slice(0, pageSize) : snap.docs;
-    const items = pageDocs.map((doc) => mapOrderDoc(doc));
+    let items = pageDocs.map((doc) => mapOrderDoc(doc));
+    if (status === "pending" || status === "preparing" || status === "ready" || status === "delivered") {
+      const want = status;
+      items = items.filter((it) => it.status.toLowerCase() === want);
+    }
     const nextCursor = hasMore && pageDocs.length > 0 ? pageDocs[pageDocs.length - 1].id : null;
 
     return Response.json({ items, hasMore, nextCursor }, { status: 200, headers: CACHE_HEADERS });

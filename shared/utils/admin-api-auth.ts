@@ -8,6 +8,7 @@ const NO_STORE = { "Cache-Control": "no-store" } as const;
 export type AdminApiUser = {
   uid: string;
   role: "admin";
+  email: string | null;
 };
 
 type AdminAuthFailure = { ok: false; response: Response };
@@ -93,7 +94,8 @@ export async function requireAdmin(
     ok: true,
     user: {
       uid: auth.decodedToken.uid,
-      role: "admin"
+      role: "admin",
+      email: auth.decodedToken.email ?? null
     }
   };
 }

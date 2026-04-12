@@ -4,6 +4,7 @@ import { setOrderFeed } from "@shared/utils/order-feed-firestore";
 import { RequestUserAuthError, resolveRequestUser } from "@shared/utils/request-user";
 import { resolveServerPricing } from "@shared/utils/server-order-pricing";
 import { generateSignedTrackingToken } from "@shared/utils/tracking-token";
+import { buildInvoiceDoc } from "@shared/utils/invoice-payload";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -77,7 +78,26 @@ export async function POST(request: Request) {
 
     const orderRef = adminDb.collection("orders").doc(orderId);
     const paymentRef = adminDb.collection("payments").doc(paymentId);
+    const invoiceRef = adminDb.collection("invoices").doc(orderId);
     const batch = adminDb.batch();
+
+    const invoiceLines = items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      qty: item.quantity
+    }));
+
+    const invoicePayload = buildInvoiceDoc({
+      orderId,
+      userId,
+      items: invoiceLines,
+      subtotal,
+      tax: taxAmount,
+      total,
+      createdAt: createdAt,
+      source: "storefront"
+    });
 
     batch.set(orderRef, {
       id: orderId,
@@ -94,6 +114,14 @@ export async function POST(request: Request) {
       taxAmount,
       deliveryFee,
       total,
+      invoiceId: orderId,
+      items: items.map((item) => ({
+        productId: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity
+      })),
+      assignedTo: { kitchenId: "", deliveryId: "" },
       couponCode: body.couponCode ?? null,
       address: body.address?.trim() ? body.address.trim() : null,
       customerName: body.customerName?.trim() ? body.customerName.trim() : null,
@@ -101,19 +129,6 @@ export async function POST(request: Request) {
       dayKey,
       createdAt,
       updatedAt: createdAt
-    });
-
-    items.forEach((item) => {
-      const lineRef = adminDb.collection("order_items").doc();
-      batch.set(lineRef, {
-        id: lineRef.id,
-        orderId,
-        menuItemId: item.id,
-        name: item.name,
-        qty: item.quantity,
-        unitPrice: item.price,
-        totalPrice: item.price * item.quantity
-      });
     });
 
     const paymentDoc: Record<string, unknown> = {
@@ -155,6 +170,7 @@ export async function POST(request: Request) {
     }
 
     batch.set(paymentRef, paymentDoc);
+    batch.set(invoiceRef, invoicePayload);
     await batch.commit();
     await setOrderFeed(orderId, {
       status: "pending",

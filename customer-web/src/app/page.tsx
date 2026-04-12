@@ -6,7 +6,7 @@ import { HeroSection } from "@/components/home/hero-section";
 import dynamic from "next/dynamic";
 import { ProductCard } from "@/components/menu/product-card";
 import { SkeletonCard } from "@/components/shared/skeleton-card";
-import { Product, getMenuPayload } from "@/lib/menu-data";
+import type { Product } from "@/lib/menu-data";
 import { fetchReviewSummaries, type ReviewSummary } from "@/lib/reviews-client";
 
 const CategorySlider = dynamic(() => import("@/components/home/category-slider").then((mod) => mod.CategorySlider));
@@ -20,27 +20,72 @@ const ProductQuickViewModal = dynamic(
 
 export default function HomePage() {
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [reviewSummaries, setReviewSummaries] = useState<Record<string, ReviewSummary>>({});
 
-  useEffect(() => {
-    async function loadProducts() {
-      setLoading(true);
-      setError(null);
-      try {
-        const payload = await getMenuPayload();
-        setProducts(payload.products);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load products.");
-      } finally {
-        setLoading(false);
-      }
-    }
+  async function loadProductsPage(cursor?: string | null) {
+    const qp = new URLSearchParams();
+    qp.set("limit", "24");
+    if (cursor) qp.set("cursor", cursor);
+    const res = await fetch(`/api/products?${qp.toString()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Products request failed (${res.status})`);
+    const data = (await res.json()) as {
+      products?: Product[];
+      pageInfo?: { hasMore?: boolean; nextCursor?: string | null };
+    };
+    return {
+      products: Array.isArray(data.products) ? data.products : [],
+      hasMore: Boolean(data.pageInfo?.hasMore),
+      nextCursor: data.pageInfo?.nextCursor ?? null
+    };
+  }
 
-    void loadProducts();
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const page = await loadProductsPage(null);
+        if (cancelled) return;
+        setProducts(page.products);
+        setHasMore(page.hasMore);
+        setNextCursor(page.nextCursor);
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "Failed to load products.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  async function loadMoreProducts() {
+    if (!hasMore || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await loadProductsPage(nextCursor);
+      setProducts((prev) => {
+        const byId = new Map(prev.map((p) => [p.id, p]));
+        for (const p of page.products) byId.set(p.id, p);
+        return [...byId.values()];
+      });
+      setHasMore(page.hasMore);
+      setNextCursor(page.nextCursor);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load more products.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     if (products.length === 0) {
@@ -92,6 +137,18 @@ export default function HomePage() {
           <p className="rounded-xl border border-dashed border-slate-200 bg-white/80 px-4 py-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300">
             No products yet. Check back soon.
           </p>
+        ) : null}
+        {!loading && products.length > 0 && hasMore ? (
+          <div className="flex justify-center pt-2">
+            <button
+              type="button"
+              onClick={() => void loadMoreProducts()}
+              disabled={loadingMore}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+            >
+              {loadingMore ? "Loading..." : "Load more products"}
+            </button>
+          </div>
         ) : null}
       </section>
       <section className="space-y-3">

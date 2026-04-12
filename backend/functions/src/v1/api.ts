@@ -69,31 +69,25 @@ export const platformApiV1 = onRequest(async (request, response) => {
       const batch = db.batch();
       batch.set(orderRef, {
         id: orderRef.id,
-        customerId: identity.uid,
+        userId: identity.uid,
         branchId: payload.branchId,
         orderType: payload.orderType,
         paymentMethod: payload.paymentMethod,
-        status: "created",
+        status: "pending",
         subtotal,
         deliveryFee,
         discount: 0,
         total,
+        items: pricedItems.map((item) => ({
+          productId: item.productId,
+          name: item.name,
+          price: item.unitPrice,
+          quantity: item.quantity
+        })),
+        assignedTo: { kitchenId: "", deliveryId: "" },
         deliveryAddress: payload.deliveryAddress ?? null,
         createdAt: now,
         updatedAt: now
-      });
-      pricedItems.forEach((item) => {
-        const ref = db.collection(COLLECTIONS.orderItems).doc();
-        batch.set(ref, {
-          id: ref.id,
-          orderId: orderRef.id,
-          productId: item.productId,
-          name: item.name,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalPrice: item.unitPrice * item.quantity,
-          createdAt: now
-        });
       });
       const paymentRef = db.collection(COLLECTIONS.payments).doc();
       batch.set(paymentRef, {
@@ -108,7 +102,7 @@ export const platformApiV1 = onRequest(async (request, response) => {
       });
       await batch.commit();
       await syncOrderFeedDoc(orderRef.id, {
-        status: "created",
+        status: "pending",
         updatedAt: now
       }, false);
       response.status(201).json({ success: true, orderId: orderRef.id, paymentId: paymentRef.id, total });
@@ -138,8 +132,9 @@ export const platformApiV1 = onRequest(async (request, response) => {
       const orderId = cancelMatch[1];
       const snap = await db.collection(COLLECTIONS.orders).doc(orderId).get();
       if (!snap.exists) throw new HttpsError("not-found", "Order not found.");
-      const order = snap.data() as { customerId?: string; status?: string };
-      if (order.customerId !== identity.uid && !["manager", "admin", "cashier"].includes(identity.role)) {
+      const order = snap.data() as { customerId?: string; userId?: string; status?: string };
+      const ownerId = order.userId ?? order.customerId;
+      if (ownerId !== identity.uid && !["manager", "admin", "cashier"].includes(identity.role)) {
         throw new HttpsError("permission-denied", "Not allowed.");
       }
       if (order.status === "delivered" || order.status === "cancelled") {
@@ -180,6 +175,10 @@ export const platformApiV1 = onRequest(async (request, response) => {
           updatedAt: now
         },
         false
+      );
+      await db.collection(COLLECTIONS.orders).doc(payload.orderId).set(
+        { deliveryPartnerId: payload.deliveryPartnerId, updatedAt: now },
+        { merge: true }
       );
       response.status(201).json({ success: true, deliveryId: deliveryRef.id });
       return;

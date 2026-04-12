@@ -16,11 +16,38 @@ import {
   signOut,
   type User
 } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
-import { getFirebaseAuth, logFirebaseConfigDebug } from "@/lib/firebase";
+import { getFirebaseAuth, getFirebaseDb, logFirebaseConfigDebug } from "@/lib/firebase";
+
+export type AppRole = "admin" | "manager" | "kitchen" | "delivery" | "counter" | "waiter";
+
+const ROLE_SESSION_KEY = "staff_role_session";
+
+function normalizeRole(raw: unknown): AppRole | null {
+  if (typeof raw !== "string") return null;
+  const r = raw.trim().toLowerCase();
+  if (r === "admin") return "admin";
+  if (r === "manager") return "manager";
+  if (r === "kitchen" || r === "kitchen_staff") return "kitchen";
+  if (r === "delivery" || r === "delivery_boy") return "delivery";
+  if (r === "counter" || r === "cashier") return "counter";
+  if (r === "waiter") return "waiter";
+  return null;
+}
+
+export function routeForRole(role: AppRole | null): string {
+  if (role === "admin" || role === "manager") return "/admin";
+  if (role === "kitchen") return "/kitchen";
+  if (role === "delivery") return "/delivery";
+  if (role === "counter") return "/counter";
+  if (role === "waiter") return "/waiter";
+  return "/login";
+}
 
 type AuthContextValue = {
   user: User | null;
+  role: AppRole | null;
   initializing: boolean;
   isAuthenticated: boolean;
   /** Set when env/config is invalid so UI can show a fix hint */
@@ -35,6 +62,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<AppRole | null>(null);
   const [initializing, setInitializing] = useState(true);
   const [authClaimsResolved, setAuthClaimsResolved] = useState(false);
   const [firebaseConfigError, setFirebaseConfigError] = useState<string | null>(null);
@@ -52,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       unsub = undefined;
       setInitializing(false);
       setUser(null);
+      setRole(null);
       setFirebaseConfigError((prev) => {
         if (prev) return prev;
         return (
@@ -78,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(timeoutId);
       setInitializing(false);
       setUser(null);
+      setRole(null);
       setFirebaseConfigError(e instanceof Error ? e.message : "Firebase configuration error.");
     }
 
@@ -88,7 +118,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
     if (!user) {
+      setRole(null);
+      window.localStorage.removeItem(ROLE_SESSION_KEY);
       setAuthClaimsResolved(true);
       return;
     }
@@ -96,19 +129,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthClaimsResolved(false);
     let cancelled = false;
 
-    user
-      .getIdTokenResult()
-      .then((result) => {
+    Promise.allSettled([
+      user.getIdTokenResult(),
+      getDoc(doc(getFirebaseDb(), "users", user.uid))
+    ])
+      .then(([tokenResult, userDocResult]) => {
         if (cancelled) return;
-        if (process.env.NODE_ENV !== "production") {
-          console.info("[auth] ID token claims:", result.claims);
+        let nextRole: AppRole | null = null;
+
+        if (userDocResult.status === "fulfilled" && userDocResult.value.exists()) {
+          const data = userDocResult.value.data() as { role?: unknown };
+          nextRole = normalizeRole(data.role);
+        }
+
+        if (!nextRole && tokenResult.status === "fulfilled") {
+          if (process.env.NODE_ENV !== "production") {
+            console.info("[auth] ID token claims:", tokenResult.value.claims);
+          }
+          nextRole = normalizeRole(tokenResult.value.claims.role);
+        }
+
+        setRole(nextRole);
+        if (nextRole) {
+          window.localStorage.setItem(ROLE_SESSION_KEY, nextRole);
+        } else {
+          window.localStorage.removeItem(ROLE_SESSION_KEY);
         }
         setAuthClaimsResolved(true);
       })
       .catch(() => {
-        if (!cancelled) {
-          setAuthClaimsResolved(true);
-        }
+        if (cancelled) return;
+        setRole(null);
+        window.localStorage.removeItem(ROLE_SESSION_KEY);
+        setAuthClaimsResolved(true);
       });
 
     return () => {
@@ -148,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       user,
+      role,
       initializing,
       isAuthenticated: Boolean(user),
       firebaseConfigError,
@@ -155,7 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout
     }),
-    [user, initializing, firebaseConfigError, authClaimsResolved, login, logout]
+    [user, role, initializing, firebaseConfigError, authClaimsResolved, login, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

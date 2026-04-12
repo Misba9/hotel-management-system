@@ -4,14 +4,26 @@
     "slug": "nausheen-staff",
     "version": "1.0.0",
     "orientation": "portrait",
-    "assetBundlePatterns": [
-      "**/*"
+    "assetBundlePatterns": ["**/*"],
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Fruit Hotel Staff to use your location for live delivery tracking.",
+          "locationWhenInUsePermission": "Allow Fruit Hotel Staff to use your location for live delivery tracking."
+        }
+      ]
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Location is used to show your position on the delivery map and share live tracking.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Location is used for live delivery tracking while you are on a run."
+      }
     },
     "android": {
-      "package": "com.nausheen.staffmobile"
+      "package": "com.hotel.staffapp",
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
     }
   }
 }

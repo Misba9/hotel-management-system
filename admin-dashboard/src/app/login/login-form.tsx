@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AuthError } from "firebase/auth";
 import { Loader2, Lock, Mail } from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
+import { routeForRole, useAuth } from "@/context/AuthContext";
 import { FirebaseConfigErrorPanel } from "@/components/auth/firebase-config-error-panel";
 
 function mapAuthError(err: unknown): string {
@@ -60,7 +60,7 @@ type Props = {
 
 export function LoginForm({ defaultEmail = "", defaultPassword = "" }: Props) {
   const router = useRouter();
-  const { user, initializing, login, firebaseConfigError } = useAuth();
+  const { user, role, initializing, authClaimsResolved, login, firebaseConfigError } = useAuth();
   const [email, setEmail] = useState(defaultEmail);
   const [password, setPassword] = useState(defaultPassword);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
@@ -69,10 +69,10 @@ export function LoginForm({ defaultEmail = "", defaultPassword = "" }: Props) {
 
   useEffect(() => {
     if (initializing) return;
-    if (user) {
-      router.replace("/admin");
+    if (user && authClaimsResolved) {
+      router.replace(routeForRole(role));
     }
-  }, [user, initializing, router]);
+  }, [user, role, initializing, authClaimsResolved, router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -87,7 +87,6 @@ export function LoginForm({ defaultEmail = "", defaultPassword = "" }: Props) {
     setSubmitting(true);
     try {
       await login(email.trim(), password);
-      router.replace("/admin");
     } catch (err) {
       setSubmitError(mapAuthError(err));
     } finally {

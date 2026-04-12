@@ -59,12 +59,16 @@ export const COLLECTIONS = {
   payments: "payments",
   delivery: "delivery",
   notifications: "notifications",
-  settings: "settings"
+  settings: "settings",
+  invoices: "invoices"
 } as const;
 
 export const orderStatusSchema = z.enum([
   "created",
   "confirmed",
+  "pending",
+  "accepted",
+  "rejected",
   "preparing",
   "ready",
   "out_for_delivery",

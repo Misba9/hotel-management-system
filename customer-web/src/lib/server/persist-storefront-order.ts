@@ -5,6 +5,7 @@ import { setOrderFeed } from "@shared/utils/order-feed-firestore";
 import type { PricedOrderItem } from "@shared/utils/server-order-pricing";
 import { resolveServerPricing } from "@shared/utils/server-order-pricing";
 import { generateSignedTrackingToken } from "@shared/utils/tracking-token";
+import { buildInvoiceDoc } from "@shared/utils/invoice-payload";
 
 export type StorefrontOrderBody = {
   customerName: string;
@@ -81,6 +82,12 @@ export async function persistStorefrontOrder(args: {
 
   const orderRef = adminDb.collection("orders").doc();
   const now = FieldValue.serverTimestamp();
+  const invoiceLines = items.map((i) => ({
+    id: i.id,
+    name: i.name,
+    price: i.price,
+    qty: i.quantity
+  }));
   const orderDoc: Record<string, unknown> = {
     id: orderRef.id,
     trackingId: orderRef.id,
@@ -99,6 +106,8 @@ export async function persistStorefrontOrder(args: {
       quantity: i.quantity
     })),
     totalAmount,
+    invoiceId: orderRef.id,
+    assignedTo: { kitchenId: "", deliveryId: "" },
     address: args.body.address.trim(),
     status: "pending",
     createdAt: now,
@@ -120,7 +129,21 @@ export async function persistStorefrontOrder(args: {
     orderDoc.razorpayPaymentId = args.razorpay.paymentId;
   }
 
-  await orderRef.set(orderDoc);
+  const invoicePayload = buildInvoiceDoc({
+    orderId: orderRef.id,
+    userId: args.userId,
+    items: invoiceLines,
+    subtotal,
+    tax: taxAmount,
+    total: totalAmount,
+    createdAt: now,
+    source: "storefront"
+  });
+
+  const batch = adminDb.batch();
+  batch.set(orderRef, orderDoc);
+  batch.set(adminDb.collection("invoices").doc(orderRef.id), invoicePayload);
+  await batch.commit();
 
   let trackingToken: string | undefined;
   try {

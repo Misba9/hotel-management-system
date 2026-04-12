@@ -10,7 +10,6 @@ import {
   orderBy,
   query,
   startAfter,
-  where,
   type QueryDocumentSnapshot
 } from "firebase/firestore";
 import { Loader2, Mail, MapPin, Package, Phone } from "lucide-react";
@@ -259,37 +258,30 @@ function AddressSnippet({ text }: { text: string | undefined }) {
   );
 }
 
-function buildOrdersQuery(
-  db: ReturnType<typeof getFirebaseDb>,
-  tab: TabFilter,
-  cursor?: QueryDocumentSnapshot | null
-) {
+/**
+ * Single-field timeline query only — avoids composite indexes (status + createdAt, etc.).
+ * Tab filtering is done in memory on {@link orderMatchesTab}.
+ */
+function buildOrdersQuery(db: ReturnType<typeof getFirebaseDb>, cursor?: QueryDocumentSnapshot | null) {
   const col = collection(db, "orders");
   const lim = ORDERS_PAGE_LIMIT;
   const pageAfter = cursor ? [startAfter(cursor)] : [];
+  return query(col, orderBy("createdAt", "desc"), ...pageAfter, limit(lim));
+}
+
+function orderMatchesTab(order: Order, tab: TabFilter): boolean {
+  const s = (order.status ?? "").toLowerCase().trim();
   switch (tab) {
     case "all":
-      return query(col, orderBy("createdAt", "desc"), ...pageAfter, limit(lim));
+      return true;
     case "pending":
-      return query(
-        col,
-        where("status", "in", ["pending", "accepted"]),
-        orderBy("createdAt", "desc"),
-        ...pageAfter,
-        limit(lim)
-      );
+      return s === "pending" || s === "accepted" || s === "created" || s === "confirmed";
     case "preparing":
-      return query(
-        col,
-        where("status", "in", ["preparing", "ready", "out_for_delivery"]),
-        orderBy("createdAt", "desc"),
-        ...pageAfter,
-        limit(lim)
-      );
+      return ["preparing", "ready", "out_for_delivery", "picked_up"].includes(s);
     case "delivered":
-      return query(col, where("status", "==", "delivered"), orderBy("createdAt", "desc"), ...pageAfter, limit(lim));
+      return s === "delivered" || s === "completed";
     default:
-      return query(col, orderBy("createdAt", "desc"), ...pageAfter, limit(lim));
+      return true;
   }
 }
 
@@ -302,16 +294,10 @@ function statusActionButtons(status: string | undefined): {
   const s = (status ?? "pending").toLowerCase();
   switch (s) {
     case "pending":
-      return [
-        { key: "accept", label: "Accept", next: "accepted", variant: "primary" },
-        { key: "reject", label: "Reject", next: "rejected", variant: "danger" }
-      ];
+      return [{ key: "accept", label: "Accept", next: "accepted", variant: "primary" }];
     case "accepted":
       return [{ key: "prep", label: "Preparing", next: "preparing", variant: "primary" }];
     case "preparing":
-    case "ready":
-      return [{ key: "ofd", label: "Out for delivery", next: "out_for_delivery", variant: "primary" }];
-    case "out_for_delivery":
       return [{ key: "done", label: "Delivered", next: "delivered", variant: "primary" }];
     default:
       return [];
@@ -535,18 +521,17 @@ export function OrdersPageFeature() {
   const lastSnapDocRef = useRef<QueryDocumentSnapshot | null>(null);
   const extraCursorRef = useRef<QueryDocumentSnapshot | null>(null);
 
-  const displayOrders = useMemo(() => mergeAdminOrderPages(windowOrders, extraOrders), [windowOrders, extraOrders]);
+  const displayOrders = useMemo(() => {
+    const filteredWindow = windowOrders.filter((o) => orderMatchesTab(o, tab));
+    const filteredExtra = extraOrders.filter((o) => orderMatchesTab(o, tab));
+    return mergeAdminOrderPages(filteredWindow, filteredExtra);
+  }, [windowOrders, extraOrders, tab]);
 
   useEffect(() => {
     if (pulseIds.size === 0) return;
     const t = window.setTimeout(() => setPulseIds(new Set()), 75_000);
     return () => window.clearTimeout(t);
   }, [pulseIds]);
-
-  useEffect(() => {
-    firstSnapRef.current = true;
-    seenIdsRef.current = null;
-  }, [tab]);
 
   useEffect(() => {
     setExtraOrders([]);
@@ -580,9 +565,11 @@ export function OrdersPageFeature() {
     setLoading(true);
     setRealtimeActive(false);
     setError(null);
+    firstSnapRef.current = true;
+    seenIdsRef.current = null;
 
     const db = getFirebaseDb();
-    const q = buildOrdersQuery(db, tab);
+    const q = buildOrdersQuery(db);
 
     const unsub = onSnapshot(
       q,
@@ -630,7 +617,7 @@ export function OrdersPageFeature() {
     );
 
     return () => unsub();
-  }, [user, authClaimsResolved, tab]);
+  }, [user, authClaimsResolved]);
 
   async function patchOrder(
     id: string,
@@ -666,13 +653,14 @@ export function OrdersPageFeature() {
     setLoadingMore(true);
     setError(null);
     try {
-      const q = buildOrdersQuery(db, tab, cursor);
+      const q = buildOrdersQuery(db, cursor);
       const snap = await withRetry(() => getDocs(q), { maxAttempts: 3 });
       const mapped = snap.docs.map(docToOrder);
       setExtraOrders((prev) => [...prev, ...mapped]);
       extraCursorRef.current = snap.docs[snap.docs.length - 1] ?? null;
       setHasMorePages(snap.docs.length === ORDERS_PAGE_LIMIT);
-    } catch {
+    } catch (e) {
+      console.error("[orders page] loadMore", e);
       setError("Could not load more orders.");
     } finally {
       setLoadingMore(false);

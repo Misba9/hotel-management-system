@@ -28,6 +28,7 @@ import {
   upsertStaffV1
 } from "./v1/admin";
 import { platformApiV1 } from "./v1/api";
+import { createStaffUser } from "./adminStaffCreate";
 
 initializeApp();
 
@@ -68,5 +69,6 @@ export {
   getSalesReportV1,
   seedSettingsV1,
   createAdminUserV1,
-  platformApiV1
+  platformApiV1,
+  createStaffUser
 };

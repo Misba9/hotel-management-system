@@ -68,19 +68,35 @@ export const createOrderV1 = withCallableGuard(
     const subtotal = pricedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     const deliveryFee = payload.orderType === "delivery" ? 40 : 0;
     const discount = 0;
-    const total = Math.max(0, subtotal - discount + deliveryFee);
+    const tax = 0;
+    const total = Math.max(0, subtotal - discount + deliveryFee + tax);
     const now = createTimestamp();
     const orderRef = db.collection(COLLECTIONS.orders).doc();
     const paymentRef = db.collection(COLLECTIONS.payments).doc();
+    const invoiceRef = db.collection(COLLECTIONS.invoices).doc(orderRef.id);
     const batch = db.batch();
+
+    const lineItems = pricedItems.map((item) => ({
+      productId: item.productId,
+      name: item.name,
+      price: item.unitPrice,
+      quantity: item.quantity
+    }));
+
+    const invoiceLines = pricedItems.map((item) => ({
+      id: item.productId,
+      name: item.name,
+      price: item.unitPrice,
+      qty: item.quantity
+    }));
 
     batch.set(orderRef, {
       id: orderRef.id,
-      customerId: ctx.uid,
+      userId: ctx.uid,
       branchId: payload.branchId,
       orderType: payload.orderType,
       paymentMethod: payload.paymentMethod,
-      status: "created",
+      status: "pending",
       notes: payload.notes ?? null,
       couponCode: payload.couponCode ?? null,
       deliveryAddress: payload.deliveryAddress ?? null,
@@ -88,22 +104,23 @@ export const createOrderV1 = withCallableGuard(
       discount,
       deliveryFee,
       total,
+      invoiceId: orderRef.id,
+      items: lineItems,
+      assignedTo: { kitchenId: "", deliveryId: "" },
       createdAt: now,
       updatedAt: now
     });
 
-    pricedItems.forEach((item) => {
-      const ref = db.collection(COLLECTIONS.orderItems).doc();
-      batch.set(ref, {
-        id: ref.id,
-        orderId: orderRef.id,
-        productId: item.productId,
-        name: item.name,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalPrice: item.unitPrice * item.quantity,
-        createdAt: now
-      });
+    batch.set(invoiceRef, {
+      orderId: orderRef.id,
+      invoiceId: orderRef.id,
+      userId: ctx.uid,
+      items: invoiceLines,
+      subtotal,
+      tax,
+      total,
+      createdAt: now,
+      source: "callable_v1"
     });
 
     batch.set(paymentRef, {
@@ -119,7 +136,7 @@ export const createOrderV1 = withCallableGuard(
     await batch.commit();
 
     await syncOrderFeedDoc(orderRef.id, {
-      status: "created",
+      status: "pending",
       total,
       branchId: payload.branchId,
       updatedAt: now
@@ -164,8 +181,9 @@ export const cancelOrderV1 = withCallableGuard(
     if (!snap.exists) {
       throw new HttpsError("not-found", "Order not found.");
     }
-    const order = snap.data() as { customerId?: string; status?: string };
-    const isOwner = order.customerId === ctx.uid;
+    const order = snap.data() as { customerId?: string; userId?: string; status?: string };
+    const ownerId = order.userId ?? order.customerId;
+    const isOwner = ownerId === ctx.uid;
     const isPrivileged = ["manager", "admin", "cashier"].includes(ctx.role);
     if (!isOwner && !isPrivileged) {
       throw new HttpsError("permission-denied", "Not allowed to cancel this order.");

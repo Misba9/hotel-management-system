@@ -240,6 +240,9 @@ export function PhoneLoginForm({
               <strong>Identity Toolkit API</strong>. For localhost, allow the domain and relax API key restrictions if
               SMS fails.
             </p>
+            <p className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-500">
+              Test OTP setup (Firebase test phone): <strong>9059899298</strong> with code <strong>123456</strong>.
+            </p>
             {error ? (
               <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
                 {error}

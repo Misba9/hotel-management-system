@@ -1,0 +1,12 @@
+# Local secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Expo / native
+.expo/
+dist/
+web-build/
+
+# macOS
+.DS_Store

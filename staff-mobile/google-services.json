@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "611343650554",
+    "project_id": "nausheen-fruits-new",
+    "storage_bucket": "nausheen-fruits-new.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:611343650554:android:4800365c81fa3f0fdf4343",
+        "android_client_info": {
+          "package_name": "com.hotel.staffapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "611343650554-gnmmga6dtvmf4qh1f50unsjc6r0jkota.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyALjFLpZYo4cCPYTls0JGxbqOZzcPBzch0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "611343650554-gnmmga6dtvmf4qh1f50unsjc6r0jkota.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

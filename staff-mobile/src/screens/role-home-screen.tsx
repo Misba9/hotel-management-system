@@ -1,49 +1,51 @@
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
-import {
-  CashierPanel,
-  DeliveryPanel,
-  KitchenPanel,
-  ManagerPanel,
-  WaiterPanel
-} from "../components/role-panels";
-import { useStaffAuth, type StaffRole } from "../context/staff-auth-context";
+import { KitchenPanel } from "../components/role-panels";
+import { useStaffAuth } from "../context/staff-auth-context";
+import type { StaffRoleId } from "../constants/staff-roles";
 
-function roleLabel(role: StaffRole | null) {
+function roleLabel(role: StaffRoleId | null) {
   switch (role) {
-    case "delivery_boy":
-      return "Delivery";
-    case "kitchen_staff":
-      return "Kitchen";
-    case "waiter":
-      return "Waiter";
-    case "cashier":
-      return "Counter / POS";
-    case "manager":
-      return "Manager";
     case "admin":
       return "Admin";
+    case "manager":
+      return "Manager";
+    case "cashier":
+      return "Cashier";
+    case "kitchen":
+      return "Kitchen";
+    case "delivery":
+      return "Delivery";
+    case "waiter":
+      return "Waiter";
     default:
       return "Staff";
   }
 }
 
+/** Legacy combined home; prefer role-specific routes in App.tsx. */
 export function RoleHomeScreen() {
-  const { role } = useStaffAuth();
+  const { staff, role } = useStaffAuth();
 
   const content = (() => {
     switch (role) {
-      case "delivery_boy":
-        return <DeliveryPanel />;
-      case "kitchen_staff":
+      case "kitchen":
         return <KitchenPanel />;
-      case "waiter":
-        return <WaiterPanel />;
-      case "cashier":
-        return <CashierPanel />;
       case "manager":
       case "admin":
-        return <ManagerPanel />;
+        return (
+          <View style={{ padding: 16 }}>
+            <Text style={{ color: "#64748b" }}>Use the role-specific routes from the main app entry.</Text>
+          </View>
+        );
+      case "cashier":
+      case "delivery":
+      case "waiter":
+        return (
+          <View style={{ padding: 16 }}>
+            <Text style={{ color: "#64748b" }}>Use Billing, Delivery, or Waiter from the main app entry.</Text>
+          </View>
+        );
       default:
         return (
           <View style={{ padding: 16 }}>
@@ -55,9 +57,9 @@ export function RoleHomeScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: "#FFF8F3", padding: 16 }}>
-      <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 4 }}>{roleLabel(role)} workspace</Text>
+      <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 4 }}>{roleLabel(staff?.role ?? role)} workspace</Text>
       <Text style={{ color: "#64748b", marginBottom: 16, fontSize: 13 }}>
-        Signed in as {role?.replace(/_/g, " ") ?? "—"} — only features for your role are shown.
+        Signed in as {staff?.name ?? "—"} — features depend on your role.
       </Text>
       {content}
     </ScrollView>

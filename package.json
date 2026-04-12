@@ -8,8 +8,12 @@
     "staff-mobile",
     "backend/functions"
   ],
+  "overrides": {
+    "react-native": "0.74.5"
+  },
   "dependencies": {
     "@react-google-maps/api": "^2.20.8",
+    "concurrently": "^9.2.1",
     "dotenv": "^16.4.5",
     "firebase": "^12.11.0",
     "firebase-admin": "^13.7.0",

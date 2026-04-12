@@ -20,11 +20,13 @@ export async function GET(request: Request) {
   });
   if (!auth.ok) return auth.response;
   try {
-    const partnersSnap = await adminDb.collection("staff").where("role", "==", "delivery_boy").orderBy("name").get();
+    const partnersSnap = await adminDb.collection("staff").where("role", "==", "delivery_boy").get();
     const assignmentsSnap = await adminDb.collection("delivery_assignments").orderBy("updatedAt", "desc").limit(50).get();
     return Response.json(
       {
-        partners: partnersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+        partners: partnersSnap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .sort((a, b) => String((a as { name?: string }).name ?? "").localeCompare(String((b as { name?: string }).name ?? ""))),
         assignments: assignmentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
       },
       { status: 200 }
@@ -77,6 +79,7 @@ export async function POST(request: Request) {
     await adminDb.collection("orders").doc(body.orderId).set(
       {
         deliveryPartnerId: body.deliveryPartnerId,
+        "assignedTo.deliveryId": body.deliveryPartnerId,
         updatedAt: now
       },
       { merge: true }

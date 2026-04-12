@@ -61,6 +61,12 @@ export interface SaaSOrderDoc {
   customerName: string;
 }
 
+/** Embedded on every `orders/{id}` document (kitchen / delivery assignment). */
+export interface UnifiedAssignedToDoc {
+  kitchenId: string;
+  deliveryId: string;
+}
+
 export interface OrderDoc {
   id: string;
   userId: string;
@@ -74,6 +80,9 @@ export interface OrderDoc {
   deliveryFee: number;
   couponCode?: string;
   total: number;
+  /** Line items live on the order document (no separate `order_items` / `orderItems` for new writes). */
+  items?: unknown[];
+  assignedTo?: UnifiedAssignedToDoc;
   customerLocation?: { lat: number; lng: number };
   dayKey: string;
   createdAt: string;

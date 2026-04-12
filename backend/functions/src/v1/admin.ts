@@ -123,14 +123,19 @@ export const upsertStaffV1 = withCallableGuard(
 export const listOrdersV1 = withCallableGuard(
   async (payload, ctx) => {
     assertRole(ctx.role, ["cashier", "kitchen_staff", "manager", "admin"]);
-    let query = db.collection(COLLECTIONS.orders).orderBy("createdAt", "desc").limit(payload.limit ?? 20);
+    const lim = payload.limit ?? 20;
+    const snap = await db
+      .collection(COLLECTIONS.orders)
+      .orderBy("createdAt", "desc")
+      .limit(payload.status ? Math.min(lim * 8, 300) : lim)
+      .get();
+    let items = snap.docs.map((doc) => doc.data());
     if (payload.status) {
-      query = db.collection(COLLECTIONS.orders).where("status", "==", payload.status).orderBy("createdAt", "desc").limit(payload.limit ?? 20);
+      items = items.filter((row) => String((row as { status?: string }).status ?? "") === payload.status).slice(0, lim);
     }
-    const snap = await query.get();
     return {
       success: true,
-      items: snap.docs.map((doc) => doc.data())
+      items
     };
   },
   orderQuerySchema

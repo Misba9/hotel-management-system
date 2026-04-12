@@ -61,6 +61,17 @@ export async function assignNearestDeliveryBoy(params: {
     activeOrders: best.rider.activeOrders + 1
   });
 
+  /** Canonical `assignedTo.deliveryId` plus legacy ids for older clients. */
+  await db.collection("orders").doc(orderId).set(
+    {
+      deliveryPartnerId: best.rider.id,
+      deliveryBoyId: best.rider.id,
+      "assignedTo.deliveryId": best.rider.id,
+      updatedAt: nowIso
+    },
+    { merge: true }
+  );
+
   await syncDeliveryTrackingDoc(orderId, {
     assignmentId: assignmentRef.id,
     deliveryBoyId: best.rider.id,

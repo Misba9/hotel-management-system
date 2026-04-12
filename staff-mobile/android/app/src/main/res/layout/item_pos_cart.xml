@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#F8FAFC"
+    android:padding="8dp"
+    android:layout_marginBottom="8dp">
+
+    <TextView
+        android:id="@+id/cartItemName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#0F172A"
+        android:textStyle="bold"
+        android:textSize="13sp"
+        android:maxLines="1" />
+
+    <TextView
+        android:id="@+id/cartItemLinePrice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#475569"
+        android:textSize="12sp"
+        android:layout_marginTop="2dp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="6dp">
+
+        <Button
+            android:id="@+id/cartMinusButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:text="-"
+            android:textStyle="bold"
+            android:textAllCaps="false"
+            android:backgroundTint="#CBD5E1"
+            android:textColor="#0F172A" />
+
+        <TextView
+            android:id="@+id/cartItemQty"
+            android:layout_width="40dp"
+            android:layout_height="36dp"
+            android:gravity="center"
+            android:textColor="#0F172A"
+            android:textStyle="bold"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/cartPlusButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:text="+"
+            android:textStyle="bold"
+            android:textAllCaps="false"
+            android:backgroundTint="#0EA5E9"
+            android:textColor="#FFFFFF" />
+    </LinearLayout>
+</LinearLayout>

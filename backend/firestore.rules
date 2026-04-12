@@ -13,12 +13,59 @@ service cloud.firestore {
       return isAuthed() && request.auth.token.role in roles;
     }
 
+    /** Staff app RBAC uses `delivery`; legacy tokens may use `delivery_boy`. */
+    function staffDeliveryAgent() {
+      return hasAnyRole(["delivery_boy", "delivery"]);
+    }
+
     function isOwner(userId) {
       return isAuthed() && request.auth.uid == userId;
     }
 
     function hasOnlyKeys(allowed) {
       return request.resource.data.keys().hasOnly(allowed);
+    }
+
+    /** One-time mobile self-signup: exact shape, role staff, inactive until admin assigns role. */
+    function validStaffSelfSignupCreate() {
+      return request.resource.data.keys().hasOnly([
+            "uid",
+            "email",
+            "name",
+            "role",
+            "isActive",
+            "pendingApproval",
+            "phone",
+            "createdAt"
+          ]) &&
+        request.resource.data.uid is string &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.email is string &&
+        request.resource.data.name is string &&
+        request.resource.data.role == "staff" &&
+        request.resource.data.isActive == false &&
+        request.resource.data.pendingApproval == true &&
+        request.resource.data.phone is string &&
+        request.resource.data.createdAt is timestamp;
+    }
+
+    /** First staff-app login: `staff_users/{auth.uid}` — pending role; `isActive` may be true (app) or false. */
+    function validPendingStaffProfileCreate() {
+      return request.resource.data.keys().hasOnly([
+            "uid",
+            "email",
+            "name",
+            "role",
+            "isActive",
+            "createdAt"
+          ]) &&
+        request.resource.data.uid is string &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.email is string &&
+        request.resource.data.name is string &&
+        request.resource.data.role == "pending" &&
+        request.resource.data.isActive is bool &&
+        request.resource.data.createdAt == request.time;
     }
 
     function validOrderStatus(status) {
@@ -42,6 +89,171 @@ service cloud.firestore {
         request.resource.data.total >= 0;
     }
 
+    function staffUserActive() {
+      return exists(/databases/$(database)/documents/staff_users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/staff_users/$(request.auth.uid)).data.isActive == true;
+    }
+
+    /** Kitchen/delivery pipeline: legacy `staff_pos`, or staff-origin tickets (`createdByUid`), or legacy staff rows without `subtotal`. */
+    function usesKitchenDeliveryPipeline(data) {
+      return (data.keys().hasAny(["orderKind"]) && data.orderKind == "staff_pos") ||
+        (data.assignedTo is map && (
+          !data.keys().hasAny(["subtotal"]) ||
+          data.keys().hasAny(["createdByUid"])
+        ));
+    }
+
+    /** Cashier — unified POS create. */
+    function validUnifiedCashierOrderCreate(orderId) {
+      return request.resource.data.keys().hasOnly([
+            "id",
+            "userId",
+            "branchId",
+            "items",
+            "total",
+            "subtotal",
+            "tax",
+            "invoiceId",
+            "status",
+            "createdAt",
+            "updatedAt",
+            "assignedTo",
+            "customer",
+            "createdByUid",
+            "deliveryLocation"
+          ]) &&
+        request.resource.data.id == orderId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.branchId is string &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.items is list &&
+        request.resource.data.total is number &&
+        request.resource.data.total >= 0 &&
+        request.resource.data.subtotal is number &&
+        request.resource.data.subtotal >= 0 &&
+        request.resource.data.tax is number &&
+        request.resource.data.tax >= 0 &&
+        request.resource.data.invoiceId == orderId &&
+        request.resource.data.assignedTo is map &&
+        request.resource.data.assignedTo.keys().hasOnly(["kitchenId", "deliveryId"]) &&
+        request.resource.data.assignedTo.kitchenId is string &&
+        request.resource.data.assignedTo.deliveryId is string &&
+        request.resource.data.customer is map &&
+        request.resource.data.deliveryLocation is map &&
+        request.resource.data.deliveryLocation.lat is number &&
+        request.resource.data.deliveryLocation.lng is number &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+    }
+
+    /** Waiter — dine-in ticket. */
+    function validUnifiedWaiterOrderCreate(orderId) {
+      return request.resource.data.keys().hasOnly([
+            "id",
+            "userId",
+            "branchId",
+            "orderType",
+            "type",
+            "tableNumber",
+            "items",
+            "total",
+            "subtotal",
+            "tax",
+            "invoiceId",
+            "createdByUid",
+            "status",
+            "createdAt",
+            "updatedAt",
+            "assignedTo"
+          ]) &&
+        request.resource.data.id == orderId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.branchId is string &&
+        request.resource.data.orderType == "dine_in" &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.items is list &&
+        request.resource.data.total is number &&
+        request.resource.data.total >= 0 &&
+        request.resource.data.subtotal is number &&
+        request.resource.data.subtotal >= 0 &&
+        request.resource.data.tax is number &&
+        request.resource.data.tax >= 0 &&
+        request.resource.data.invoiceId == orderId &&
+        request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.tableNumber is int &&
+        request.resource.data.assignedTo is map &&
+        request.resource.data.assignedTo.keys().hasOnly(["kitchenId", "deliveryId"]) &&
+        request.resource.data.assignedTo.kitchenId is string &&
+        request.resource.data.assignedTo.deliveryId is string &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+    }
+
+    function assignDeliveryUid(data) {
+      return (data.assignedTo.deliveryId is string && data.assignedTo.deliveryId != "")
+        ? data.assignedTo.deliveryId
+        : data.assignedTo.delivery;
+    }
+
+    function pipelineChangedKeys() {
+      return request.resource.data.diff(resource.data).changedKeys();
+    }
+
+    function pipelineKitchenUpdateOk() {
+      return hasRole("kitchen_staff") &&
+        staffUserActive() &&
+        usesKitchenDeliveryPipeline(resource.data) &&
+        pipelineChangedKeys().hasOnly(["status", "updatedAt", "assignedTo"]) &&
+        validOrderStatus(request.resource.data.status) &&
+        (
+          (resource.data.status == "pending" && request.resource.data.status == "preparing") ||
+          (resource.data.status == "accepted" && request.resource.data.status == "preparing") ||
+          (resource.data.status == "preparing" && request.resource.data.status == "ready")
+        );
+    }
+
+    function pipelineDeliveryUpdateOk() {
+      return staffDeliveryAgent() &&
+        staffUserActive() &&
+        usesKitchenDeliveryPipeline(resource.data) &&
+        pipelineChangedKeys().hasOnly(["status", "updatedAt", "assignedTo"]) &&
+        validOrderStatus(request.resource.data.status) &&
+        (
+          (
+            resource.data.status == "ready" &&
+            request.resource.data.status == "out_for_delivery" &&
+            assignDeliveryUid(request.resource.data) == request.auth.uid
+          ) ||
+          (
+            resource.data.status == "out_for_delivery" &&
+            request.resource.data.status == "delivered" &&
+            assignDeliveryUid(resource.data) == request.auth.uid
+          )
+        );
+    }
+
+    function pipelineManagerUpdateOk() {
+      return hasAnyRole(["manager", "admin"]) &&
+        staffUserActive() &&
+        usesKitchenDeliveryPipeline(resource.data) &&
+        pipelineChangedKeys().hasOnly(["status", "updatedAt", "assignedTo", "customer", "deliveryLocation", "riderLocation"]) &&
+        validOrderStatus(request.resource.data.status);
+    }
+
+    /** Live GPS while order is out for delivery (does not change drop-off). */
+    function pipelineRiderLocationUpdateOk() {
+      return staffDeliveryAgent() &&
+        staffUserActive() &&
+        usesKitchenDeliveryPipeline(resource.data) &&
+        resource.data.status == "out_for_delivery" &&
+        assignDeliveryUid(resource.data) == request.auth.uid &&
+        pipelineChangedKeys().hasOnly(["riderLocation", "updatedAt"]) &&
+        request.resource.data.riderLocation is map &&
+        request.resource.data.riderLocation.lat is number &&
+        request.resource.data.riderLocation.lng is number;
+    }
+
     function validMenuItemWrite() {
       return request.resource.data.id is string &&
         request.resource.data.name is string &&
@@ -59,8 +271,9 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      /** Own profile + FCM tokens; staff use Admin SDK in dashboard. */
-      allow read, write: if isOwner(userId);
+      /** Own profile; admin/manager may read all user docs for dashboards (list + realtime). */
+      allow read: if isOwner(userId) || hasAnyRole(["admin", "manager"]);
+      allow write: if isOwner(userId);
 
       /** Customer delivery addresses saved under the user document. */
       match /addresses/{addressId} {
@@ -86,11 +299,65 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if isAuthed() && (
         resource.data.userId == request.auth.uid ||
-        hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy"])
+        hasAnyRole(["admin", "manager"]) ||
+        (staffUserActive() && hasAnyRole(["kitchen_staff", "waiter", "cashier", "delivery_boy", "delivery"]))
       );
-      allow create: if isAuthed() && request.resource.data.userId == request.auth.uid && validOrderWrite();
-      /** Customers create via API/Functions; status changes are staff or Admin SDK. */
-      allow update: if isAuthed() && hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy"]) && validOrderWrite();
+      allow create: if isAuthed() && (
+        (request.resource.data.userId == request.auth.uid && validOrderWrite()) ||
+        (hasRole("cashier") && staffUserActive() && validUnifiedCashierOrderCreate(orderId)) ||
+        (hasRole("waiter") && staffUserActive() && validUnifiedWaiterOrderCreate(orderId))
+      );
+      allow update: if isAuthed() && (
+        (usesKitchenDeliveryPipeline(resource.data) && staffUserActive() && (
+            pipelineKitchenUpdateOk() ||
+            pipelineDeliveryUpdateOk() ||
+            pipelineRiderLocationUpdateOk() ||
+            pipelineManagerUpdateOk()
+          )) ||
+        (!usesKitchenDeliveryPipeline(resource.data) && hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy", "delivery"]) && validOrderWrite())
+      );
+    }
+
+    /** Bill / receipt — doc id == `orderId`; written with staff POS or Admin SDK (storefront). */
+    function validStaffInvoiceCreate(invoiceId) {
+      return request.resource.data.keys().hasOnly([
+            "orderId",
+            "invoiceId",
+            "userId",
+            "items",
+            "subtotal",
+            "tax",
+            "total",
+            "createdAt",
+            "source"
+          ]) &&
+        request.resource.data.orderId == invoiceId &&
+        request.resource.data.invoiceId == invoiceId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.subtotal is number &&
+        request.resource.data.subtotal >= 0 &&
+        request.resource.data.tax is number &&
+        request.resource.data.tax >= 0 &&
+        request.resource.data.total is number &&
+        request.resource.data.total >= 0 &&
+        request.resource.data.items is list &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.source in ["pos", "dine_in"];
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if isAuthed() && (
+        resource.data.userId == request.auth.uid ||
+        hasAnyRole(["admin", "manager"]) ||
+        (staffUserActive() && hasAnyRole(["kitchen_staff", "waiter", "cashier", "delivery_boy", "delivery"]))
+      );
+      allow create: if staffUserActive() &&
+        validStaffInvoiceCreate(invoiceId) &&
+        (
+          (hasRole("cashier") && request.resource.data.source == "pos") ||
+          (hasRole("waiter") && request.resource.data.source == "dine_in")
+        );
+      allow update, delete: if false;
     }
 
     match /order_items/{id} {
@@ -110,13 +377,21 @@ service cloud.firestore {
 
     match /delivery_assignments/{id} {
       allow read: if isAuthed();
-      allow update: if hasAnyRole(["delivery_boy", "manager", "admin"]);
+      allow update: if hasAnyRole(["delivery_boy", "delivery", "manager", "admin"]);
       allow create: if hasAnyRole(["manager", "admin"]);
     }
 
     match /staff/{id} {
       allow read: if hasAnyRole(["manager", "admin"]);
       allow write: if hasAnyRole(["manager", "admin"]);
+    }
+
+    /**
+     * Staff directory (TEMP): any signed-in user may read/write `staff_users` — tighten before production.
+     * Admin dashboard still uses Admin SDK for other users. Replace with owner-only rules when stable.
+     */
+    match /staff_users/{uid} {
+      allow read, write: if request.auth != null;
     }
 
     match /inventory/{id} {
@@ -148,7 +423,10 @@ service cloud.firestore {
         request.resource.data.id is string &&
         request.resource.data.name is string &&
         request.resource.data.price is number &&
-        request.resource.data.price >= 0;
+        request.resource.data.price >= 0 &&
+        request.resource.data.category is string &&
+        request.resource.data.image is string &&
+        request.resource.data.availability is bool;
     }
 
     match /categories/{id} {
@@ -166,7 +444,7 @@ service cloud.firestore {
 
     match /delivery/{id} {
       allow read: if isAuthed();
-      allow write: if hasAnyRole(["delivery_boy", "manager", "admin"]);
+      allow write: if hasAnyRole(["delivery_boy", "delivery", "manager", "admin"]);
     }
 
     match /settings/{id} {
@@ -190,14 +468,14 @@ service cloud.firestore {
     match /deliveryLocations/{orderId} {
       allow read: if isAuthed() && (
         resource.data.userId == request.auth.uid ||
-        hasAnyRole(["delivery_boy", "manager", "admin"])
+        hasAnyRole(["delivery_boy", "delivery", "manager", "admin"])
       );
-      allow create: if hasAnyRole(["delivery_boy", "manager", "admin"]) &&
+      allow create: if hasAnyRole(["delivery_boy", "delivery", "manager", "admin"]) &&
         request.resource.data.orderId == orderId &&
         request.resource.data.userId is string &&
         request.resource.data.lat is number &&
         request.resource.data.lng is number;
-      allow update: if hasAnyRole(["delivery_boy", "manager", "admin"]) &&
+      allow update: if hasAnyRole(["delivery_boy", "delivery", "manager", "admin"]) &&
         request.resource.data.orderId == orderId &&
         request.resource.data.userId == resource.data.userId;
     }
@@ -208,7 +486,7 @@ service cloud.firestore {
     }
 
     match /staffNewOrderEvents/{id} {
-      allow read: if hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy"]);
+      allow read: if hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy", "delivery"]);
       allow write: if false;
     }
 

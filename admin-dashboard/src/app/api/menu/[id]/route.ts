@@ -1,5 +1,6 @@
 import { adminDb } from "@shared/firebase/admin";
 import { requireAdmin } from "@shared/utils/admin-api-auth";
+import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 
 const optionalImageUrl = z.union([z.literal(""), z.string().url()]);
@@ -23,7 +24,20 @@ export async function PATCH(request: Request, context: { params: { id: string } 
   try {
     const id = context.params.id;
     const body = menuUpdateSchema.parse(await request.json());
-    await adminDb.collection("menu_items").doc(id).set(body, { merge: true });
+    const updates: Record<string, unknown> = { ...body, updatedAt: FieldValue.serverTimestamp() };
+    if (body.imageUrl !== undefined) {
+      updates.image = body.imageUrl;
+    }
+    if (body.categoryId !== undefined) {
+      updates.category = body.categoryId;
+    }
+    if (body.available !== undefined) {
+      updates.availability = body.available;
+    }
+    await adminDb.collection("products").doc(id).set(updates, { merge: true });
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[admin/menu] updated product", { id, keys: Object.keys(updates) });
+    }
     return Response.json({ success: true }, { status: 200 });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -43,7 +57,10 @@ export async function DELETE(request: Request, context: { params: { id: string }
   if (!auth.ok) return auth.response;
   try {
     const id = context.params.id;
-    await adminDb.collection("menu_items").doc(id).delete();
+    await adminDb.collection("products").doc(id).delete();
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[admin/menu] deleted product", { id });
+    }
     return Response.json({ success: true }, { status: 200 });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {

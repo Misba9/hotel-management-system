@@ -1,5 +1,6 @@
-import { StaffPageFeature } from "@/features/staff/staff-page";
+import { redirect } from "next/navigation";
 
-export default function StaffPage() {
-  return <StaffPageFeature />;
+/** @deprecated Use `/admin/staff` (inside admin shell). */
+export default function LegacyStaffPage() {
+  redirect("/admin/staff");
 }

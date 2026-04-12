@@ -1,4 +1,4 @@
-import { getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { assignNearestDeliveryBoy } from "./delivery";
 import { assertRole, placeOrderSchema, rateLimit, withIdempotency } from "./security";
@@ -36,9 +36,18 @@ export const placeOrder = onCall(async (request) => {
 
   const subtotal = menuItems.reduce((sum, item) => sum + item.doc.price * item.qty, 0);
   const deliveryFee = payload.orderType === "delivery" ? 40 : 0;
-  const total = subtotal + deliveryFee;
+  const tax = 0;
+  const total = subtotal + deliveryFee + tax;
 
-  await orderRef.set({
+  const invoiceItems = menuItems.map((item) => ({
+    id: item.id,
+    name: item.doc.name,
+    price: item.doc.price,
+    qty: item.qty
+  }));
+
+  const batch = db.batch();
+  batch.set(orderRef, {
     id: orderRef.id,
     userId: request.auth.uid,
     branchId: payload.branchId,
@@ -50,20 +59,23 @@ export const placeOrder = onCall(async (request) => {
     discount: 0,
     deliveryFee,
     total,
+    invoiceId: orderRef.id,
     dayKey,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString()
   });
-  await syncOrderFeedDoc(
-    orderRef.id,
-    {
-      status: "pending",
-      updatedAt: now.toISOString()
-    },
-    false
-  );
+  batch.set(db.collection("invoices").doc(orderRef.id), {
+    orderId: orderRef.id,
+    invoiceId: orderRef.id,
+    userId: request.auth.uid,
+    items: invoiceItems,
+    subtotal,
+    tax,
+    total,
+    createdAt: FieldValue.serverTimestamp(),
+    source: "legacy_placeOrder"
+  });
 
-  const batch = db.batch();
   menuItems.forEach((item) => {
     const lineRef = db.collection("order_items").doc();
     batch.set(lineRef, {
@@ -86,6 +98,15 @@ export const placeOrder = onCall(async (request) => {
     amount: total
   });
   await batch.commit();
+
+  await syncOrderFeedDoc(
+    orderRef.id,
+    {
+      status: "pending",
+      updatedAt: now.toISOString()
+    },
+    false
+  );
 
   return { orderId: orderRef.id, total };
 });

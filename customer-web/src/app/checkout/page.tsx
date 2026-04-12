@@ -18,8 +18,8 @@ type PaymentMethod = "cod" | "razorpay";
 
 const CHECKOUT_AUTH_MODAL: OpenAuthModalOptions = {
   fullPageLoginHref: `/login?redirect=${encodeURIComponent("/checkout")}`,
-  modalTitle: "Sign in to checkout",
-  modalDescription: "Use phone OTP, email, Google, or Apple. You stay on this page — no reload."
+  modalTitle: "Please sign in to continue",
+  modalDescription: "Use phone OTP, email/password, or Google. You stay on this page and continue checkout after login."
 };
 
 type CreateOrderResponse = {

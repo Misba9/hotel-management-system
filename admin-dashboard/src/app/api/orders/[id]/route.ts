@@ -1,5 +1,6 @@
 import { adminDb } from "@shared/firebase/admin";
 import { requireAdmin } from "@shared/utils/admin-api-auth";
+import { getAssignedTo } from "@shared/utils/unified-order-doc";
 import { updateOrderFeed } from "@shared/utils/order-feed-firestore";
 import { z } from "zod";
 
@@ -50,7 +51,15 @@ export async function PATCH(request: Request, context: { params: { id: string } 
         updates.statusBucket = "completed";
       }
     }
-    if (body.deliveryPartnerId) updates.deliveryPartnerId = body.deliveryPartnerId;
+    if (body.deliveryPartnerId) {
+      updates.deliveryPartnerId = body.deliveryPartnerId;
+      const prev = existing.data();
+      const at = getAssignedTo(prev as { assignedTo?: unknown });
+      updates.assignedTo = {
+        kitchenId: at.kitchenId,
+        deliveryId: body.deliveryPartnerId
+      };
+    }
 
     await orderRef.set(updates, { merge: true });
 

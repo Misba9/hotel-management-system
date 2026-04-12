@@ -1,9 +1,11 @@
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 import { getMessaging } from "firebase-admin/messaging";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 
 const db = getFirestore();
 const messaging = getMessaging();
+const adminAuth = getAuth();
 
 type OrderDocShape = {
   status?: string;
@@ -78,6 +80,57 @@ async function sendFcmToUser(
   }
 }
 
+async function collectAdminAndManagerUids(): Promise<string[]> {
+  const out = new Set<string>();
+  let nextPageToken: string | undefined;
+  do {
+    const page = await adminAuth.listUsers(1000, nextPageToken);
+    for (const user of page.users) {
+      const role = String(user.customClaims?.role ?? "");
+      if (role === "admin" || role === "manager") out.add(user.uid);
+    }
+    nextPageToken = page.pageToken;
+  } while (nextPageToken);
+  return [...out];
+}
+
+async function collectFcmTokensForUids(uids: string[]): Promise<string[]> {
+  if (uids.length === 0) return [];
+  const chunks: string[][] = [];
+  for (let i = 0; i < uids.length; i += 10) chunks.push(uids.slice(i, i + 10));
+  const tokens = new Set<string>();
+  for (const chunk of chunks) {
+    const snaps = await Promise.all(chunk.map((uid) => db.collection("users").doc(uid).get()));
+    for (const snap of snaps) {
+      const row = snap.data() as { fcmToken?: string; fcmTokens?: unknown } | undefined;
+      if (typeof row?.fcmToken === "string" && row.fcmToken) tokens.add(row.fcmToken);
+      if (Array.isArray(row?.fcmTokens)) {
+        for (const t of row.fcmTokens) {
+          if (typeof t === "string" && t) tokens.add(t);
+        }
+      }
+    }
+  }
+  return [...tokens].slice(0, 500);
+}
+
+async function sendFcmToAdminsOnNewOrder(orderId: string, total: number): Promise<void> {
+  const uids = await collectAdminAndManagerUids();
+  const tokens = await collectFcmTokensForUids(uids);
+  if (tokens.length === 0) return;
+  await messaging.sendEachForMulticast({
+    tokens,
+    notification: {
+      title: "New order received",
+      body: `Order #${orderId.slice(0, 8)} · Rs. ${Math.round(total)}`
+    },
+    data: {
+      type: "new_order",
+      orderId
+    }
+  });
+}
+
 export const onOrderCreatedRealtimeAlerts = onDocumentCreated("orders/{orderId}", async (event) => {
   const orderId = event.params.orderId;
   const order = (event.data?.data() ?? {}) as OrderDocShape;
@@ -102,6 +155,7 @@ export const onOrderCreatedRealtimeAlerts = onDocumentCreated("orders/{orderId}"
   });
 
   await updateHighOrderVolumeAlert();
+  await sendFcmToAdminsOnNewOrder(orderId, Number(order.total ?? 0));
 
   const uid = order.userId;
   if (typeof uid === "string" && uid.length > 0) {

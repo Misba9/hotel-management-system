@@ -13,12 +13,22 @@ import {
   Menu,
   Package,
   Search,
+  UserCog,
   Users,
   X
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
-const nav = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  match: (p: string) => boolean;
+  /** Only show for users with `admin` app role (staff management). */
+  adminOnly?: boolean;
+};
+
+const nav: NavItem[] = [
   {
     href: "/admin",
     label: "Dashboard",
@@ -38,14 +48,22 @@ const nav = [
     label: "Analytics",
     icon: BarChart3,
     match: (p: string) => p.startsWith("/admin/analytics")
+  },
+  {
+    href: "/admin/staff",
+    label: "Staff",
+    icon: UserCog,
+    match: (p: string) => p.startsWith("/admin/staff"),
+    adminOnly: true
   }
-] as const;
+];
 
 function pageTitle(pathname: string): string {
   if (pathname.startsWith("/admin/orders")) return "Orders";
   if (pathname.startsWith("/admin/menu")) return "Menu";
   if (pathname.startsWith("/admin/customers")) return "Customers";
   if (pathname.startsWith("/admin/analytics")) return "Analytics";
+  if (pathname.startsWith("/admin/staff")) return "Staff";
   return "Dashboard";
 }
 
@@ -56,7 +74,7 @@ type Props = {
 export function AdminDashboardShell({ children }: Props) {
   const pathname = usePathname() ?? "/admin";
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, role } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -123,7 +141,9 @@ export function AdminDashboardShell({ children }: Props) {
           </div>
 
           <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
-            {nav.map((item) => {
+            {nav
+              .filter((item) => !item.adminOnly || role === "admin")
+              .map((item) => {
               const Icon = item.icon;
               const active = item.match(pathname);
               return (
