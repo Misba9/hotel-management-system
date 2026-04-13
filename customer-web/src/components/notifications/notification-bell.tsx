@@ -144,9 +144,9 @@ export function NotificationBell() {
     }
   }
 
-  if (!uid) return null;
-
   return (
+    <>
+      {uid ? (
     <div className="relative" ref={panelRef}>
       <button
         type="button"
@@ -233,5 +233,7 @@ export function NotificationBell() {
         </div>
       ) : null}
     </div>
+      ) : null}
+    </>
   );
 }

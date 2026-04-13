@@ -7,7 +7,7 @@
  */
 import { getApp, initializeApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { enableMultiTabIndexedDbPersistence, getFirestore, type Firestore } from "firebase/firestore";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 /** Re-export for consumers typing auth without importing `firebase/auth` directly. */
 export type { Auth };
@@ -113,7 +113,6 @@ export function logFirebaseConfigDebug(): void {
 let firebaseApp: FirebaseApp | null = null;
 let firebaseAuth: Auth | null = null;
 let firestoreDb: Firestore | null = null;
-let firestorePersistenceRequested = false;
 let analyticsInitStarted = false;
 
 function getOrCreateFirebaseApp(): FirebaseApp {
@@ -160,12 +159,6 @@ export function getFirebaseDb(): Firestore {
   }
   if (!firestoreDb) {
     firestoreDb = getFirestore(getFirebaseApp());
-    if (!firestorePersistenceRequested) {
-      firestorePersistenceRequested = true;
-      void enableMultiTabIndexedDbPersistence(firestoreDb).catch(() => {
-        /* Unsupported, failed, or persistence already started — real-time still works without cache. */
-      });
-    }
   }
   return firestoreDb;
 }

@@ -8,9 +8,11 @@ type Props = {
   relativeTime: string;
   highlighted: boolean;
   busy: boolean;
+  onAcceptOrder: () => void;
   onStartPrep: () => void;
   onMarkReady: () => void;
-  showStart: boolean;
+  showAcceptOrder: boolean;
+  showStartPrep: boolean;
   showReady: boolean;
 };
 
@@ -24,9 +26,11 @@ export function KitchenOrderCard({
   relativeTime,
   highlighted,
   busy,
+  onAcceptOrder,
   onStartPrep,
   onMarkReady,
-  showStart,
+  showAcceptOrder,
+  showStartPrep,
   showReady
 }: Props) {
   const bucket = bucketForStatus(order.status);
@@ -101,9 +105,25 @@ export function KitchenOrderCard({
         ) : null}
       </View>
 
-      {(showStart || showReady) && (
+      {(showAcceptOrder || showStartPrep || showReady) && (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-          {showStart ? (
+          {showAcceptOrder ? (
+            <TouchableOpacity
+              onPress={onAcceptOrder}
+              disabled={busy}
+              style={{
+                flexGrow: 1,
+                minWidth: "42%",
+                borderRadius: 12,
+                backgroundColor: busy ? "#cbd5e1" : "#EAB308",
+                paddingVertical: 11,
+                alignItems: "center"
+              }}
+            >
+              <Text style={{ color: "white", fontWeight: "900", fontSize: 13 }}>{busy ? "…" : "Accept order"}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {showStartPrep ? (
             <TouchableOpacity
               onPress={onStartPrep}
               disabled={busy}
@@ -116,7 +136,7 @@ export function KitchenOrderCard({
                 alignItems: "center"
               }}
             >
-              <Text style={{ color: "white", fontWeight: "900", fontSize: 13 }}>{busy ? "…" : "Accept"}</Text>
+              <Text style={{ color: "white", fontWeight: "900", fontSize: 13 }}>{busy ? "…" : "Start preparing"}</Text>
             </TouchableOpacity>
           ) : null}
           {showReady ? (
@@ -132,7 +152,7 @@ export function KitchenOrderCard({
                 alignItems: "center"
               }}
             >
-              <Text style={{ color: "white", fontWeight: "900", fontSize: 13 }}>{busy ? "…" : "Ready"}</Text>
+              <Text style={{ color: "white", fontWeight: "900", fontSize: 13 }}>{busy ? "…" : "Mark ready"}</Text>
             </TouchableOpacity>
           ) : null}
         </View>

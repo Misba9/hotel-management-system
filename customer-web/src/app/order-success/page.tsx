@@ -120,7 +120,13 @@ export default function OrderSuccessPage() {
           </div>
         </div>
 
-        <div className="border-t border-slate-100 bg-slate-50/80 px-5 py-5 dark:border-slate-800 dark:bg-slate-950/50">
+        <div className="space-y-3 border-t border-slate-100 bg-slate-50/80 px-5 py-5 dark:border-slate-800 dark:bg-slate-950/50">
+          <Link
+            href={`/orders/${encodeURIComponent(snapshot.orderId)}`}
+            className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+          >
+            Open live progress
+          </Link>
           <Link
             href="/menu"
             className="flex w-full items-center justify-center rounded-xl bg-orange-500 py-3.5 text-sm font-semibold text-white shadow-md transition hover:bg-orange-600 active:scale-[0.99] dark:bg-orange-500 dark:hover:bg-orange-400"

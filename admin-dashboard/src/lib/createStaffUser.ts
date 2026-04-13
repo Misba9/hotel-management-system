@@ -2,7 +2,7 @@ import { adminApiFetch } from "@/shared/lib/admin-api";
 import { getStaffCreatePostUrl } from "@/lib/staff-create-endpoint";
 
 /** Roles allowed when provisioning staff (matches Firestore `staff_users.role`). */
-export type CreateStaffRole = "admin" | "manager" | "cashier" | "kitchen" | "delivery";
+export type CreateStaffRole = "admin" | "manager" | "cashier" | "kitchen" | "delivery" | "waiter";
 
 export type CreateStaffUserInput = {
   name: string;

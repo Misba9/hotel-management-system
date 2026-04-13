@@ -120,7 +120,7 @@ export function OtpInput6({
     <div className={`flex justify-center gap-2 ${className}`.trim()}>
       {safeDigits.map((digit, i) => (
         <input
-          key={i}
+          key={`${idPrefix}-otp-slot-${i}`}
           id={`${idPrefix}-otp-${i}`}
           ref={(el) => {
             refs.current[i] = el;

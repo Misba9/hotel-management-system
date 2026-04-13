@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { MapPin, Plus, X } from "lucide-react";
 import Link from "next/link";
@@ -9,6 +9,7 @@ import { useAuth } from "@/context/auth-context";
 import { useUserProfile } from "@/context/user-profile-context";
 import { useToast } from "@/components/providers/toast-provider";
 import type { DeliveryAddressInput } from "@/lib/delivery-address-types";
+import { withTimeout } from "@/lib/async-utils";
 
 type CheckoutAddressModalProps = {
   open: boolean;
@@ -37,6 +38,7 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const saveInFlightRef = useRef(false);
   const [form, setForm] = useState<DeliveryAddressInput>({
     name: "",
     phone: "",
@@ -75,15 +77,21 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
     onOpenChange(false);
   }, [addresses, onOpenChange, selectedId]);
 
-  const handleAddSubmit = useCallback(async () => {
+  const SAVE_TIMEOUT_MS = 30_000;
+
+  const handleSaveAddress = useCallback(async () => {
+    if (saveInFlightRef.current) return;
+
     setFormMessage(null);
     const err = validateNewAddress(form);
     setFormErrors(err);
     if (Object.keys(err).length > 0) return;
 
+    saveInFlightRef.current = true;
     setSaving(true);
     try {
-      await addAddress(form);
+      await withTimeout(addAddress(form), SAVE_TIMEOUT_MS, "Saving timed out. Check your connection and try again.");
+
       showToast({ title: "Address saved" });
       setForm({
         name: "",
@@ -93,11 +101,14 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
         city: "",
         pincode: ""
       });
+      setFormErrors({});
       setShowForm(false);
       onOpenChange(false);
     } catch (error) {
-      setFormMessage(error instanceof Error ? error.message : "Could not save address. Try again.");
+      const msg = error instanceof Error ? error.message : "Could not save address. Try again.";
+      setFormMessage(msg);
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   }, [addAddress, form, onOpenChange, showToast]);
@@ -112,24 +123,24 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
   }, [open, requireSelection, onOpenChange]);
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.button
+    <AnimatePresence mode="wait">
+      {open ? (
+        <motion.div
+          key="checkout-address-modal"
+          className="fixed inset-0 z-[60]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <button
             type="button"
             aria-label="Close address modal backdrop"
-            className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-[1px]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/50 backdrop-blur-[1px]"
             onClick={handleBackdrop}
           />
-          <motion.div
-            className="fixed inset-0 z-[61] flex items-end justify-center p-4 sm:items-center sm:p-6"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+          <div
+            className="absolute inset-0 z-[1] flex items-end justify-center p-4 sm:items-center sm:p-6"
             onClick={(e) => {
               if (e.target === e.currentTarget) handleBackdrop();
             }}
@@ -267,7 +278,7 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
                         <button
                           type="button"
                           disabled={saving}
-                          onClick={() => void handleAddSubmit()}
+                          onClick={() => void handleSaveAddress()}
                           className="flex-1 rounded-lg bg-orange-500 py-2 text-sm font-semibold text-white disabled:opacity-60"
                         >
                           {saving ? "Saving…" : "Save & use"}
@@ -299,9 +310,9 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
               </div>
             </div>
             </motion.div>
-          </motion.div>
-        </>
-      )}
+          </div>
+        </motion.div>
+      ) : null}
     </AnimatePresence>
   );
 }

@@ -11,6 +11,7 @@ import {
   Loader2,
   LogOut,
   Menu,
+  MonitorDot,
   Package,
   Search,
   UserCog,
@@ -36,6 +37,12 @@ const nav: NavItem[] = [
     match: (p: string) => p === "/admin" || p === "/admin/"
   },
   { href: "/admin/orders", label: "Orders", icon: Package, match: (p: string) => p.startsWith("/admin/orders") },
+  {
+    href: "/admin/operations",
+    label: "Live ops",
+    icon: MonitorDot,
+    match: (p: string) => p.startsWith("/admin/operations")
+  },
   { href: "/admin/menu", label: "Menu", icon: Menu, match: (p: string) => p.startsWith("/admin/menu") },
   {
     href: "/admin/customers",
@@ -60,6 +67,7 @@ const nav: NavItem[] = [
 
 function pageTitle(pathname: string): string {
   if (pathname.startsWith("/admin/orders")) return "Orders";
+  if (pathname.startsWith("/admin/operations")) return "Live operations";
   if (pathname.startsWith("/admin/menu")) return "Menu";
   if (pathname.startsWith("/admin/customers")) return "Customers";
   if (pathname.startsWith("/admin/analytics")) return "Analytics";

@@ -49,9 +49,6 @@ export async function registerPushTokenForUser(uid: string): Promise<string | nu
 
   const vapidKey = getVapidKey();
   if (!vapidKey) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("[fcm] Set NEXT_PUBLIC_FIREBASE_VAPID_KEY for web push.");
-    }
     return null;
   }
 

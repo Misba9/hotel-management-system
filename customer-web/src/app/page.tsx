@@ -18,6 +18,11 @@ const ProductQuickViewModal = dynamic(
   { ssr: false }
 );
 
+/** Stable keys for static skeleton grids (avoid raw index-only keys). */
+const SKEL_KEYS_8 = ["hg1", "hg2", "hg3", "hg4", "hg5", "hg6", "hg7", "hg8"] as const;
+const SKEL_KEYS_4A = ["hf1", "hf2", "hf3", "hf4"] as const;
+const SKEL_KEYS_4B = ["hp1", "hp2", "hp3", "hp4"] as const;
+
 export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -122,7 +127,7 @@ export default function HomePage() {
         </div>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
           {loading
-            ? Array.from({ length: 8 }).map((_, index) => <SkeletonCard key={`all-skel-${index}`} />)
+            ? Array.from({ length: 8 }).map((_, index) => <SkeletonCard key={SKEL_KEYS_8[index]} />)
             : products.map((product) => (
                 <ProductCard
                   key={product.id}
@@ -155,7 +160,7 @@ export default function HomePage() {
         <h2 className="text-2xl font-semibold">Featured Juices</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {loading
-            ? Array.from({ length: 4 }).map((_, index) => <SkeletonCard key={index} />)
+            ? Array.from({ length: 4 }).map((_, index) => <SkeletonCard key={SKEL_KEYS_4A[index]} />)
             : featured.map((product) => (
                 <ProductCard
                   key={product.id}
@@ -175,7 +180,7 @@ export default function HomePage() {
         <h2 className="text-2xl font-semibold">Popular Items</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {loading
-            ? Array.from({ length: 4 }).map((_, index) => <SkeletonCard key={index} />)
+            ? Array.from({ length: 4 }).map((_, index) => <SkeletonCard key={SKEL_KEYS_4B[index]} />)
             : popular.map((product) => (
                 <ProductCard
                   key={product.id}

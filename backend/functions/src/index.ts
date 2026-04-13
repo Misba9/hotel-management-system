@@ -29,6 +29,7 @@ import {
 } from "./v1/admin";
 import { platformApiV1 } from "./v1/api";
 import { createStaffUser } from "./adminStaffCreate";
+import { onTableOrderCompletedFreeTable } from "./freeTableOnTableOrderCompleted";
 
 initializeApp();
 
@@ -70,5 +71,6 @@ export {
   seedSettingsV1,
   createAdminUserV1,
   platformApiV1,
-  createStaffUser
+  createStaffUser,
+  onTableOrderCompletedFreeTable
 };

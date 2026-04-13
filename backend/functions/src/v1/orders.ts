@@ -5,12 +5,14 @@ import {
   assertRole,
   createTimestamp,
   db,
-  orderStatusSchema,
+  orderLifecycleStatusSchema,
   paymentMethodSchema,
   syncDeliveryTrackingDoc,
   syncOrderFeedDoc,
   withCallableGuard
 } from "./common";
+import { assignDeliveryAgentWhenOrderReady, DEFAULT_ASSIGNED_TO } from "../autoStaffAssignment";
+import { assertValidTransition } from "../orderStatusLifecycle";
 
 const createOrderSchema = z.object({
   branchId: z.string().min(1),
@@ -31,7 +33,7 @@ const createOrderSchema = z.object({
 
 const updateOrderStatusSchema = z.object({
   orderId: z.string().min(1),
-  status: orderStatusSchema
+  status: orderLifecycleStatusSchema
 });
 
 const cancelOrderSchema = z.object({
@@ -106,7 +108,7 @@ export const createOrderV1 = withCallableGuard(
       total,
       invoiceId: orderRef.id,
       items: lineItems,
-      assignedTo: { kitchenId: "", deliveryId: "" },
+      assignedTo: { ...DEFAULT_ASSIGNED_TO },
       createdAt: now,
       updatedAt: now
     });
@@ -160,11 +162,21 @@ export const updateOrderStatusV1 = withCallableGuard(
     if (!snap.exists) {
       throw new HttpsError("not-found", "Order not found.");
     }
+    const prev = (snap.data() as { status?: string } | undefined)?.status;
+    try {
+      assertValidTransition(prev, payload.status);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new HttpsError("failed-precondition", msg);
+    }
     const now = createTimestamp();
     await orderRef.update({
       status: payload.status,
       updatedAt: now
     });
+    if (payload.status === "ready") {
+      await assignDeliveryAgentWhenOrderReady(db, payload.orderId);
+    }
     await syncOrderFeedDoc(payload.orderId, {
       status: payload.status,
       updatedAt: now
@@ -217,10 +229,6 @@ export const assignDeliveryPartnerV1 = withCallableGuard(
       deliveryPartnerId: payload.deliveryPartnerId,
       status: "assigned",
       assignedAt: now,
-      updatedAt: now
-    });
-    await db.collection(COLLECTIONS.orders).doc(payload.orderId).update({
-      status: "ready",
       updatedAt: now
     });
     await syncDeliveryTrackingDoc(

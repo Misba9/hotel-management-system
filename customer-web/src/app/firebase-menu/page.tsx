@@ -208,12 +208,15 @@ function CategoryTabList({
   );
 }
 
+const CATEGORY_TAB_SKELETON_KEYS = ["fb-c1", "fb-c2", "fb-c3", "fb-c4", "fb-c5"] as const;
+const PRODUCT_GRID_SKELETON_KEYS = ["fb-p1", "fb-p2", "fb-p3", "fb-p4", "fb-p5", "fb-p6", "fb-p7", "fb-p8"] as const;
+
 function CategorySkeleton() {
   return (
     <div className="flex gap-2 overflow-hidden pb-1">
       {Array.from({ length: 5 }).map((_, i) => (
         <div
-          key={i}
+          key={CATEGORY_TAB_SKELETON_KEYS[i]}
           className="h-9 w-24 shrink-0 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700"
         />
       ))}
@@ -348,7 +351,7 @@ export default function FirebaseMenuPage() {
       {loading ? (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, idx) => (
-            <ProductSkeletonCard key={idx} />
+            <ProductSkeletonCard key={PRODUCT_GRID_SKELETON_KEYS[idx]} />
           ))}
         </div>
       ) : (

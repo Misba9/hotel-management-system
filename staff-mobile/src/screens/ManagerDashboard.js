@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -9,12 +9,13 @@ import {
   Text,
   View
 } from "react-native";
-import { FirebaseError } from "firebase/app";
 import { Button, StatCard } from "../components/shell";
 import { StaffErrorView } from "../components/staff-dashboard/staff-error-view";
 import { StaffLoadingView } from "../components/staff-dashboard/staff-loading-view";
 import { EmptyState } from "../components/ux/empty-state";
-import { subscribeToOrders } from "../services/orders.js";
+import { useAuth } from "../hooks/useAuth";
+import { useOrders } from "../hooks/use-orders";
+import { computeDashboardMetrics } from "../lib/order-dashboard-metrics";
 import { space } from "../theme/design-tokens";
 import { shell, shellShadow } from "../theme/shell-theme";
 
@@ -23,12 +24,6 @@ const MOCK_STAFF = [
   { id: "2", name: "Vikram — Cashier", role: "cashier" },
   { id: "3", name: "Imran — Delivery", role: "delivery" }
 ];
-
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 const ManagerOrderRow = React.memo(function ManagerOrderRow({ order }) {
   return (
@@ -51,65 +46,16 @@ const ManagerOrderRow = React.memo(function ManagerOrderRow({ order }) {
  */
 export default function ManagerDashboard() {
   const [tab, setTab] = useState("orders");
-  const [orders, setOrders] = useState([]);
-  const [hasSynced, setHasSynced] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [listenerKey, setListenerKey] = useState(0);
-  const [error, setError] = useState(null);
+  const { staff } = useAuth();
+  const ordersRole = staff?.role === "admin" ? "admin" : "manager";
+  const { orders, loading, error, refreshing, refresh, retry } = useOrders(ordersRole);
 
-  useEffect(() => {
-    setError(null);
-    const unsub = subscribeToOrders(
-      (list) => {
-        setHasSynced(true);
-        setRefreshing(false);
-        setOrders(list);
-      },
-      (err) => {
-        setHasSynced(true);
-        setRefreshing(false);
-        const code = err instanceof FirebaseError ? err.code : "";
-        setError(
-          code === "permission-denied"
-            ? "No permission to read orders (manager role + Firestore rules)."
-            : err?.message ?? "Could not sync orders."
-        );
-      }
-    );
-    return unsub;
-  }, [listenerKey]);
+  const { totalOrders, activeOrders, deliveredOrders, revenue } = useMemo(
+    () => computeDashboardMetrics(orders),
+    [orders]
+  );
 
-  const bumpListener = useCallback(() => {
-    setListenerKey((k) => k + 1);
-  }, []);
-
-  const onRetryAfterError = useCallback(() => {
-    setError(null);
-    setRefreshing(true);
-    bumpListener();
-  }, [bumpListener]);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    bumpListener();
-  }, [bumpListener]);
-
-  const { ordersToday, revenue, activeOrders } = useMemo(() => {
-    const t0 = startOfToday().getTime();
-    let today = 0;
-    let rev = 0;
-    let active = 0;
-    const terminal = new Set(["delivered", "cancelled", "rejected"]);
-    for (const o of orders) {
-      const c = o.createdAt?.toDate?.();
-      if (c && c.getTime() >= t0) today += 1;
-      if (o.status === "delivered") rev += o.totalAmount;
-      if (!terminal.has(o.status)) active += 1;
-    }
-    return { ordersToday: today, revenue: rev, activeOrders: active };
-  }, [orders]);
-
-  if (!hasSynced && !error) {
+  if (loading && !error) {
     return (
       <SafeAreaView style={styles.safe}>
         <StaffLoadingView message="Syncing live metrics…" />
@@ -121,7 +67,7 @@ export default function ManagerDashboard() {
     <SafeAreaView style={styles.safe}>
       {error ? (
         <View style={styles.errorPad}>
-          <StaffErrorView message={error} onRetry={onRetryAfterError} />
+          <StaffErrorView message={error} onRetry={retry} />
         </View>
       ) : null}
 
@@ -131,25 +77,27 @@ export default function ManagerDashboard() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={onRefresh}
+            onRefresh={refresh}
             tintColor={shell.primary}
             colors={[shell.primary]}
           />
         }
       >
         <Text style={styles.hello}>Manager</Text>
-        <Text style={styles.sub}>Live Firestore · staff POS pipeline · pull to refresh</Text>
+        <Text style={styles.sub}>Live metrics · capped newest-first query · pull to refresh</Text>
 
         <View style={styles.statsRow}>
-          <StatCard label="Orders today" value={ordersToday} accentColor={shell.primary} hint="staff POS" />
-          <StatCard
-            label="Revenue (delivered)"
-            value={`₹${Math.round(revenue).toLocaleString()}`}
-            accentColor={shell.success}
-          />
+          <StatCard label="Total orders" value={totalOrders} accentColor={shell.primary} hint="in sync window" />
+          <StatCard label="Active" value={activeOrders} accentColor={shell.orange} hint="not delivered" />
         </View>
         <View style={styles.statsRow}>
-          <StatCard label="Active orders" value={activeOrders} accentColor={shell.orange} hint="non-terminal" />
+          <StatCard label="Delivered" value={deliveredOrders} accentColor={shell.success} hint="completed" />
+          <StatCard
+            label="Revenue"
+            value={`₹${Math.round(revenue).toLocaleString()}`}
+            accentColor={shell.success}
+            hint="delivered only"
+          />
         </View>
 
         <View style={[styles.quick, shellShadow(3)]}>

@@ -10,7 +10,7 @@ import {
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
-const staffManagementRoleSchema = z.enum(["admin", "manager", "cashier", "kitchen", "delivery"]);
+const staffManagementRoleSchema = z.enum(["admin", "manager", "cashier", "kitchen", "delivery", "waiter"]);
 
 const patchBody = z
   .object({
@@ -42,6 +42,10 @@ export async function PATCH(request: Request, context: { params: { uid: string }
       return Response.json({ error: "Staff user not found." }, { status: 404, headers: NO_STORE });
     }
 
+    const prevStaff = snap.data() as { isActive?: boolean };
+    const staffWasActive = prevStaff.isActive !== false;
+    const effectiveActive = body.isActive !== undefined ? body.isActive : staffWasActive;
+
     const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
 
     if (body.name !== undefined) {
@@ -66,6 +70,8 @@ export async function PATCH(request: Request, context: { params: { uid: string }
       await adminDb.collection("users").doc(uid).set(
         {
           role: staffManagementRoleToUsersField(body.role as StaffManagementRoleId),
+          pendingApproval: false,
+          ...(effectiveActive ? { approved: true } : {}),
           updatedAt: FieldValue.serverTimestamp()
         },
         { merge: true }
@@ -79,6 +85,8 @@ export async function PATCH(request: Request, context: { params: { uid: string }
         {
           isActive: body.isActive,
           status: body.isActive ? "active" : "inactive",
+          approved: body.isActive,
+          pendingApproval: false,
           updatedAt: FieldValue.serverTimestamp()
         },
         { merge: true }

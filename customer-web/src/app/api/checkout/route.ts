@@ -4,6 +4,7 @@ import { setOrderFeed } from "@shared/utils/order-feed-firestore";
 import { RequestUserAuthError, resolveRequestUser } from "@shared/utils/request-user";
 import { resolveServerPricing } from "@shared/utils/server-order-pricing";
 import { generateSignedTrackingToken } from "@shared/utils/tracking-token";
+import { DEFAULT_ORDER_ASSIGNED_TO } from "@shared/utils/order-assignment-defaults";
 import { buildInvoiceDoc } from "@shared/utils/invoice-payload";
 import { z } from "zod";
 
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
         price: item.price,
         quantity: item.quantity
       })),
-      assignedTo: { kitchenId: "", deliveryId: "" },
+      assignedTo: { ...DEFAULT_ORDER_ASSIGNED_TO },
       couponCode: body.couponCode ?? null,
       address: body.address?.trim() ? body.address.trim() : null,
       customerName: body.customerName?.trim() ? body.customerName.trim() : null,

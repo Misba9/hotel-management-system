@@ -1,11 +1,13 @@
-/** Aligned with admin `staff_users.role` and backend role strings. */
-export type StaffRoleId = "admin" | "manager" | "cashier" | "kitchen" | "delivery" | "waiter";
+import type { StaffAppRole } from "@shared/utils/staff-access-control";
+import { STAFF_APP_ROLES } from "@shared/utils/staff-access-control";
 
-export const STAFF_ROLE_IDS: StaffRoleId[] = ["admin", "manager", "cashier", "kitchen", "delivery", "waiter"];
+/** Same as {@link StaffAppRole} — `staff_users.role` / `users/{uid}.role`. */
+export type StaffRoleId = StaffAppRole;
+
+export const STAFF_ROLE_IDS: StaffRoleId[] = [...STAFF_APP_ROLES];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<StaffRoleId, string[]> = {
-  admin: ["all", "view_orders", "update_status", "manage_staff", "view_analytics"],
-  /** Narrower than admin: operational dashboard + orders (no manage_staff / full analytics in app RBAC). */
+  admin: ["view_orders", "update_status", "manage_staff"],
   manager: ["view_orders", "update_status"],
   cashier: ["view_orders", "billing", "payments"],
   kitchen: ["view_orders", "mark_prepared"],

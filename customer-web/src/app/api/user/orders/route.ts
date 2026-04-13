@@ -19,7 +19,7 @@ function createdAtToIso(value: unknown): string {
 export async function GET(request: Request) {
   try {
     if (process.env.NODE_ENV === "development") {
-      console.log("[api/user/orders] Admin app:", getFirebaseAdminApp() ? "initialized" : "not initialized", "| Firestore:", adminDb);
+      console.info("[api/user/orders] admin ready:", Boolean(getFirebaseAdminApp() && adminDb));
     }
 
     const adminApp = getFirebaseAdminApp();

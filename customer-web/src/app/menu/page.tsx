@@ -18,6 +18,8 @@ const ProductQuickViewModal = dynamic(
   { ssr: false }
 );
 
+const MENU_GRID_SKELETON_KEYS = ["ms1", "ms2", "ms3", "ms4", "ms5", "ms6"] as const;
+
 type SortMode = "popularity" | "rating" | "price";
 
 function MenuPageInner() {
@@ -228,7 +230,7 @@ function MenuPageInner() {
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
         {loading
-          ? Array.from({ length: 6 }).map((_, idx) => <SkeletonCard key={idx} />)
+          ? Array.from({ length: 6 }).map((_, idx) => <SkeletonCard key={MENU_GRID_SKELETON_KEYS[idx]} />)
           : filtered.map((item) => (
               <ProductCard
                 key={item.id}

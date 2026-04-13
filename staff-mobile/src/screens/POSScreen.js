@@ -5,6 +5,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -45,6 +46,7 @@ export default function POSScreen() {
   const [sharing, setSharing] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [sharingText, setSharingText] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const cartLines = useMemo(() => Object.values(cartMap), [cartMap]);
   const totalAmount = useMemo(
@@ -172,18 +174,26 @@ export default function POSScreen() {
     }
   }, [lastReceipt]);
 
-  const renderItem = ({ item }) => {
-    const line = cartMap[item.id];
-    const selected = Boolean(line && line.qty > 0);
-    return (
-      <MenuItemCard
-        name={item.name}
-        price={item.price}
-        selected={selected}
-        onAdd={() => addOne(item)}
-      />
-    );
-  };
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 450);
+  }, []);
+
+  const renderItem = useCallback(
+    ({ item }) => {
+      const line = cartMap[item.id];
+      const selected = Boolean(line && line.qty > 0);
+      return (
+        <MenuItemCard
+          name={item.name}
+          price={item.price}
+          selected={selected}
+          onAdd={() => addOne(item)}
+        />
+      );
+    },
+    [cartMap, addOne]
+  );
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -197,6 +207,9 @@ export default function POSScreen() {
         contentContainerStyle={styles.listContent}
         renderItem={renderItem}
         ListFooterComponent={<View style={{ height: 120 }} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={shell.primary} colors={[shell.primary]} />
+        }
       />
 
       <Pressable style={[styles.stickyBar, shellShadow(8)]} onPress={() => setCartOpen(true)}>

@@ -31,8 +31,8 @@ export function RoleHomeScreen() {
     switch (role) {
       case "kitchen":
         return <KitchenPanel />;
-      case "manager":
       case "admin":
+      case "manager":
         return (
           <View style={{ padding: 16 }}>
             <Text style={{ color: "#64748b" }}>Use the role-specific routes from the main app entry.</Text>

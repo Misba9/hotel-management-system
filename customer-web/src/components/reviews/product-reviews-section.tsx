@@ -178,7 +178,7 @@ export function ProductReviewsSection({ productId, onReviewsChanged }: ProductRe
                   <span className="inline-flex items-center gap-0.5 text-amber-500" aria-label={`${r.rating} out of 5 stars`}>
                     {Array.from({ length: 5 }, (_, i) => (
                       <Star
-                        key={i}
+                        key={`${r.id}-star-${i}`}
                         className={`h-3.5 w-3.5 ${i < r.rating ? "fill-amber-400 text-amber-400" : "text-slate-200 dark:text-slate-600"}`}
                       />
                     ))}

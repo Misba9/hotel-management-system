@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -9,32 +10,19 @@ import {
   View
 } from "react-native";
 import { FirebaseError } from "firebase/app";
-import {
-  collection,
-  getDocs,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-  type Timestamp
-} from "firebase/firestore";
+import { collection, getDocs, query, where, type Timestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { staffDb, staffFunctions } from "../lib/firebase";
+import { extractFirestoreIndexUrl, formatFirestoreIndexErrorMessage, isFirestoreCompositeIndexError } from "../lib/firestore-query-errors";
+import { subscribeKitchenOrderDocs } from "../services/orders.js";
 import { KitchenOrderCard } from "./kitchen-dashboard/kitchen-order-card";
 import type { KitchenOrderRow } from "./kitchen-dashboard/kitchen-types";
 import { staffPhysicalAlert } from "../services/notifications.js";
 
 export type { KitchenOrderRow } from "./kitchen-dashboard/kitchen-types";
 
-const KITCHEN_VIEW_STATUSES = new Set([
-  "pending",
-  "created",
-  "confirmed",
-  "preparing",
-  "accepted",
-  "ready"
-]);
+/** Aligned with {@link KITCHEN_ORDER_STATUS_IN} — no `ready` (kitchen listener excludes it). */
+const KITCHEN_VIEW_STATUSES = new Set(["pending", "created", "confirmed", "preparing", "accepted"]);
 
 function createdAtToIso(value: unknown): string | undefined {
   if (value == null) return undefined;
@@ -107,30 +95,34 @@ export function KitchenOrdersBoard() {
 
   const [rawDocs, setRawDocs] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
   const [orders, setOrders] = useState<KitchenOrderRow[]>([]);
-  const [activeTab, setActiveTab] = useState<"pending" | "preparing" | "ready">("pending");
+  const [activeTab, setActiveTab] = useState<"pending" | "preparing">("pending");
   const [loading, setLoading] = useState(true);
   const [listenError, setListenError] = useState<string | null>(null);
+  const [listenIndexUrl, setListenIndexUrl] = useState<string | null>(null);
+  const [listenKey, setListenKey] = useState(0);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(() => new Set());
 
   const previousKitchenIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const q = query(collection(staffDb, "orders"), orderBy("createdAt", "desc"), limit(150));
-    const unsub = onSnapshot(
-      q,
-      (snapshot) => {
+    setListenError(null);
+    setListenIndexUrl(null);
+    const unsub = subscribeKitchenOrderDocs(
+      (docs) => {
         setListenError(null);
-        const next = snapshot.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
-        setRawDocs(next);
+        setListenIndexUrl(null);
+        setRawDocs(docs.map((row) => ({ id: row.id, data: row.data as Record<string, unknown> })));
       },
-      (err) => {
-        setListenError(err instanceof Error ? err.message : "Failed to listen to orders");
+      (err: unknown) => {
+        const { body } = formatFirestoreIndexErrorMessage(err);
+        setListenError(isFirestoreCompositeIndexError(err) ? body : err instanceof Error ? err.message : "Failed to listen to orders");
+        setListenIndexUrl(extractFirestoreIndexUrl(err));
         setLoading(false);
       }
     );
     return () => unsub();
-  }, []);
+  }, [listenKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,7 +154,18 @@ export function KitchenOrdersBoard() {
       if (cancelled) return;
 
       const activeKitchenIds = new Set(
-        kitchenRows.filter((o) => o.status === "pending" || o.status === "preparing" || o.status === "accepted").map((o) => o.orderId)
+        kitchenRows
+          .filter((o) => {
+            const x = o.status.toLowerCase();
+            return (
+              x === "pending" ||
+              x === "created" ||
+              x === "confirmed" ||
+              x === "accepted" ||
+              x === "preparing"
+            );
+          })
+          .map((o) => o.orderId)
       );
       const prev = previousKitchenIdsRef.current;
       const hadPrev = prev.size > 0;
@@ -201,7 +204,7 @@ export function KitchenOrdersBoard() {
     return () => clearTimeout(t);
   }, [highlightedIds]);
 
-  const updateStatus = useCallback(async (orderId: string, status: "preparing" | "ready") => {
+  const updateStatus = useCallback(async (orderId: string, status: "accepted" | "preparing" | "ready") => {
     setUpdatingId(orderId);
     try {
       const callable = httpsCallable(staffFunctions, "updateOrderStatusV1");
@@ -225,12 +228,14 @@ export function KitchenOrdersBoard() {
   }, []);
 
   const pendingOrders = useMemo(
-    () => orders.filter((o) => ["pending", "created", "confirmed", "accepted"].includes(o.status.toLowerCase())),
+    () =>
+      orders.filter((o) =>
+        ["pending", "created", "confirmed", "accepted"].includes(o.status.toLowerCase())
+      ),
     [orders]
   );
   const preparingOrders = useMemo(() => orders.filter((o) => o.status.toLowerCase() === "preparing"), [orders]);
-  const readyOrders = useMemo(() => orders.filter((o) => o.status === "ready"), [orders]);
-  const visibleOrders = activeTab === "pending" ? pendingOrders : activeTab === "preparing" ? preparingOrders : readyOrders;
+  const visibleOrders = activeTab === "pending" ? pendingOrders : preparingOrders;
 
   function minutesSinceOrder(createdAt?: string) {
     if (!createdAt) return "Just now";
@@ -246,10 +251,41 @@ export function KitchenOrdersBoard() {
   if (listenError) {
     return (
       <View style={{ borderRadius: 12, backgroundColor: "#FEF2F2", padding: 16, borderWidth: 1, borderColor: "#FECACA" }}>
-        <Text style={{ color: "#991B1B", fontWeight: "700" }}>{listenError}</Text>
-        <Text style={{ color: "#64748b", marginTop: 8, fontSize: 12 }}>
-          Ensure Firestore has a single-field index on `orders.createdAt` and documents use a consistent `createdAt` (string or timestamp).
+        <Text style={{ color: "#991B1B", fontWeight: "800", fontSize: 16 }}>Could not sync orders</Text>
+        <Text style={{ color: "#7f1d1d", marginTop: 8, fontSize: 13, lineHeight: 18 }}>{listenError}</Text>
+        <Text style={{ color: "#64748b", marginTop: 10, fontSize: 12, lineHeight: 16 }}>
+          Deploy indexes:{" "}
+          <Text style={{ fontWeight: "700" }}>firebase deploy --only firestore:indexes</Text> from the repo{" "}
+          <Text style={{ fontWeight: "700" }}>backend/</Text> folder, or use the Firebase console link below.
         </Text>
+        {listenIndexUrl ? (
+          <TouchableOpacity
+            onPress={() => void Linking.openURL(listenIndexUrl)}
+            style={{ marginTop: 12, alignSelf: "flex-start", backgroundColor: "#FF6B35", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 }}
+          >
+            <Text style={{ color: "white", fontWeight: "800", fontSize: 13 }}>Open index in Firebase Console</Text>
+          </TouchableOpacity>
+        ) : null}
+        <TouchableOpacity
+          onPress={() => {
+            setListenError(null);
+            setListenIndexUrl(null);
+            setLoading(true);
+            setListenKey((k) => k + 1);
+          }}
+          style={{
+            marginTop: 12,
+            alignSelf: "flex-start",
+            borderWidth: 1,
+            borderColor: "#fecaca",
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 10,
+            backgroundColor: "white"
+          }}
+        >
+          <Text style={{ color: "#991B1B", fontWeight: "800", fontSize: 13 }}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -278,7 +314,9 @@ export function KitchenOrdersBoard() {
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <View>
             <Text style={{ fontSize: 22, fontWeight: "900", color: "#0f172a" }}>Live orders</Text>
-            <Text style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>🔔 New tickets play a chime • Yellow / orange / green by stage</Text>
+            <Text style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+              🔔 New tickets play a chime • Orders leave this list once marked ready (delivery app)
+            </Text>
           </View>
         </View>
 
@@ -286,9 +324,8 @@ export function KitchenOrdersBoard() {
           <View style={{ flexDirection: "row", gap: 8 }}>
             {(
               [
-                { key: "pending" as const, label: "🟡 New", sub: "Pending", count: pendingOrders.length },
-                { key: "preparing" as const, label: "🟠 Cooking", sub: "Preparing", count: preparingOrders.length },
-                { key: "ready" as const, label: "🟢 Pickup", sub: "Ready", count: readyOrders.length }
+                { key: "pending" as const, label: "🟡 New", sub: "Inbox", count: pendingOrders.length },
+                { key: "preparing" as const, label: "🟠 Cooking", sub: "Preparing", count: preparingOrders.length }
               ] as const
             ).map((tab) => {
               const active = activeTab === tab.key;
@@ -327,7 +364,8 @@ export function KitchenOrdersBoard() {
           {visibleOrders.map((order) => {
             const busy = updatingId === order.orderId;
             const s = order.status.toLowerCase();
-            const showStart = ["pending", "created", "confirmed", "accepted"].includes(s);
+            const showAcceptOrder = s === "pending" || s === "created" || s === "confirmed";
+            const showStartPrep = s === "accepted";
             const showReady = s === "preparing";
 
             return (
@@ -337,8 +375,10 @@ export function KitchenOrdersBoard() {
                   relativeTime={minutesSinceOrder(order.createdAt)}
                   highlighted={highlightedIds.has(order.orderId)}
                   busy={busy}
-                  showStart={showStart}
+                  showAcceptOrder={showAcceptOrder}
+                  showStartPrep={showStartPrep}
                   showReady={showReady}
+                  onAcceptOrder={() => void updateStatus(order.orderId, "accepted")}
                   onStartPrep={() => void updateStatus(order.orderId, "preparing")}
                   onMarkReady={() => void updateStatus(order.orderId, "ready")}
                 />

@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Linking, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { FirebaseError } from "firebase/app";
-import { collection, onSnapshot, query, where, type DocumentData } from "firebase/firestore";
+import { onSnapshot, type DocumentData, type QuerySnapshot } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { staffDb, staffFunctions } from "../lib/firebase";
+import { staffFunctions } from "../lib/firebase";
+import { extractFirestoreIndexUrl, formatFirestoreIndexErrorMessage, isFirestoreCompositeIndexError } from "../lib/firestore-query-errors";
+import { getDeliveryOrdersQuery, getRecentOrdersFallbackQuery } from "../services/orders.js";
 import { useStaffAuth } from "../context/staff-auth-context";
 import { startDelivery } from "../services/orders.js";
 import { staffColors } from "../theme/staff-ui";
@@ -57,104 +59,79 @@ export function DeliveryDashboardBoard() {
   const { user } = useStaffAuth();
   const uid = user?.uid ?? "";
 
-  const readyMapRef = useRef(new Map<string, DeliveryOrderView>());
-  const assignedMapRef = useRef(new Map<string, DeliveryOrderView>());
-  const partnerMapRef = useRef(new Map<string, DeliveryOrderView>());
-  const boyMapRef = useRef(new Map<string, DeliveryOrderView>());
   const [orders, setOrders] = useState<DeliveryOrderView[]>([]);
   const [loading, setLoading] = useState(true);
   const [listenError, setListenError] = useState<string | null>(null);
+  const [listenIndexUrl, setListenIndexUrl] = useState<string | null>(null);
+  const [listenKey, setListenKey] = useState(0);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  const mergeAndSet = useCallback(() => {
-    const merged = new Map<string, DeliveryOrderView>();
-    readyMapRef.current.forEach((v, k) => merged.set(k, v));
-    assignedMapRef.current.forEach((v, k) => merged.set(k, v));
-    partnerMapRef.current.forEach((v, k) => merged.set(k, v));
-    boyMapRef.current.forEach((v, k) => merged.set(k, v));
-    const arr = Array.from(merged.values()).sort((a, b) => b.createdAtMs - a.createdAtMs);
-    setOrders(arr);
-    setLoading(false);
-  }, []);
 
   useEffect(() => {
     if (!uid) {
-      readyMapRef.current = new Map();
-      assignedMapRef.current = new Map();
-      partnerMapRef.current = new Map();
-      boyMapRef.current = new Map();
       setOrders([]);
       setLoading(false);
       return;
     }
 
     setListenError(null);
+    setListenIndexUrl(null);
     setLoading(true);
-    readyMapRef.current = new Map();
-    assignedMapRef.current = new Map();
-    partnerMapRef.current = new Map();
-    boyMapRef.current = new Map();
 
-    const qReady = query(collection(staffDb, "orders"), where("status", "==", "ready"));
-    const qAssigned = query(collection(staffDb, "orders"), where("assignedTo.deliveryId", "==", uid));
-    const qPartner = query(collection(staffDb, "orders"), where("deliveryPartnerId", "==", uid));
-    const qBoy = query(collection(staffDb, "orders"), where("deliveryBoyId", "==", uid));
+    let unsubFallback: (() => void) | undefined;
 
-    const unsubReady = onSnapshot(
-      qReady,
-      (snap) => {
-        readyMapRef.current = new Map(snap.docs.map((d) => [d.id, parseOrderDoc(d.id, d.data())]));
-        mergeAndSet();
-      },
-      (err) => {
-        setListenError(err.message);
-        setLoading(false);
+    const applySnap = (snap: QuerySnapshot<DocumentData>) => {
+      const merged = new Map<string, DeliveryOrderView>();
+      for (const d of snap.docs) {
+        const data = d.data();
+        const st = String(data.status ?? "").toLowerCase();
+        if (st !== "ready" && st !== "out_for_delivery") continue;
+        const assigned = data.assignedTo && typeof data.assignedTo === "object" ? (data.assignedTo as Record<string, unknown>) : {};
+        const deliveryId = typeof assigned.deliveryId === "string" ? assigned.deliveryId : "";
+        const partner = typeof data.deliveryPartnerId === "string" ? data.deliveryPartnerId : "";
+        const boy = typeof data.deliveryBoyId === "string" ? data.deliveryBoyId : "";
+        const mine = deliveryId === uid || partner === uid || boy === uid;
+        if (st === "ready" || (st === "out_for_delivery" && mine)) {
+          merged.set(d.id, parseOrderDoc(d.id, data));
+        }
       }
-    );
+      const arr = Array.from(merged.values()).sort((a, b) => b.createdAtMs - a.createdAtMs);
+      setOrders(arr);
+      setLoading(false);
+    };
 
-    const unsubAssigned = onSnapshot(
-      qAssigned,
-      (snap) => {
-        assignedMapRef.current = new Map(snap.docs.map((d) => [d.id, parseOrderDoc(d.id, d.data())]));
-        mergeAndSet();
-      },
+    const unsubPrimary = onSnapshot(
+      getDeliveryOrdersQuery(),
+      applySnap,
       (err) => {
-        setListenError(err.message);
-        setLoading(false);
-      }
-    );
-
-    const unsubPartner = onSnapshot(
-      qPartner,
-      (snap) => {
-        partnerMapRef.current = new Map(snap.docs.map((d) => [d.id, parseOrderDoc(d.id, d.data())]));
-        mergeAndSet();
-      },
-      (err) => {
-        setListenError(err.message);
-        setLoading(false);
-      }
-    );
-
-    const unsubBoy = onSnapshot(
-      qBoy,
-      (snap) => {
-        boyMapRef.current = new Map(snap.docs.map((d) => [d.id, parseOrderDoc(d.id, d.data())]));
-        mergeAndSet();
-      },
-      (err) => {
-        setListenError(err.message);
-        setLoading(false);
+        if (!isFirestoreCompositeIndexError(err)) {
+          const { body } = formatFirestoreIndexErrorMessage(err);
+          setListenError(err instanceof Error ? err.message : body);
+          setListenIndexUrl(extractFirestoreIndexUrl(err));
+          setLoading(false);
+          return;
+        }
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          // eslint-disable-next-line no-console
+          console.warn("[delivery-board] Missing composite index — using recent-orders fallback.");
+        }
+        unsubFallback = onSnapshot(
+          getRecentOrdersFallbackQuery(),
+          applySnap,
+          (err2) => {
+            const { body } = formatFirestoreIndexErrorMessage(err2);
+            setListenError(err2 instanceof Error ? err2.message : body);
+            setListenIndexUrl(extractFirestoreIndexUrl(err2));
+            setLoading(false);
+          }
+        );
       }
     );
 
     return () => {
-      unsubReady();
-      unsubAssigned();
-      unsubPartner();
-      unsubBoy();
+      unsubPrimary();
+      unsubFallback?.();
     };
-  }, [uid, mergeAndSet]);
+  }, [uid, listenKey]);
 
   const markDelivered = useCallback(async (orderId: string) => {
     setUpdatingId(orderId);
@@ -237,7 +214,36 @@ export function DeliveryDashboardBoard() {
   if (listenError) {
     return (
       <View style={{ borderRadius: 12, backgroundColor: "#FEF2F2", padding: 16, borderWidth: 1, borderColor: "#FECACA" }}>
-        <Text style={{ color: "#991B1B", fontWeight: "700" }}>{listenError}</Text>
+        <Text style={{ color: "#991B1B", fontWeight: "800", fontSize: 16 }}>Could not sync deliveries</Text>
+        <Text style={{ color: "#7f1d1d", marginTop: 8, fontSize: 13, lineHeight: 18 }}>{listenError}</Text>
+        {listenIndexUrl ? (
+          <TouchableOpacity
+            onPress={() => void Linking.openURL(listenIndexUrl)}
+            style={{ marginTop: 12, alignSelf: "flex-start", backgroundColor: staffColors.accent, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 }}
+          >
+            <Text style={{ color: "white", fontWeight: "800", fontSize: 13 }}>Open index in Firebase Console</Text>
+          </TouchableOpacity>
+        ) : null}
+        <TouchableOpacity
+          onPress={() => {
+            setListenError(null);
+            setListenIndexUrl(null);
+            setLoading(true);
+            setListenKey((k) => k + 1);
+          }}
+          style={{
+            marginTop: 12,
+            alignSelf: "flex-start",
+            borderWidth: 1,
+            borderColor: "#fecaca",
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 10,
+            backgroundColor: "white"
+          }}
+        >
+          <Text style={{ color: "#991B1B", fontWeight: "800", fontSize: 13 }}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -280,7 +286,9 @@ export function DeliveryDashboardBoard() {
 
       <Text style={{ fontWeight: "800", fontSize: 14, color: staffColors.text, marginBottom: 8 }}>Completed</Text>
       {completedOrders.length === 0 ? (
-        <Text style={{ color: staffColors.muted, fontSize: 13, marginBottom: 8 }}>No completed deliveries in this session snapshot.</Text>
+        <Text style={{ color: staffColors.muted, fontSize: 13, marginBottom: 8 }}>
+          Live feed includes only ready and active runs (delivered orders are omitted to reduce sync load).
+        </Text>
       ) : (
         <ScrollView style={{ maxHeight: 280 }}>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>{completedOrders.map((o) => renderCard(o, false))}</View>

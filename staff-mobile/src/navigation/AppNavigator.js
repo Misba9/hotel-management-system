@@ -3,31 +3,33 @@ import { StyleSheet, Text, View } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useAuth } from "../context/AuthProvider";
 import LoginScreen from "../screens/LoginScreen";
+import AdminScreen from "../screens/AdminScreen";
 import ManagerScreen from "../screens/ManagerScreen";
 import CashierScreen from "../screens/CashierScreen";
 import KitchenScreen from "../screens/KitchenScreen";
 import DeliveryScreen from "../screens/DeliveryScreen";
-import { AdminDashboardScreen } from "../screens/admin-dashboard-screen";
-import { WaiterScreen } from "../screens/waiter-screen";
+import { WaiterStackNavigator } from "./waiter-stack-navigator";
 import { StaffLoadingView } from "../components/staff-dashboard/staff-loading-view";
 import { PendingApprovalScreen } from "../screens/pending-approval-screen";
 import { InactiveAccountScreen } from "../screens/inactive-account-screen";
 import { SyncErrorScreen } from "../screens/sync-error-screen";
-import { rootRouteForStaffRole } from "./staff-role-routes";
+import { isPendingApprovalGate, rootRouteForStaffRole } from "./staff-role-routes";
 
 const Stack = createNativeStackNavigator();
 
-function SignOutHeaderButton() {
-  const { signOutUser } = useAuth();
-  return (
-    <Text onPress={() => void signOutUser()} style={{ marginRight: 16, color: "#FF6B35", fontWeight: "600" }}>
-      Sign out
-    </Text>
-  );
-}
+/** Approved, active staff → single root screen per role (see {@link rootRouteForStaffRole}). */
+const STAFF_ROOT_COMPONENTS = {
+  AdminRoot: AdminScreen,
+  ManagerRoot: ManagerScreen,
+  CashierRoot: CashierScreen,
+  KitchenRoot: KitchenScreen,
+  DeliveryRoot: DeliveryScreen,
+  WaiterDashboard: WaiterStackNavigator
+};
 
 /**
- * Auth → auto `staff_users/{uid}` → gate: pending | active | paused | sync_error (no “access denied” for missing docs).
+ * Auth → approval (`users` + `staff_users`) → role-based root:
+ * admin → AdminDashboard · manager → ManagerDashboard · kitchen / cashier / delivery / waiter → role screens.
  */
 export function AppNavigator() {
   const { user, staff, loading, gate } = useAuth();
@@ -44,10 +46,10 @@ export function AppNavigator() {
     );
   }
 
-  if (gate === "pending" || gate === "needs_assignment") {
+  if (isPendingApprovalGate(gate)) {
     return (
       <Stack.Navigator>
-        <Stack.Screen name="Pending" component={PendingApprovalScreen} options={{ title: "Waiting for approval" }} />
+        <Stack.Screen name="Pending" component={PendingApprovalScreen} options={{ title: "Pending approval" }} />
       </Stack.Navigator>
     );
   }
@@ -82,32 +84,31 @@ export function AppNavigator() {
     );
   }
 
-  const route = rootRouteForStaffRole(staff.role);
-  const headerRight = () => <SignOutHeaderButton />;
+  const routeKey = rootRouteForStaffRole(staff.role);
+  const RootComponent = STAFF_ROOT_COMPONENTS[routeKey];
+  /** Remount root stack when role (or user) changes so nested navigators reset (realtime `users/{uid}` updates). */
+  const rootNavigatorKey = `${user.uid}-${routeKey}`;
 
-  return (
-    <Stack.Navigator screenOptions={{ gestureEnabled: false, headerBackVisible: false }}>
-      {route === "AdminRoot" ? (
-        <Stack.Screen name="AdminRoot" component={AdminDashboardScreen} options={{ title: "Admin", headerRight }} />
-      ) : route === "ManagerRoot" ? (
-        <Stack.Screen name="ManagerRoot" component={ManagerScreen} options={{ headerShown: false }} />
-      ) : route === "CashierRoot" ? (
-        <Stack.Screen name="CashierRoot" component={CashierScreen} options={{ headerShown: false }} />
-      ) : route === "KitchenRoot" ? (
-        <Stack.Screen name="KitchenRoot" component={KitchenScreen} options={{ headerShown: false }} />
-      ) : route === "DeliveryRoot" ? (
-        <Stack.Screen name="DeliveryRoot" component={DeliveryScreen} options={{ headerShown: false }} />
-      ) : route === "WaiterRoot" ? (
-        <Stack.Screen name="WaiterRoot" component={WaiterScreen} options={{ title: "Waiter", headerRight }} />
-      ) : (
-        <Stack.Screen name="Fallback" options={{ title: "Staff" }}>
+  if (!RootComponent) {
+    return (
+      <Stack.Navigator>
+        <Stack.Screen name="UnknownRole" options={{ title: "Staff" }}>
           {() => (
             <View style={styles.fallback}>
-              <Text style={styles.fallbackText}>No route for this role.</Text>
+              <Text style={styles.fallbackText}>No home screen for role: {String(staff.role)}</Text>
             </View>
           )}
         </Stack.Screen>
-      )}
+      </Stack.Navigator>
+    );
+  }
+
+  return (
+    <Stack.Navigator
+      key={rootNavigatorKey}
+      screenOptions={{ gestureEnabled: false, headerBackVisible: false }}
+    >
+      <Stack.Screen name={routeKey} component={RootComponent} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }

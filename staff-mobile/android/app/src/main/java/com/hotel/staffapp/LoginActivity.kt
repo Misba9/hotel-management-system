@@ -88,7 +88,7 @@ class LoginActivity : AppCompatActivity() {
           "delivery", "delivery_boy" -> DeliveryActivity::class.java
           "counter", "cashier" -> CounterActivity::class.java
           "waiter" -> WaiterActivity::class.java
-          "admin" -> AdminAnalyticsActivity::class.java
+          "admin", "manager" -> MainActivity::class.java
           else -> null
         }
 

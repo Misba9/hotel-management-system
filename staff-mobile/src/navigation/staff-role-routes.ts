@@ -1,3 +1,5 @@
+import type { StaffMobileRootRoute } from "@shared/utils/staff-access-control";
+import { staffMobileRootRouteForRole } from "@shared/utils/staff-access-control";
 import type { StaffRoleId } from "../constants/staff-roles";
 
 /**
@@ -6,36 +8,24 @@ import type { StaffRoleId } from "../constants/staff-roles";
  * Canonical fields:
  * - `uid` (string, mirrors document id)
  * - `email`, `name`
- * - `role`: admin | manager | kitchen | cashier | delivery | pending (+ waiter legacy)
+ * - `role`: admin | manager | kitchen | cashier | delivery | waiter | pending
  * - `isActive` (boolean)
  * - `createdAt` (timestamp)
  * - Optional: `pendingApproval` (legacy self-signup), `updatedAt`
  */
 export const STAFF_USERS_COLLECTION = "staff_users" as const;
 
-export type StaffAppRootRoute =
-  | "AdminRoot"
-  | "ManagerRoot"
-  | "CashierRoot"
-  | "KitchenRoot"
-  | "DeliveryRoot"
-  | "WaiterRoot"
-  | "AccessDenied";
+export type StaffAppRootRoute = StaffMobileRootRoute;
 
-/** Role → root screen after login. */
+/** `gate` values that should show the pending-approval stack (not approved / needs role). */
+export function isPendingApprovalGate(gate: string): boolean {
+  return gate === "pending" || gate === "needs_assignment";
+}
+
+/**
+ * Role → root screen after login (approved + active staff only).
+ * Shared mapping: {@link staffMobileRootRouteForRole}.
+ */
 export function rootRouteForStaffRole(role: StaffRoleId): StaffAppRootRoute {
-  switch (role) {
-    case "admin":
-      return "AdminRoot";
-    case "manager":
-      return "ManagerRoot";
-    case "cashier":
-      return "CashierRoot";
-    case "kitchen":
-      return "KitchenRoot";
-    case "delivery":
-      return "DeliveryRoot";
-    case "waiter":
-      return "WaiterRoot";
-  }
+  return staffMobileRootRouteForRole(role);
 }

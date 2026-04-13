@@ -7,6 +7,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import {
   BadgeCheck,
   ChevronRight,
+  Loader2,
   LogOut,
   Mail,
   MapPin,
@@ -351,9 +352,14 @@ function ProfileAuthenticatedPage() {
     }
   }
 
-  if (!user) return null;
-
   return (
+    <>
+      {!user ? (
+        <section className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-4 py-8" aria-busy="true" aria-label="Loading profile">
+          <Loader2 className="h-9 w-9 animate-spin text-orange-500" aria-hidden />
+          <p className="text-sm text-slate-500 dark:text-slate-400">Loading profile…</p>
+        </section>
+      ) : (
     <section className="space-y-6 pb-12">
       <header className="flex flex-col gap-1 border-b border-slate-200 pb-6 dark:border-slate-800">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50 md:text-3xl">Profile</h1>
@@ -810,6 +816,8 @@ function ProfileAuthenticatedPage() {
         </Dialog.Portal>
       </Dialog.Root>
     </section>
+      )}
+    </>
   );
 }
 

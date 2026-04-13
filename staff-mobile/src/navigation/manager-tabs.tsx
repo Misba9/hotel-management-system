@@ -33,16 +33,18 @@ export function ManagerTabsNavigator() {
 
   const showDashboard = role ? hasPermission(role, "dashboard") : false;
   const showOrders = role ? hasPermission(role, "orders") : false;
-  /** Manager: dashboard + orders only (no in-app analytics tab). */
+  /** Admin: dashboard + orders + analytics. Manager: dashboard + orders only. */
   const showAnalytics =
-    role && role !== "manager" ? hasPermission(role, "analytics") : false;
+    role === "admin" || Boolean(role && role !== "manager" && hasPermission(role, "analytics"));
 
   const anyTab = showDashboard || showOrders || showAnalytics;
+
+  const headerTitle = role === "admin" ? "Admin" : "Manager";
 
   if (!anyTab) {
     return (
       <Tab.Navigator screenOptions={{ tabBarActiveTintColor: "#FF6B35", headerRight: () => <SignOutTab /> }}>
-        <Tab.Screen name="Home" component={EmptyManagerArea} options={{ title: "Manager" }} />
+        <Tab.Screen name="Home" component={EmptyManagerArea} options={{ title: headerTitle }} />
       </Tab.Navigator>
     );
   }
@@ -55,6 +57,7 @@ export function ManagerTabsNavigator() {
       initialRouteName={initial}
       screenOptions={{
         tabBarActiveTintColor: "#FF6B35",
+        headerTitle,
         headerRight: () => <SignOutTab />
       }}
     >

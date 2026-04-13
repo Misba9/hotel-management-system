@@ -8,11 +8,13 @@ import {
   db,
   logError,
   logInfo,
-  orderStatusSchema,
+  orderLifecycleStatusSchema,
   paymentMethodSchema,
   syncDeliveryTrackingDoc,
   syncOrderFeedDoc
 } from "./common";
+import { assignDeliveryAgentWhenOrderReady, DEFAULT_ASSIGNED_TO } from "../autoStaffAssignment";
+import { assertValidTransition } from "../orderStatusLifecycle";
 
 const createOrderHttpSchema = z.object({
   branchId: z.string().min(1),
@@ -30,7 +32,7 @@ const createOrderHttpSchema = z.object({
 });
 
 const updateStatusHttpSchema = z.object({
-  status: orderStatusSchema
+  status: orderLifecycleStatusSchema
 });
 
 const assignDeliveryHttpSchema = z.object({
@@ -84,7 +86,7 @@ export const platformApiV1 = onRequest(async (request, response) => {
           price: item.unitPrice,
           quantity: item.quantity
         })),
-        assignedTo: { kitchenId: "", deliveryId: "" },
+        assignedTo: { ...DEFAULT_ASSIGNED_TO },
         deliveryAddress: payload.deliveryAddress ?? null,
         createdAt: now,
         updatedAt: now
@@ -114,11 +116,27 @@ export const platformApiV1 = onRequest(async (request, response) => {
       assertRole(identity.role, ["kitchen_staff", "waiter", "cashier", "delivery_boy", "manager", "admin"]);
       const orderId = statusMatch[1];
       const payload = updateStatusHttpSchema.parse(request.body);
+      const orderSnap = await db.collection(COLLECTIONS.orders).doc(orderId).get();
+      if (!orderSnap.exists) {
+        response.status(404).json({ error: "Order not found." });
+        return;
+      }
+      const prev = (orderSnap.data() as { status?: string } | undefined)?.status;
+      try {
+        assertValidTransition(prev, payload.status);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        response.status(400).json({ error: msg });
+        return;
+      }
       const now = createTimestamp();
       await db.collection(COLLECTIONS.orders).doc(orderId).update({
         status: payload.status,
         updatedAt: now
       });
+      if (payload.status === "ready") {
+        await assignDeliveryAgentWhenOrderReady(db, orderId);
+      }
       await syncOrderFeedDoc(orderId, {
         status: payload.status,
         updatedAt: now

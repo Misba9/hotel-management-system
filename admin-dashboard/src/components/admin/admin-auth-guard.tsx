@@ -2,13 +2,13 @@
 
 import { ReactNode, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { routeForRole, type AppRole, useAuth } from "@/context/AuthContext";
+import { routeForRole, type StaffAppRole, useAuth } from "@/context/AuthContext";
 import { FirebaseConfigErrorPanel } from "@/components/auth/firebase-config-error-panel";
 import { Loader2 } from "lucide-react";
 
 type Props = {
   children: ReactNode;
-  allowedRoles?: AppRole[];
+  allowedRoles?: StaffAppRole[];
 };
 
 export function AdminAuthGuard({ children, allowedRoles }: Props) {

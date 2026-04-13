@@ -1,5 +1,6 @@
+import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { type Query } from "firebase-admin/firestore";
-import { adminDb } from "@shared/firebase/admin";
+import { adminDb, getFirebaseAdminApp } from "@shared/firebase/admin";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,33 @@ const querySchema = z.object({
   categoryId: z.string().min(1).optional()
 });
 
+function isProductAvailable(row: Record<string, unknown>): boolean {
+  return row.availability === true || row.available === true;
+}
+
+function rowCategoryId(row: Record<string, unknown>): string {
+  return String(row.categoryId ?? row.category ?? "uncategorized");
+}
+
+function toProductRecord(d: QueryDocumentSnapshot): ProductRecord {
+  const row = d.data() as Record<string, unknown>;
+  return {
+    id: String(row.id ?? d.id),
+    name: String(row.name ?? ""),
+    description: String(row.description ?? ""),
+    categoryId: rowCategoryId(row),
+    categoryName: String(row.categoryName ?? row.category ?? "Uncategorized"),
+    price: Number(row.price ?? 0),
+    rating: Number(row.rating ?? 4.5),
+    image: String(row.image ?? row.imageUrl ?? ""),
+    ingredients: Array.isArray(row.ingredients) ? row.ingredients.map((x) => String(x)) : [],
+    sizes: [{ label: "Medium", multiplier: 1 }],
+    available: isProductAvailable(row),
+    featured: Boolean(row.featured ?? row.isFeatured),
+    popular: Boolean(row.popular ?? row.isPopular)
+  };
+}
+
 function toCategoryRecords(products: ProductRecord[]): CategoryRecord[] {
   const map = new Map<string, CategoryRecord>();
   for (const p of products) {
@@ -53,8 +81,73 @@ function toCategoryRecords(products: ProductRecord[]): CategoryRecord[] {
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+const MAX_SCAN = 4000;
+
+/**
+ * Paginate with a single-field query (`orderBy("name")` only) and filter in memory.
+ * Avoids composite indexes on `availability` + `categoryId` + `name`.
+ */
+async function fetchProductPage(args: {
+  pageSize: number;
+  cursor: string | null;
+  categoryId: string | null;
+}): Promise<{ products: ProductRecord[]; hasMore: boolean; nextCursor: string | null }> {
+  const { pageSize, categoryId } = args;
+  const col = adminDb.collection("products");
+
+  let q: Query = col.orderBy("name", "asc");
+  if (args.cursor) {
+    const cursorSnap = await col.doc(args.cursor).get();
+    if (cursorSnap.exists) {
+      q = q.startAfter(cursorSnap);
+    }
+  }
+
+  const page: ProductRecord[] = [];
+  let scanned = 0;
+
+  while (page.length < pageSize + 1 && scanned < MAX_SCAN) {
+    const batch = await q.limit(80).get();
+    if (batch.empty) break;
+
+    for (const d of batch.docs) {
+      scanned += 1;
+      const row = d.data() as Record<string, unknown>;
+      if (!isProductAvailable(row)) continue;
+      if (categoryId && rowCategoryId(row) !== categoryId) continue;
+      page.push(toProductRecord(d));
+      if (page.length === pageSize + 1) break;
+    }
+
+    if (page.length === pageSize + 1) break;
+
+    const last = batch.docs[batch.docs.length - 1];
+    q = col.orderBy("name", "asc").startAfter(last);
+    if (batch.size < 80) break;
+  }
+
+  const hasMore = page.length > pageSize;
+  const slice = hasMore ? page.slice(0, pageSize) : page;
+  const nextCursor = hasMore && slice.length > 0 ? slice[slice.length - 1].id : null;
+
+  return { products: slice, hasMore, nextCursor };
+}
+
 export async function GET(request: Request) {
   try {
+    if (!getFirebaseAdminApp()) {
+      console.error(
+        "[api/products] Firebase Admin is not initialized. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY (or GOOGLE_APPLICATION_CREDENTIALS)."
+      );
+      return Response.json(
+        {
+          error: "Menu service unavailable",
+          details: "Server could not connect to Firestore."
+        },
+        { status: 503 }
+      );
+    }
+
     const url = new URL(request.url);
     const parsed = querySchema.safeParse({
       limit: url.searchParams.get("limit") ?? undefined,
@@ -68,47 +161,14 @@ export async function GET(request: Request) {
     const cursor = parsed.data.cursor ?? null;
     const categoryId = parsed.data.categoryId ?? null;
 
-    let base: Query = adminDb.collection("products").where("availability", "==", true).orderBy("name", "asc");
-    if (categoryId) {
-      base = adminDb
-        .collection("products")
-        .where("categoryId", "==", categoryId)
-        .where("availability", "==", true)
-        .orderBy("name", "asc");
-    }
-
-    if (cursor) {
-      const cursorSnap = await adminDb.collection("products").doc(cursor).get();
-      if (cursorSnap.exists) {
-        base = base.startAfter(cursorSnap);
-      }
-    }
-
-    const snap = await base.limit(pageSize + 1).get();
-    const hasMore = snap.docs.length > pageSize;
-    const docs = hasMore ? snap.docs.slice(0, pageSize) : snap.docs;
-
-    const products: ProductRecord[] = docs.map((d) => {
-      const row = d.data() as Record<string, unknown>;
-      return {
-        id: String(row.id ?? d.id),
-        name: String(row.name ?? ""),
-        description: String(row.description ?? ""),
-        categoryId: String(row.categoryId ?? row.category ?? "uncategorized"),
-        categoryName: String(row.categoryName ?? row.category ?? "Uncategorized"),
-        price: Number(row.price ?? 0),
-        rating: Number(row.rating ?? 4.5),
-        image: String(row.image ?? row.imageUrl ?? ""),
-        ingredients: Array.isArray(row.ingredients) ? row.ingredients.map((x) => String(x)) : [],
-        sizes: [{ label: "Medium", multiplier: 1 }],
-        available: row.availability === true || row.available === true,
-        featured: Boolean(row.featured ?? row.isFeatured),
-        popular: Boolean(row.popular ?? row.isPopular)
-      };
+    const { products, hasMore, nextCursor } = await fetchProductPage({
+      pageSize,
+      cursor,
+      categoryId
     });
 
     const categories = toCategoryRecords(products);
-    const nextCursor = hasMore && docs.length > 0 ? docs[docs.length - 1].id : null;
+
     return Response.json(
       {
         products,
@@ -120,6 +180,12 @@ export async function GET(request: Request) {
     );
   } catch (error) {
     console.error("[api/products] failed.", error);
-    return Response.json({ error: "Failed to fetch menu" }, { status: 500 });
+    return Response.json(
+      {
+        error: "Failed to fetch menu",
+        details: error instanceof Error ? error.message : String(error)
+      },
+      { status: 500 }
+    );
   }
 }

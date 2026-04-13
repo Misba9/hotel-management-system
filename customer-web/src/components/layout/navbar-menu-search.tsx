@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -9,6 +8,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { getMenuPayload } from "@/lib/menu-data";
 import type { Category, Product } from "@/lib/menu-data-types";
 import { buildMenuUrl, filterMenuProducts } from "@/lib/menu-search";
+import { SafeFillImage } from "@/components/shared/safe-fill-image";
 
 const DEBOUNCE_MS = 280;
 const DROPDOWN_MAX = 8;
@@ -244,7 +244,7 @@ export function NavbarMenuSearch() {
                       className="flex gap-3 rounded-xl p-2 transition hover:bg-orange-50 dark:hover:bg-orange-950/30"
                     >
                       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800">
-                        <Image src={p.image} alt={p.name} fill sizes="48px" className="object-cover" />
+                        <SafeFillImage src={p.image} alt={p.name} sizes="48px" className="object-cover" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-50">{p.name}</p>

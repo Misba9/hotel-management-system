@@ -68,6 +68,26 @@ service cloud.firestore {
         request.resource.data.createdAt == request.time;
     }
 
+    /** Owner may create their doc if staff self-signup shape, or a profile without privileged staff fields. */
+    function usersOwnerCreateAllowed(userId) {
+      return isOwner(userId) && (
+          validStaffSelfSignupCreate() ||
+          !request.resource.data.keys().hasAny(["role", "approved", "pendingApproval", "isActive", "status"])
+        );
+    }
+
+    /** Owner may patch name/phone/etc. but cannot change role, approval flags, or staff activation (e.g. waiter → kitchen). */
+    function usersOwnerUpdateAllowed(userId) {
+      return isOwner(userId) &&
+        !request.resource.data.diff(resource.data).changedKeys().hasAny([
+          "role",
+          "approved",
+          "pendingApproval",
+          "isActive",
+          "status"
+        ]);
+    }
+
     function validOrderStatus(status) {
       return status in ["created", "confirmed", "pending", "accepted", "rejected", "preparing", "ready", "out_for_delivery", "delivered", "cancelled"];
     }
@@ -145,6 +165,36 @@ service cloud.firestore {
         request.resource.data.deliveryLocation.lng is number &&
         request.resource.data.createdAt is timestamp &&
         request.resource.data.updatedAt is timestamp;
+    }
+
+    /** Waiter — table service order (TableOrderScreen). */
+    function validWaiterTableOrderCreate(orderId) {
+      return request.resource.data.keys().hasOnly([
+            "id",
+            "userId",
+            "createdByUid",
+            "tableNumber",
+            "tableId",
+            "orderType",
+            "items",
+            "totalAmount",
+            "status",
+            "paymentStatus",
+            "createdAt"
+          ]) &&
+        request.resource.data.id == orderId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.tableNumber is number &&
+        request.resource.data.tableId is string &&
+        request.resource.data.tableId != "" &&
+        request.resource.data.orderType == "table" &&
+        request.resource.data.items is list &&
+        request.resource.data.totalAmount is number &&
+        request.resource.data.totalAmount >= 0 &&
+        request.resource.data.status == "PLACED" &&
+        request.resource.data.paymentStatus == "PENDING" &&
+        request.resource.data.createdAt is timestamp;
     }
 
     /** Waiter — dine-in ticket. */
@@ -271,9 +321,16 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      /** Own profile; admin/manager may read all user docs for dashboards (list + realtime). */
+      /**
+       * Read: own document, or admin/manager dashboards (list + realtime).
+       * Write: only `role == "admin"` in ID token may change role / approved / pendingApproval / isActive / status.
+       * Signed-in users may create/update their doc only when they do not touch those privileged paths
+       * (prevents waiters or any non-admin from self-promoting or self-approving).
+       */
       allow read: if isOwner(userId) || hasAnyRole(["admin", "manager"]);
-      allow write: if isOwner(userId);
+      allow create: if hasRole("admin") || usersOwnerCreateAllowed(userId);
+      allow update: if hasRole("admin") || usersOwnerUpdateAllowed(userId);
+      allow delete: if hasRole("admin");
 
       /** Customer delivery addresses saved under the user document. */
       match /addresses/{addressId} {
@@ -296,6 +353,87 @@ service cloud.firestore {
       allow write: if hasAnyRole(["manager", "admin"]) && validMenuItemWrite();
     }
 
+    /** Waiter table orders — same shape as `menu_items` (name, price, available). */
+    match /menu/{id} {
+      allow read: if true;
+      allow write: if hasAnyRole(["manager", "admin"]) && validMenuItemWrite();
+    }
+
+    /** Waiter: request bill only after food is served (`status == SERVED`, payment still PENDING). */
+    function waiterTableOrderBillRequestUpdate() {
+      return hasRole("waiter") &&
+        staffUserActive() &&
+        resource.data.orderType == "table" &&
+        resource.data.status == "SERVED" &&
+        resource.data.paymentStatus == "PENDING" &&
+        request.resource.data.paymentStatus == "REQUESTED" &&
+        (
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["paymentStatus", "updatedAt"]) ||
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["paymentStatus"])
+        );
+    }
+
+    /** Cashier: request bill when payment is still PENDING (e.g. served, waiter did not request). */
+    function cashierTableOrderBillRequestUpdate() {
+      return hasRole("cashier") &&
+        staffUserActive() &&
+        resource.data.orderType == "table" &&
+        resource.data.paymentStatus == "PENDING" &&
+        request.resource.data.paymentStatus == "REQUESTED" &&
+        (
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["paymentStatus", "updatedAt"]) ||
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["paymentStatus"])
+        );
+    }
+
+    /**
+     * Cashier: record payment — COMPLETED + PAID.
+     * Allowed when bill was REQUESTED, or table is SERVED with payment still PENDING.
+     */
+    function cashierCompleteTableOrderPayment() {
+      return hasRole("cashier") &&
+        staffUserActive() &&
+        resource.data.orderType == "table" &&
+        request.resource.data.status == "COMPLETED" &&
+        request.resource.data.paymentStatus == "PAID" &&
+        (
+          resource.data.paymentStatus == "REQUESTED" ||
+          (resource.data.status == "SERVED" && resource.data.paymentStatus == "PENDING")
+        ) &&
+        (
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "paymentStatus", "updatedAt"]) ||
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "paymentStatus"])
+        );
+    }
+
+    /** Waiter: table ticket READY → SERVED (after kitchen marks ready). */
+    function waiterTableOrderMarkServedUpdate() {
+      return hasRole("waiter") &&
+        staffUserActive() &&
+        resource.data.orderType == "table" &&
+        resource.data.status == "READY" &&
+        request.resource.data.status == "SERVED" &&
+        (
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "updatedAt"]) ||
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["status"])
+        );
+    }
+
+    /** Kitchen: table tickets PLACED → PREPARING → READY (Auth claim may be `kitchen_staff`). */
+    function kitchenTableOrderProgressUpdate() {
+      return hasAnyRole(["kitchen_staff", "kitchen"]) &&
+        staffUserActive() &&
+        resource.data.orderType == "table" &&
+        (
+          (resource.data.status == "PLACED" && request.resource.data.status == "PREPARING") ||
+          (resource.data.status == "PREPARING" && request.resource.data.status == "READY")
+        ) &&
+        (
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "updatedAt"]) ||
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["status"])
+        );
+    }
+
     match /orders/{orderId} {
       allow read: if isAuthed() && (
         resource.data.userId == request.auth.uid ||
@@ -305,9 +443,15 @@ service cloud.firestore {
       allow create: if isAuthed() && (
         (request.resource.data.userId == request.auth.uid && validOrderWrite()) ||
         (hasRole("cashier") && staffUserActive() && validUnifiedCashierOrderCreate(orderId)) ||
-        (hasRole("waiter") && staffUserActive() && validUnifiedWaiterOrderCreate(orderId))
+        (hasRole("waiter") && staffUserActive() && validUnifiedWaiterOrderCreate(orderId)) ||
+        (hasRole("waiter") && staffUserActive() && validWaiterTableOrderCreate(orderId))
       );
       allow update: if isAuthed() && (
+        kitchenTableOrderProgressUpdate() ||
+        waiterTableOrderBillRequestUpdate() ||
+        waiterTableOrderMarkServedUpdate() ||
+        cashierTableOrderBillRequestUpdate() ||
+        cashierCompleteTableOrderPayment() ||
         (usesKitchenDeliveryPipeline(resource.data) && staffUserActive() && (
             pipelineKitchenUpdateOk() ||
             pipelineDeliveryUpdateOk() ||
@@ -488,6 +632,19 @@ service cloud.firestore {
     match /staffNewOrderEvents/{id} {
       allow read: if hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy", "delivery"]);
       allow write: if false;
+    }
+
+    /** Floor plan: waiter + cashier read; managers/admins maintain; waiter/cashier may patch `status`. */
+    match /tables/{tableId} {
+      allow read: if staffUserActive() && hasAnyRole(["waiter", "cashier", "manager", "admin"]);
+      allow create, delete: if staffUserActive() && hasAnyRole(["manager", "admin"]);
+      allow update: if (staffUserActive() && hasAnyRole(["manager", "admin"])) ||
+        (staffUserActive() && hasRole("waiter") &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["status"]) &&
+          request.resource.data.status in ["OCCUPIED", "FREE"]) ||
+        (staffUserActive() && hasRole("cashier") &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["status"]) &&
+          request.resource.data.status == "FREE");
     }
 
     match /adminAlerts/{docId} {

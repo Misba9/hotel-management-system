@@ -18,36 +18,30 @@ import {
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
+import {
+  resolveStaffAppRole,
+  staffWebHomePathForRole,
+  usersDocBlocksStaffAccess,
+  type StaffAppRole,
+  type StaffUsersDocFields
+} from "@shared/utils/staff-access-control";
 import { getFirebaseAuth, getFirebaseDb, logFirebaseConfigDebug } from "@/lib/firebase";
 
-export type AppRole = "admin" | "manager" | "kitchen" | "delivery" | "counter" | "waiter";
+/** @deprecated Prefer {@link StaffAppRole} from `@shared/utils/staff-access-control`. */
+export type AppRole = StaffAppRole;
+
+export type { StaffAppRole };
 
 const ROLE_SESSION_KEY = "staff_role_session";
 
-function normalizeRole(raw: unknown): AppRole | null {
-  if (typeof raw !== "string") return null;
-  const r = raw.trim().toLowerCase();
-  if (r === "admin") return "admin";
-  if (r === "manager") return "manager";
-  if (r === "kitchen" || r === "kitchen_staff") return "kitchen";
-  if (r === "delivery" || r === "delivery_boy") return "delivery";
-  if (r === "counter" || r === "cashier") return "counter";
-  if (r === "waiter") return "waiter";
-  return null;
-}
-
-export function routeForRole(role: AppRole | null): string {
-  if (role === "admin" || role === "manager") return "/admin";
-  if (role === "kitchen") return "/kitchen";
-  if (role === "delivery") return "/delivery";
-  if (role === "counter") return "/counter";
-  if (role === "waiter") return "/waiter";
-  return "/login";
+export function routeForRole(role: StaffAppRole | null): string {
+  if (!role) return "/login";
+  return staffWebHomePathForRole(role);
 }
 
 type AuthContextValue = {
   user: User | null;
-  role: AppRole | null;
+  role: StaffAppRole | null;
   initializing: boolean;
   isAuthenticated: boolean;
   /** Set when env/config is invalid so UI can show a fix hint */
@@ -62,7 +56,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<AppRole | null>(null);
+  const [role, setRole] = useState<StaffAppRole | null>(null);
   const [initializing, setInitializing] = useState(true);
   const [authClaimsResolved, setAuthClaimsResolved] = useState(false);
   const [firebaseConfigError, setFirebaseConfigError] = useState<string | null>(null);
@@ -135,26 +129,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ])
       .then(([tokenResult, userDocResult]) => {
         if (cancelled) return;
-        let nextRole: AppRole | null = null;
 
         if (userDocResult.status === "fulfilled" && userDocResult.value.exists()) {
-          const data = userDocResult.value.data() as { role?: unknown };
-          nextRole = normalizeRole(data.role);
+          const data = userDocResult.value.data() as StaffUsersDocFields;
+          if (usersDocBlocksStaffAccess(data)) {
+            setRole(null);
+            window.localStorage.removeItem(ROLE_SESSION_KEY);
+            setAuthClaimsResolved(true);
+            void signOut(getFirebaseAuth());
+            return;
+          }
         }
 
-        if (!nextRole && tokenResult.status === "fulfilled") {
-          if (process.env.NODE_ENV !== "production") {
-            console.info("[auth] ID token claims:", tokenResult.value.claims);
-          }
-          nextRole = normalizeRole(tokenResult.value.claims.role);
+        const usersData =
+          userDocResult.status === "fulfilled" && userDocResult.value.exists()
+            ? (userDocResult.value.data() as StaffUsersDocFields)
+            : null;
+
+        const claimRole =
+          tokenResult.status === "fulfilled" ? tokenResult.value.claims.role : undefined;
+
+        const nextRole = resolveStaffAppRole(usersData ?? undefined, claimRole);
+
+        if (!nextRole) {
+          setRole(null);
+          window.localStorage.removeItem(ROLE_SESSION_KEY);
+          setAuthClaimsResolved(true);
+          void signOut(getFirebaseAuth());
+          return;
         }
 
         setRole(nextRole);
-        if (nextRole) {
-          window.localStorage.setItem(ROLE_SESSION_KEY, nextRole);
-        } else {
-          window.localStorage.removeItem(ROLE_SESSION_KEY);
-        }
+        window.localStorage.setItem(ROLE_SESSION_KEY, nextRole);
         setAuthClaimsResolved(true);
       })
       .catch(() => {
@@ -173,9 +179,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (configErrorRef.current) {
       throw new Error(configErrorRef.current);
     }
+    const auth = getFirebaseAuth();
     try {
-      const cred = await signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
       await cred.user.getIdToken(true);
+
+      const snap = await getDoc(doc(getFirebaseDb(), "users", cred.user.uid));
+      const profile = snap.exists() ? (snap.data() as StaffUsersDocFields) : null;
+      if (usersDocBlocksStaffAccess(profile ?? undefined)) {
+        await signOut(auth);
+        throw new Error("Your account is not approved yet. Contact an administrator.");
+      }
+
+      const tokenResult = await cred.user.getIdTokenResult();
+      const nextRole = resolveStaffAppRole(profile ?? undefined, tokenResult.claims.role);
+      if (!nextRole) {
+        await signOut(auth);
+        throw new Error("No role is assigned for this account. Contact an administrator.");
+      }
     } catch (err) {
       if (err instanceof FirebaseError) {
         throw err;

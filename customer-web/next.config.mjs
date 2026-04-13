@@ -8,6 +8,7 @@ loadEnvConfig(__dirname);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: false,
   compress: true,
   poweredByHeader: false,
   async headers() {
@@ -24,14 +25,31 @@ const nextConfig = {
     ];
   },
   images: {
-    domains: ["images.unsplash.com", "plus.unsplash.com", "images.pexels.com", "as1.ftcdn.net"],
+    domains: [
+      "images.unsplash.com",
+      "plus.unsplash.com",
+      "images.pexels.com",
+      "as1.ftcdn.net",
+      "firebasestorage.googleapis.com",
+      "lh3.googleusercontent.com",
+      "storage.googleapis.com",
+      "googleusercontent.com"
+    ],
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
       { protocol: "https", hostname: "plus.unsplash.com", pathname: "/**" },
       { protocol: "https", hostname: "as1.ftcdn.net", pathname: "/**" },
       { protocol: "https", hostname: "images.pexels.com", pathname: "/**" },
       { protocol: "https", hostname: "firebasestorage.googleapis.com", pathname: "/**" },
-      { protocol: "https", hostname: "lh3.googleusercontent.com", pathname: "/**" }
+      { protocol: "https", hostname: "**.firebasestorage.app", pathname: "/**" },
+      { protocol: "https", hostname: "lh3.googleusercontent.com", pathname: "/**" },
+      { protocol: "https", hostname: "*.googleusercontent.com", pathname: "/**" },
+      { protocol: "https", hostname: "storage.googleapis.com", pathname: "/**" },
+      { protocol: "https", hostname: "**.googleapis.com", pathname: "/**" },
+      { protocol: "https", hostname: "i.imgur.com", pathname: "/**" },
+      { protocol: "https", hostname: "res.cloudinary.com", pathname: "/**" },
+      { protocol: "https", hostname: "cdn.pixabay.com", pathname: "/**" },
+      { protocol: "https", hostname: "placehold.co", pathname: "/**" }
     ]
   },
   experimental: {

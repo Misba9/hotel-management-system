@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Platform, Text, View } from "react-native";
+import { Alert, FlatList, Platform, RefreshControl, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FirebaseError } from "firebase/app";
 import { collection, getDocs, limit, onSnapshot, query } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { staffDb, staffFunctions } from "../lib/firebase";
 import { useStaffAuth } from "../context/staff-auth-context";
+import { StaffErrorView } from "../components/staff-dashboard/staff-error-view";
+import { StaffLoadingView } from "../components/staff-dashboard/staff-loading-view";
+import { EmptyState } from "../components/ux/empty-state";
+import { space } from "../theme/design-tokens";
 import { staffColors } from "../theme/staff-ui";
 import {
   CartBottomSheet,
@@ -70,6 +74,8 @@ export function CashierPosScreen() {
   const [branchLoading, setBranchLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [menuListenerKey, setMenuListenerKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   const itemById = useMemo(() => new Map(menuItems.map((m) => [m.id, m])), [menuItems]);
 
@@ -89,19 +95,33 @@ export function CashierPosScreen() {
           list.sort((a, b) => a.name.localeCompare(b.name));
           setMenuItems(list);
           setMenuLoading(false);
+          setRefreshing(false);
         },
         (err) => {
           setMenuError(err instanceof Error ? err.message : "Failed to load menu");
           setMenuLoading(false);
+          setRefreshing(false);
         }
       );
     } catch (e) {
       setMenuError(e instanceof Error ? e.message : "Failed to load menu");
       setMenuLoading(false);
+      setRefreshing(false);
     }
     return () => {
       unsub?.();
     };
+  }, [menuListenerKey]);
+
+  const onMenuRefresh = useCallback(() => {
+    setRefreshing(true);
+    setMenuListenerKey((k) => k + 1);
+  }, []);
+
+  const retryMenu = useCallback(() => {
+    setMenuError(null);
+    setMenuLoading(true);
+    setMenuListenerKey((k) => k + 1);
   }, []);
 
   useEffect(() => {
@@ -217,7 +237,7 @@ export function CashierPosScreen() {
       setCartOpen(false);
       Alert.alert(
         "Order placed",
-        `Order #${data.orderId ?? "—"} • Total ₹${data.total ?? total.toFixed(0)} — sent to kitchen.`
+        `Order #${data.orderId ?? "—"} • Total ₹${data.total ?? total.toFixed(0)}\nInvoice saved — kitchen notified.`
       );
     } catch (e) {
       const msg =
@@ -248,18 +268,17 @@ export function CashierPosScreen() {
 
   if (menuLoading || branchLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
-        <ActivityIndicator color={staffColors.accent} size="large" />
-        <Text style={{ marginTop: 12, color: staffColors.muted }}>Loading menu…</Text>
-      </View>
+      <SafeAreaView style={{ flex: 1, backgroundColor: staffColors.bg }} edges={["top", "bottom"]}>
+        <StaffLoadingView message={branchLoading ? "Loading branch…" : "Loading menu…"} />
+      </SafeAreaView>
     );
   }
 
   if (menuError) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", padding: 24 }}>
-        <Text style={{ color: staffColors.danger, fontWeight: "700", textAlign: "center" }}>{menuError}</Text>
-      </View>
+      <SafeAreaView style={{ flex: 1, backgroundColor: staffColors.bg, padding: space.lg }} edges={["top", "bottom"]}>
+        <StaffErrorView message={menuError} onRetry={retryMenu} />
+      </SafeAreaView>
     );
   }
 
@@ -278,8 +297,20 @@ export function CashierPosScreen() {
             paddingHorizontal: 6,
             paddingBottom: Platform.OS === "web" ? 120 : 100
           }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onMenuRefresh}
+              tintColor={staffColors.accent}
+              colors={[staffColors.accent]}
+            />
+          }
           ListEmptyComponent={
-            <Text style={{ textAlign: "center", color: staffColors.muted, padding: 28 }}>No items match your search.</Text>
+            <EmptyState
+              icon="🔎"
+              title="No matches"
+              subtitle="Try another category or clear the search. Pull down to reload the menu."
+            />
           }
           renderItem={renderProduct}
         />

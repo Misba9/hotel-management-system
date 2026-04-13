@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
-import { collection, limit, onSnapshot, query } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { computeDashboardMetrics } from "../lib/order-dashboard-metrics";
+import { formatFirestoreIndexErrorMessage, isFirestoreCompositeIndexError } from "../lib/firestore-query-errors";
 import { staffDb } from "../lib/firebase";
+import { MANAGER_ORDERS_LIMIT } from "../services/orders.js";
 
 export type OrderDocShape = {
   id: string;
@@ -15,19 +18,22 @@ export type OrderDocShape = {
 export type OrdersMetricsState = {
   loading: boolean;
   error: string | null;
-  /** Snapshot size (capped query). */
-  orderCount: number;
-  /** Sum of `total` / `totalAmount` for orders with status `delivered`. */
-  deliveredRevenue: number;
-  /** Orders not in terminal states. */
-  openOrders: number;
-  /** Count per status string. */
+  /** Rows in the current snapshot (capped query). */
+  totalOrders: number;
+  /** Pipeline orders (not delivered / cancelled / rejected). */
+  activeOrders: number;
+  /** Count with status `delivered`. */
+  deliveredOrders: number;
+  /** Sum of `total` / `totalAmount` for delivered orders only. */
+  revenue: number;
+  /** Count per status string (sample). */
   byStatus: Record<string, number>;
   /** Recent orders (newest first) for lists. */
   recentOrders: OrderDocShape[];
 };
 
-export const STAFF_ORDERS_QUERY_LIMIT = 200;
+/** @deprecated Use {@link MANAGER_ORDERS_LIMIT} from `orders.js` — kept for import sites. */
+export const STAFF_ORDERS_QUERY_LIMIT = MANAGER_ORDERS_LIMIT;
 
 function toIsoTime(data: Record<string, unknown>): string | undefined {
   const v = data.createdAt;
@@ -61,9 +67,10 @@ export function useOrdersMetrics(enabled = true, listenerKey = 0): OrdersMetrics
   const [state, setState] = useState<OrdersMetricsState>({
     loading: true,
     error: null,
-    orderCount: 0,
-    deliveredRevenue: 0,
-    openOrders: 0,
+    totalOrders: 0,
+    activeOrders: 0,
+    deliveredOrders: 0,
+    revenue: 0,
     byStatus: {},
     recentOrders: []
   });
@@ -76,16 +83,18 @@ export function useOrdersMetrics(enabled = true, listenerKey = 0): OrdersMetrics
 
     setState((s) => ({ ...s, loading: true, error: null }));
 
-    /** `limit` only — no composite index; sort by `createdAt` in memory below. */
-    const q = query(collection(staffDb, "orders"), limit(STAFF_ORDERS_QUERY_LIMIT));
+    /** Manager: newest-first window (role-gated in UI). */
+    const q = query(
+      collection(staffDb, "orders"),
+      orderBy("createdAt", "desc"),
+      limit(MANAGER_ORDERS_LIMIT)
+    );
     const unsub = onSnapshot(
       q,
       (snap) => {
         const byStatus: Record<string, number> = {};
-        let deliveredRevenue = 0;
-        let openOrders = 0;
-        const terminal = new Set(["delivered", "cancelled", "rejected"]);
         const recent: OrderDocShape[] = [];
+        const forMetrics: Array<{ status?: string; total?: number; totalAmount?: number }> = [];
 
         snap.forEach((docSnap) => {
           const data = docSnap.data() as Record<string, unknown>;
@@ -93,10 +102,14 @@ export function useOrdersMetrics(enabled = true, listenerKey = 0): OrdersMetrics
           recent.push(o);
           const s = (o.status ?? "unknown").toLowerCase();
           byStatus[s] = (byStatus[s] ?? 0) + 1;
-          const amount = Number(o.total ?? o.totalAmount ?? 0);
-          if (s === "delivered") deliveredRevenue += Number.isFinite(amount) ? amount : 0;
-          if (!terminal.has(s)) openOrders += 1;
+          forMetrics.push({
+            status: o.status,
+            total: o.total,
+            totalAmount: o.totalAmount
+          });
         });
+
+        const { totalOrders, activeOrders, deliveredOrders, revenue } = computeDashboardMetrics(forMetrics);
 
         recent.sort((a, b) => {
           const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -107,18 +120,24 @@ export function useOrdersMetrics(enabled = true, listenerKey = 0): OrdersMetrics
         setState({
           loading: false,
           error: null,
-          orderCount: snap.size,
-          deliveredRevenue,
-          openOrders,
+          totalOrders,
+          activeOrders,
+          deliveredOrders,
+          revenue,
           byStatus,
           recentOrders: recent
         });
       },
       (err) => {
+        const msg = isFirestoreCompositeIndexError(err)
+          ? formatFirestoreIndexErrorMessage(err).body
+          : err instanceof Error
+            ? err.message
+            : "Failed to load orders";
         setState((prev) => ({
           ...prev,
           loading: false,
-          error: err instanceof Error ? err.message : "Failed to load orders"
+          error: msg
         }));
       }
     );

@@ -1,9 +1,11 @@
 /**
  * Firestore order subscriptions and mapping for the customer app.
  *
- * Scalability: top-level `orders` with `where("userId","==",uid)` + `orderBy("createdAt")`
- * uses composite indexes (see `backend/firestore.indexes.json`). Prefer bounded `limit`
- * and cursor pagination for history — avoid unbounded collection scans.
+ * **Collection:** `orders` (canonical). Documents use `userId` (Firebase Auth UID) for
+ * customer-scoped queries — keep aligned with `persistStorefrontOrder` / staff `orders.js`.
+ *
+ * **Index:** `userId` ASC + `createdAt` DESC — see `backend/firestore.indexes.json`.
+ * Use bounded `limit` and cursor pagination for history.
  */
 import {
   collection,
@@ -36,15 +38,16 @@ export type CustomerOrderListItem = {
 
 export function mapOrderDocToListItem(doc: QueryDocumentSnapshot): CustomerOrderListItem {
   const data = doc.data() as Record<string, unknown>;
+  const itemsSummary = summarizeOrderItems(data.items);
   return {
     id: doc.id,
     trackingId: typeof data.trackingId === "string" ? data.trackingId : doc.id,
     trackingToken: typeof data.trackingToken === "string" ? data.trackingToken : undefined,
-    amount: Number(data.totalAmount ?? data.total ?? 0),
-    status: String(data.status ?? "pending"),
+    amount: Number(data.totalAmount ?? data.total ?? 0) || 0,
+    status: typeof data.status === "string" && data.status.trim() ? data.status.trim() : "pending",
     createdAt: firestoreTimeToIso(data.createdAt),
     address: typeof data.address === "string" ? data.address : undefined,
-    itemsSummary: summarizeOrderItems(data.items),
+    itemsSummary: itemsSummary || "—",
     paymentMethod: typeof data.paymentMethod === "string" ? data.paymentMethod : undefined,
     paymentStatus: typeof data.paymentStatus === "string" ? data.paymentStatus : undefined
   };

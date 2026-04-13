@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   Dimensions,
   Platform,
   RefreshControl,
@@ -9,7 +10,6 @@ import {
   Text,
   View
 } from "react-native";
-import * as Location from "expo-location";
 import { FirebaseError } from "firebase/app";
 import { DeliveryMapWebPlaceholder, DeliveryTrackingMap } from "../components/delivery/delivery-tracking-map";
 import { FeatureGate, NoAccessView } from "../components/feature-gate";
@@ -19,12 +19,12 @@ import { StaffErrorView } from "../components/staff-dashboard/staff-error-view";
 import { StaffLoadingView } from "../components/staff-dashboard/staff-loading-view";
 import { EmptyState } from "../components/ux/empty-state";
 import { notifyCustomerDeliveredStub, staffDeliveredFeedback, useOrderNotifications } from "../services/notifications.js";
+import { useOrders } from "../hooks/use-orders";
 import {
   DEFAULT_DELIVERY_LAT,
   DEFAULT_DELIVERY_LNG,
   formatOrderRelativeTime,
   startDelivery,
-  subscribeDeliveryOrders,
   updateDeliveryLocation,
   updateOrderStatus
 } from "../services/orders.js";
@@ -50,59 +50,16 @@ function assignedToRider(order, deliveryUid) {
 function DeliveryLiveContent() {
   const { signOutUser, user } = useAuth();
   const deliveryUid = user?.uid ?? "";
-  const [stops, setStops] = useState([]);
-  const [hasSynced, setHasSynced] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [listenerKey, setListenerKey] = useState(0);
-  const [error, setError] = useState(null);
+  const { orders, loading, error, refreshing, refresh, retry } = useOrders("delivery");
   const [me, setMe] = useState(null);
   const watchRef = useRef(null);
-  const { banner, dismissBanner, badgeCount } = useOrderNotifications("delivery", stops);
+  const { banner, dismissBanner, badgeCount } = useOrderNotifications("delivery", orders);
 
   useEffect(() => {
-    if (!deliveryUid) {
-      setHasSynced(true);
-      return undefined;
-    }
-    setError(null);
-    const unsub = subscribeDeliveryOrders(
-      deliveryUid,
-      (list) => {
-        setHasSynced(true);
-        setRefreshing(false);
-        setStops(list);
-      },
-      (err) => {
-        setHasSynced(true);
-        setRefreshing(false);
-        const code = err instanceof FirebaseError ? err.code : "";
-        setError(
-          code === "permission-denied"
-            ? "Firestore blocked reading orders. Check security rules for your role."
-            : err?.message ?? "Could not load deliveries."
-        );
-      }
-    );
-    return unsub;
-  }, [deliveryUid, listenerKey]);
-
-  const bumpListener = useCallback(() => {
-    setListenerKey((k) => k + 1);
-  }, []);
-
-  const onRetryAfterError = useCallback(() => {
-    setError(null);
-    bumpListener();
-  }, [bumpListener]);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    bumpListener();
-  }, [bumpListener]);
-
-  useEffect(() => {
+    if (Platform.OS === "web") return undefined;
     let cancelled = false;
     (async () => {
+      const Location = await import("expo-location");
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted" || cancelled) return;
       try {
@@ -120,19 +77,20 @@ function DeliveryLiveContent() {
   }, []);
 
   const activeRun = useMemo(
-    () => stops.find((o) => o.status === "out_for_delivery" && assignedToRider(o, deliveryUid)),
-    [stops, deliveryUid]
+    () => orders.find((o) => o.status === "out_for_delivery" && assignedToRider(o, deliveryUid)),
+    [orders, deliveryUid]
   );
 
   /** Map focuses active delivery, else first ready order, else first row. */
   const mapFocusOrder = useMemo(() => {
     if (activeRun) return activeRun;
-    const ready = stops.filter((o) => o.status === "ready");
+    const ready = orders.filter((o) => o.status === "ready");
     if (ready.length) return ready[0];
-    return stops[0] ?? null;
-  }, [activeRun, stops]);
+    return orders[0] ?? null;
+  }, [activeRun, orders]);
 
   useEffect(() => {
+    if (Platform.OS === "web") return undefined;
     if (!activeRun || !deliveryUid) {
       watchRef.current?.remove();
       watchRef.current = null;
@@ -141,6 +99,7 @@ function DeliveryLiveContent() {
     let cancelled = false;
 
     (async () => {
+      const Location = await import("expo-location");
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted" || cancelled) return;
       const sub = await Location.watchPositionAsync(
@@ -180,7 +139,7 @@ function DeliveryLiveContent() {
         await startDelivery(orderId, deliveryUid);
       } catch (e) {
         const msg = e instanceof FirebaseError ? e.message : String(e);
-        setError(msg);
+        Alert.alert("Could not start delivery", msg);
       }
     },
     [deliveryUid]
@@ -193,7 +152,7 @@ function DeliveryLiveContent() {
       notifyCustomerDeliveredStub(orderId);
     } catch (e) {
       const msg = e instanceof FirebaseError ? e.message : String(e);
-      setError(msg);
+      Alert.alert("Could not mark delivered", msg);
     }
   }, []);
 
@@ -220,7 +179,7 @@ function DeliveryLiveContent() {
     );
   }
 
-  if (!hasSynced && !error) {
+  if (loading && !error) {
     return (
       <SafeAreaView style={styles.safe}>
         <ScreenTopBar title="Deliveries" subtitle="Live map · GPS → Firestore" onSignOut={() => void signOutUser()} />
@@ -251,11 +210,11 @@ function DeliveryLiveContent() {
 
       {error ? (
         <View style={styles.errorPad}>
-          <StaffErrorView message={error} onRetry={onRetryAfterError} />
+          <StaffErrorView message={error} onRetry={retry} />
         </View>
       ) : null}
 
-      {!error && stops.length === 0 ? (
+      {!error && orders.length === 0 ? (
         <View style={styles.emptyPad}>
           <EmptyState
             icon="🛵"
@@ -271,14 +230,14 @@ function DeliveryLiveContent() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={onRefresh}
+            onRefresh={refresh}
             tintColor={shell.primary}
             colors={[shell.primary]}
           />
         }
       >
         {!error
-          ? stops.map((o) => {
+          ? orders.map((o) => {
               const actions = [];
               if (o.status === "ready") {
                 actions.push({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, Sparkles, X } from "lucide-react";
@@ -47,8 +47,15 @@ export function AuthLoginModal({
     onOpenChange(false);
   };
 
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      queueMicrotask(() => onOpenChange(next));
+    },
+    [onOpenChange]
+  );
+
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay asChild>
           <motion.div

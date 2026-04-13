@@ -24,6 +24,7 @@ import {
   where,
   writeBatch
 } from "firebase/firestore";
+import { FirebaseError } from "firebase/app";
 import { auth, db } from "@/lib/firebase";
 import type { DeliveryAddress, DeliveryAddressInput } from "@/lib/delivery-address-types";
 import { withRetry } from "@shared/utils/retry";
@@ -90,6 +91,10 @@ function pickSelectedId(list: DeliveryAddress[], userId: string): string | null 
   return list[0]?.id ?? null;
 }
 
+function sortAddressesByRecency(list: DeliveryAddress[]): DeliveryAddress[] {
+  return [...list].sort((a, b) => (b.updatedAt ?? b.createdAt ?? "").localeCompare(a.updatedAt ?? a.createdAt ?? ""));
+}
+
 type DeliveryAddressContextValue = {
   addresses: DeliveryAddress[];
   selectedAddress: DeliveryAddress | null;
@@ -138,8 +143,7 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
         const row = docToAddress(d.id, userId, d.data() as Record<string, unknown>);
         if (row) list.push(row);
       });
-      list.sort((a, b) => (b.updatedAt ?? b.createdAt ?? "").localeCompare(a.updatedAt ?? a.createdAt ?? ""));
-      setAddresses(list);
+      setAddresses(sortAddressesByRecency(list));
       const next = pickSelectedId(list, userId);
       setSelectedId(next);
       loadedUidRef.current = userId;
@@ -265,18 +269,19 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
     async (input: DeliveryAddressInput): Promise<DeliveryAddress> => {
       if (!uid) throw new Error("Sign in to save addresses.");
       if (!db) throw new Error("Firestore is not ready.");
+      const row: DeliveryAddressInput = {
+        name: input.name.trim(),
+        phone: input.phone.trim(),
+        addressLine: input.addressLine.trim(),
+        landmark: input.landmark.trim(),
+        city: input.city.trim(),
+        pincode: input.pincode.trim()
+      };
       try {
-        const row: DeliveryAddressInput = {
-          name: input.name.trim(),
-          phone: input.phone.trim(),
-          addressLine: input.addressLine.trim(),
-          landmark: input.landmark.trim(),
-          city: input.city.trim(),
-          pincode: input.pincode.trim()
-        };
         const q = query(collection(db, ADDRESSES), where("userId", "==", uid));
         const existing = await withRetry(() => getDocs(q), { maxAttempts: 3 });
         const isFirst = existing.empty;
+
         const ref = await withRetry(
           () =>
             addDoc(collection(db, ADDRESSES), {
@@ -288,21 +293,42 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
             }),
           { maxAttempts: 3 }
         );
-        if (isFirst) {
-          setSelectedId(ref.id);
-          writeAuthSelectedId(uid, ref.id);
-        }
-        await loadFirebaseAddresses(uid);
+
+        const nowIso = new Date().toISOString();
         const created: DeliveryAddress = {
           id: ref.id,
           userId: uid,
           ...row,
-          isDefault: isFirst
+          isDefault: isFirst,
+          createdAt: nowIso,
+          updatedAt: nowIso
         };
+
+        /** Optimistic UI + resolve immediately — avoid hanging forever if reload getDocs stalls. */
+        setAddresses((prev) => sortAddressesByRecency([...prev.filter((a) => a.id !== ref.id), created]));
+        if (isFirst) {
+          setSelectedId(ref.id);
+          writeAuthSelectedId(uid, ref.id);
+        }
+
+        void loadFirebaseAddresses(uid).catch((e) => {
+          if (process.env.NODE_ENV !== "production") {
+            console.error("[delivery-address] reload after add failed (list may still be correct locally)", e);
+          }
+        });
+
         return created;
       } catch (error) {
         if (process.env.NODE_ENV !== "production") {
           console.error("[delivery-address] addAddress failed", error);
+        }
+        if (error instanceof FirebaseError) {
+          if (error.code === "permission-denied") {
+            throw new Error("Permission denied. Sign out and sign in again, then retry.");
+          }
+          if (error.code === "unavailable") {
+            throw new Error("Network unavailable. Check your connection and try again.");
+          }
         }
         throw new Error("Could not save address right now. Please try again.");
       }

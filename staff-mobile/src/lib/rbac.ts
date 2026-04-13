@@ -10,7 +10,6 @@ export type StaffPermission =
   | "create_order"
   | "prepare_order"
   | "deliver_order"
-  | "admin_panel"
   | "waiter_table";
 
 /** Legacy UI feature keys — normalized to {@link StaffPermission} for checks. */
@@ -30,14 +29,14 @@ const LEGACY_TO_PERMISSION: Partial<Record<string, StaffPermission>> = {
   billing: "create_order",
   kitchen_orders: "prepare_order",
   delivery: "deliver_order",
-  admin_panel: "admin_panel",
   waiter_table: "waiter_table"
 };
 
 /** Role → permissions. Navigation is enforced in {@link AppNavigator} (one root screen per role). */
 const ROLE_PERMISSIONS: Record<StaffRoleId, readonly StaffPermission[]> = {
-  admin: ["manage_staff", "view_orders", "create_order", "prepare_order", "deliver_order", "admin_panel", "waiter_table"],
-  /** Dashboard + orders only (see manager tabs); no staff admin, POS, kitchen, or delivery roots. */
+  /** Same order visibility as manager; analytics tab enabled in manager navigator (see manager-tabs). */
+  admin: ["view_orders", "manage_staff"],
+  /** Dashboard + orders only (see manager tabs); no in-app analytics tab. */
   manager: ["view_orders"],
   cashier: ["create_order"],
   kitchen: ["prepare_order"],

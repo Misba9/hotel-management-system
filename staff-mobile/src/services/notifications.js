@@ -4,8 +4,6 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Vibration } from "react-native";
-import { Audio } from "expo-av";
-import * as Haptics from "expo-haptics";
 
 let badgePermissionRequested = false;
 
@@ -64,7 +62,9 @@ export function useSyncStaffAppBadge(count) {
  * Short tone — bundled `assets/sounds/notification.mp3`.
  */
 export async function playNotificationSound() {
+  if (Platform.OS === "web") return;
   try {
+    const { Audio } = await import("expo-av");
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       playsInSilentModeIOS: true,
@@ -97,6 +97,7 @@ export async function playNotificationSound() {
 export async function staffDeliveredFeedback() {
   if (Platform.OS === "web") return;
   try {
+    const Haptics = await import("expo-haptics");
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (Platform.OS === "android") {
       Vibration.vibrate(45);
@@ -113,6 +114,7 @@ export async function staffPhysicalAlert(kind) {
   await playNotificationSound();
   if (Platform.OS === "web") return;
   try {
+    const Haptics = await import("expo-haptics");
     if (kind === "kitchen_new") {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     } else {

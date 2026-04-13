@@ -1,11 +1,12 @@
-/** Kitchen KDS-style status colors: pending → yellow, preparing → orange, ready → green */
+/** Kitchen KDS-style status colors: pending → accepted → preparing → ready */
 
-export type KitchenStatusBucket = "pending" | "preparing" | "ready" | "other";
+export type KitchenStatusBucket = "pending" | "accepted" | "preparing" | "ready" | "other";
 
 export function bucketForStatus(status: string): KitchenStatusBucket {
   const s = status.toLowerCase();
-  if (s === "pending" || s === "created" || s === "confirmed") return "pending";
-  if (s === "preparing" || s === "accepted") return "preparing";
+  if (s === "pending" || s === "created" || s === "confirmed" || s === "placed") return "pending";
+  if (s === "accepted") return "accepted";
+  if (s === "preparing") return "preparing";
   if (s === "ready") return "ready";
   return "other";
 }
@@ -29,6 +30,16 @@ export function themeForBucket(bucket: KitchenStatusBucket): {
         border: "#FDE047",
         badgeBg: "#FEF9C3",
         badgeFg: "#854D0E"
+      };
+    case "accepted":
+      return {
+        label: "Accepted",
+        dot: "#2563EB",
+        accent: "#1D4ED8",
+        accentSoft: "#EFF6FF",
+        border: "#93C5FD",
+        badgeBg: "#DBEAFE",
+        badgeFg: "#1E3A8A"
       };
     case "preparing":
       return {
@@ -64,6 +75,9 @@ export function themeForBucket(bucket: KitchenStatusBucket): {
 }
 
 export function displayStatusLabel(status: string): string {
+  const u = status.trim().toUpperCase();
+  if (u === "PLACED") return "Placed";
+  if (u === "PREPARING") return "Preparing";
   const b = bucketForStatus(status);
   if (b === "other") return status.replace(/_/g, " ");
   return themeForBucket(b).label;

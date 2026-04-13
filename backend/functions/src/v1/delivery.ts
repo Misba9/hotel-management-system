@@ -2,7 +2,6 @@ import { z } from "zod";
 import { HttpsError } from "firebase-functions/v2/https";
 import {
   COLLECTIONS,
-  OrderStatus,
   assertRole,
   createTimestamp,
   db,
@@ -11,6 +10,7 @@ import {
   syncOrderFeedDoc,
   withCallableGuard
 } from "./common";
+import { assertValidTransition, type OrderLifecycleStatus } from "../orderStatusLifecycle";
 
 const updateDeliveryStatusSchema = z.object({
   deliveryId: z.string().min(1),
@@ -51,16 +51,34 @@ export const updateDeliveryStatusV1 = withCallableGuard(
       updatedAt: now
     });
     const mappedOrderStatus = mapDeliveryStatusToOrderStatus(payload.status);
-    await db.collection(COLLECTIONS.orders).doc(delivery.orderId).update({
-      status: mappedOrderStatus,
-      updatedAt: now
-    });
+    const orderRef = db.collection(COLLECTIONS.orders).doc(delivery.orderId);
+    if (mappedOrderStatus) {
+      const orderSnap = await orderRef.get();
+      const prev = (orderSnap.data() as { status?: string } | undefined)?.status;
+      try {
+        assertValidTransition(prev, mappedOrderStatus);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new HttpsError("failed-precondition", msg);
+      }
+      await orderRef.update({
+        status: mappedOrderStatus,
+        updatedAt: now
+      });
+    }
     await syncDeliveryTrackingDoc(delivery.orderId, {
       status: payload.status,
       updatedAt: now
     });
+    let feedStatus: string;
+    if (mappedOrderStatus) {
+      feedStatus = mappedOrderStatus;
+    } else {
+      const os = await orderRef.get();
+      feedStatus = String(os.data()?.status ?? "pending");
+    }
     await syncOrderFeedDoc(delivery.orderId, {
-      status: mappedOrderStatus,
+      status: feedStatus,
       updatedAt: now
     });
     return { success: true };
@@ -136,9 +154,15 @@ export const updateDeliveryAssignmentTrackingV1 = withCallableGuard(
   updateAssignmentTrackingSchema
 );
 
-function mapDeliveryStatusToOrderStatus(status: z.infer<typeof deliveryStatusSchema>): OrderStatus {
-  if (status === "assigned") return "ready";
+/**
+ * `assigned` does not change `orders.status` (order should already be `ready`).
+ * Other statuses map to the next lifecycle step.
+ */
+function mapDeliveryStatusToOrderStatus(
+  status: z.infer<typeof deliveryStatusSchema>
+): OrderLifecycleStatus | null {
+  if (status === "assigned") return null;
   if (status === "picked_up" || status === "on_the_way") return "out_for_delivery";
   if (status === "delivered") return "delivered";
-  return "confirmed";
+  return null;
 }

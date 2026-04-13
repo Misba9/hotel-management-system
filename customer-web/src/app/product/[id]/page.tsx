@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { Minus, Plus, ShoppingBag, Star } from "lucide-react";
@@ -9,6 +8,7 @@ import { useEffect } from "react";
 import { Product, getMenuPayload } from "@/lib/menu-data";
 import { useCart } from "@/components/cart/cart-provider";
 import { ProductReviewsSection } from "@/components/reviews/product-reviews-section";
+import { SafeFillImage } from "@/components/shared/safe-fill-image";
 import { fetchReviewSummaries, type ReviewSummary } from "@/lib/reviews-client";
 
 export default function ProductDetailPage() {
@@ -81,10 +81,9 @@ export default function ProductDetailPage() {
     <div className="space-y-6 overflow-x-hidden sm:space-y-8">
       <section className="grid grid-cols-1 gap-5 sm:gap-6 md:grid-cols-2">
       <div className="relative h-56 w-full overflow-hidden rounded-xl border bg-white shadow-md transition-all duration-200 dark:border-slate-700 dark:bg-slate-900 sm:h-72 md:h-[420px] md:rounded-2xl hover:shadow-lg">
-        <Image
+        <SafeFillImage
           src={product.image}
           alt={product.name}
-          fill
           sizes="(max-width: 768px) 100vw, 50vw"
           className="object-cover transition-all duration-200"
           priority

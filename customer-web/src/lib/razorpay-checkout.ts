@@ -24,6 +24,10 @@ export function loadRazorpayScript(): Promise<boolean> {
     }
     const existing = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
     if (existing) {
+      if (typeof w.Razorpay === "function") {
+        resolve(true);
+        return;
+      }
       existing.addEventListener("load", () => resolve(true));
       existing.addEventListener("error", () => resolve(false));
       return;
@@ -74,11 +78,15 @@ export async function openRazorpayCheckout(params: OpenRazorpayCheckoutParams): 
     },
     theme: { color: "#ea580c" },
     handler(response: RazorpayHandlerResponse) {
-      params.onSuccess(response);
+      queueMicrotask(() => {
+        params.onSuccess(response);
+      });
     },
     modal: {
       ondismiss() {
-        params.onDismiss?.();
+        queueMicrotask(() => {
+          params.onDismiss?.();
+        });
       }
     }
   };

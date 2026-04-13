@@ -1,13 +1,13 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Eye, Heart, Minus, Plus, Star } from "lucide-react";
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { Product } from "@/lib/menu-data";
 import { useCart } from "@/components/cart/cart-provider";
 import { useFavorites } from "@/components/providers/favorites-provider";
+import { SafeFillImage } from "@/components/shared/safe-fill-image";
 
 function ProductCardComponent({
   product,
@@ -20,45 +20,69 @@ function ProductCardComponent({
   reviewAverage?: number | null;
   reviewCount?: number | null;
 }) {
+  const [mounted, setMounted] = useState(false);
   const { addItem, itemQty, updateQty } = useCart();
   const { isFavorite, toggleFavorite } = useFavorites();
   const qty = itemQty(product.id);
   const hasReviewStats = reviewCount != null && reviewCount > 0 && reviewAverage != null;
   const ratingLabel = hasReviewStats ? reviewAverage.toFixed(1) : Number(product.rating).toFixed(1);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const imageBlock = (
+    <SafeFillImage
+      src={product.image}
+      alt={product.name}
+      loading="lazy"
+      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+      className="object-cover transition-all duration-200 group-hover:scale-105"
+    />
+  );
+
   return (
-    <motion.article
-      whileHover={{ y: -2 }}
-      transition={{ duration: 0.2 }}
-      className="group overflow-hidden rounded-xl border border-white/50 bg-white/70 shadow-md backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg md:rounded-2xl md:hover:-translate-y-1"
-    >
-      <Link href={`/product/${product.id}`} className="relative block h-32 w-full sm:h-40 md:h-44 lg:h-48">
-        <Image
-          src={product.image}
-          alt={product.name}
-          fill
-          loading="lazy"
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-          className="object-cover transition-all duration-200 group-hover:scale-105"
-        />
+    <article className="group overflow-hidden rounded-xl border border-white/50 bg-white/70 shadow-md backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg md:rounded-2xl md:hover:-translate-y-1">
+      <div className="relative">
+        <Link href={`/product/${product.id}`} className="block outline-none">
+          <div>
+            {mounted ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2 }}
+                className="relative block h-32 w-full sm:h-40 md:h-44 lg:h-48"
+              >
+                {imageBlock}
+              </motion.div>
+            ) : (
+              <div className="relative block h-32 w-full sm:h-40 md:h-44 lg:h-48">{imageBlock}</div>
+            )}
+          </div>
+        </Link>
+
         <button
+          type="button"
           aria-label="Toggle favorite"
           onClick={() => toggleFavorite(product.id)}
-          className="absolute right-3 top-3 rounded-full bg-white/90 p-2"
+          className="absolute right-3 top-3 z-10 rounded-full bg-white/90 p-2 shadow-sm"
         >
           <Heart className={`h-4 w-4 ${isFavorite(product.id) ? "fill-red-500 text-red-500" : "text-slate-600"}`} />
         </button>
-        {onQuickView && (
+
+        {onQuickView ? (
           <button
+            type="button"
             aria-label={`Quick view ${product.name}`}
             onClick={() => onQuickView(product)}
-            className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1.5 text-xs font-medium text-white"
+            className="absolute bottom-3 right-3 z-10 inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1.5 text-xs font-medium text-white"
           >
             <Eye className="h-3.5 w-3.5" />
             Quick View
           </button>
-        )}
-      </Link>
+        ) : null}
+      </div>
+
       <div className="space-y-2 p-3 sm:space-y-3 sm:p-4">
         <div className="flex items-start justify-between gap-2">
           <Link
@@ -78,6 +102,7 @@ function ProductCardComponent({
           <p className="text-sm font-semibold text-orange-600 sm:text-base">Rs. {product.price}</p>
           {qty === 0 ? (
             <motion.button
+              type="button"
               whileTap={{ scale: 0.95 }}
               onClick={() => addItem(product)}
               className="inline-flex w-full items-center justify-center gap-1 rounded-xl bg-orange-500 px-3 py-2 text-sm font-medium text-white shadow-md transition-all duration-200 hover:bg-orange-600 hover:shadow-lg sm:w-auto sm:rounded-full sm:py-1.5"
@@ -88,6 +113,7 @@ function ProductCardComponent({
           ) : (
             <div className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-orange-50 px-2 py-1 sm:w-auto">
               <button
+                type="button"
                 aria-label="Decrease quantity"
                 onClick={() => updateQty(product.id, qty - 1)}
                 className="rounded-full p-1 text-orange-600"
@@ -96,6 +122,7 @@ function ProductCardComponent({
               </button>
               <span className="min-w-4 text-center text-sm font-semibold text-orange-700">{qty}</span>
               <button
+                type="button"
                 aria-label="Increase quantity"
                 onClick={() => updateQty(product.id, qty + 1)}
                 className="rounded-full p-1 text-orange-600"
@@ -106,7 +133,7 @@ function ProductCardComponent({
           )}
         </div>
       </div>
-    </motion.article>
+    </article>
   );
 }
 

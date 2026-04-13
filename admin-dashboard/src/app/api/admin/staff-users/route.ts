@@ -11,7 +11,7 @@ import {
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
-const staffManagementRoleSchema = z.enum(["admin", "manager", "cashier", "kitchen", "delivery"]);
+const staffManagementRoleSchema = z.enum(["admin", "manager", "cashier", "kitchen", "delivery", "waiter"]);
 
 const createBody = z.object({
   name: z.string().min(2).max(120),
@@ -77,6 +77,8 @@ export async function POST(request: Request) {
           role: staffManagementRoleToUsersField(body.role as StaffManagementRoleId),
           isActive: body.isActive,
           status: body.isActive ? "active" : "inactive",
+          approved: body.isActive,
+          pendingApproval: false,
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp()
         },

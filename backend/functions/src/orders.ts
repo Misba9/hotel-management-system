@@ -1,6 +1,7 @@
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { assignNearestDeliveryBoy } from "./delivery";
+import { assignDeliveryAgentWhenOrderReady, DEFAULT_ASSIGNED_TO } from "./autoStaffAssignment";
+import { assertValidTransition } from "./orderStatusLifecycle";
 import { assertRole, placeOrderSchema, rateLimit, withIdempotency } from "./security";
 import { syncDeliveryTrackingDoc } from "./v1/common";
 
@@ -46,6 +47,14 @@ export const placeOrder = onCall(async (request) => {
     qty: item.qty
   }));
 
+  const embeddedLineItems = menuItems.map((item) => ({
+    id: item.id,
+    name: item.doc.name,
+    price: item.doc.price,
+    qty: item.qty,
+    quantity: item.qty
+  }));
+
   const batch = db.batch();
   batch.set(orderRef, {
     id: orderRef.id,
@@ -60,6 +69,8 @@ export const placeOrder = onCall(async (request) => {
     deliveryFee,
     total,
     invoiceId: orderRef.id,
+    items: embeddedLineItems,
+    assignedTo: { ...DEFAULT_ASSIGNED_TO },
     dayKey,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString()
@@ -115,10 +126,20 @@ export const updateKitchenStatus = onCall(async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");
   await assertRole(request.auth.uid, ["kitchen_staff", "manager", "admin"]);
 
-  const { orderId, status } = request.data as { orderId: string; status: "preparing" | "ready" };
+  const { orderId, status } = request.data as { orderId: string; status: "accepted" | "preparing" | "ready" };
   if (!orderId || !status) throw new HttpsError("invalid-argument", "orderId and status required.");
 
-  await db.collection("orders").doc(orderId).update({
+  const orderRef = db.collection("orders").doc(orderId);
+  const snap = await orderRef.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Order not found.");
+  const prev = snap.data()?.status as string | undefined;
+  try {
+    assertValidTransition(prev, status);
+  } catch (e) {
+    throw new HttpsError("failed-precondition", e instanceof Error ? e.message : String(e));
+  }
+
+  await orderRef.update({
     status,
     updatedAt: new Date().toISOString()
   });
@@ -128,24 +149,15 @@ export const updateKitchenStatus = onCall(async (request) => {
   });
 
   if (status === "ready") {
+    await assignDeliveryAgentWhenOrderReady(db, orderId);
     const orderSnap = await db.collection("orders").doc(orderId).get();
-    const order = orderSnap.data() as { orderType: string; branchId: string } | undefined;
-    if (order?.orderType === "delivery") {
-      const branchSnap = await db.collection("branches").doc(order.branchId).get();
-      const branch = branchSnap.data() as { location: { lat: number; lng: number } } | undefined;
-      if (branch?.location) {
-        const assignment = await assignNearestDeliveryBoy({
-          orderId,
-          branchLocation: branch.location
-        });
-        if (assignment) {
-          await syncOrderFeedDoc(orderId, {
-            deliveryStatus: "assigned",
-            deliveryBoyId: assignment.riderId,
-            updatedAt: new Date().toISOString()
-          });
-        }
-      }
+    const assigned = orderSnap.data()?.assignedTo as { deliveryId?: string } | undefined;
+    if (assigned?.deliveryId) {
+      await syncOrderFeedDoc(orderId, {
+        deliveryStatus: "assigned",
+        deliveryBoyId: assigned.deliveryId,
+        updatedAt: new Date().toISOString()
+      });
     }
   }
 
@@ -172,7 +184,14 @@ export const updateDeliveryStatus = onCall(async (request) => {
   });
 
   if (status === "picked_up") {
-    await db.collection("orders").doc(assignment.orderId).update({ status: "out_for_delivery" });
+    const orderRef = db.collection("orders").doc(assignment.orderId);
+    const os = await orderRef.get();
+    try {
+      assertValidTransition(os.data()?.status as string | undefined, "out_for_delivery");
+    } catch (e) {
+      throw new HttpsError("failed-precondition", e instanceof Error ? e.message : String(e));
+    }
+    await orderRef.update({ status: "out_for_delivery" });
     await syncOrderFeedDoc(assignment.orderId, {
       status: "out_for_delivery",
       updatedAt: new Date().toISOString()
@@ -184,7 +203,14 @@ export const updateDeliveryStatus = onCall(async (request) => {
   }
 
   if (status === "delivered") {
-    await db.collection("orders").doc(assignment.orderId).update({
+    const orderRef = db.collection("orders").doc(assignment.orderId);
+    const os = await orderRef.get();
+    try {
+      assertValidTransition(os.data()?.status as string | undefined, "delivered");
+    } catch (e) {
+      throw new HttpsError("failed-precondition", e instanceof Error ? e.message : String(e));
+    }
+    await orderRef.update({
       status: "delivered",
       statusBucket: "completed",
       updatedAt: new Date().toISOString()

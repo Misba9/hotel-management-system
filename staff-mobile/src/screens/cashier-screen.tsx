@@ -1,15 +1,19 @@
 import React from "react";
 import { View } from "react-native";
 import { FeatureGate, NoAccessView } from "../components/feature-gate";
+import { CashierTableQueuePanel } from "../components/cashier-pos";
 import { staffColors } from "../theme/staff-ui";
 import POSScreen from "./POSScreen";
 
-/** Cashier POS — mock menu + cart; swap `POSScreen` body for Firebase-backed POS when ready. */
+/** Cashier — realtime table payment queue + walk-in POS. */
 export function CashierScreen() {
   return (
     <FeatureGate feature="billing" fallback={<NoAccessView subtitle="Billing is not available for your role." />}>
       <View style={{ flex: 1, backgroundColor: staffColors.bg }}>
-        <POSScreen />
+        <CashierTableQueuePanel />
+        <View style={{ flex: 1, minHeight: 0 }}>
+          <POSScreen />
+        </View>
       </View>
     </FeatureGate>
   );

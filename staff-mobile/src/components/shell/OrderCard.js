@@ -26,7 +26,7 @@ const STATUS_TINT = {
  *   actions?: { title: string, onPress: () => void, variant?: 'primary' | 'secondary' }[]
  * }}
  */
-export function OrderCard({
+function OrderCardImpl({
   variant,
   orderId,
   items = [],
@@ -78,6 +78,8 @@ export function OrderCard({
     </View>
   );
 }
+
+export const OrderCard = React.memo(OrderCardImpl);
 
 const styles = StyleSheet.create({
   card: {

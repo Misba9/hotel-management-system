@@ -1,11 +1,14 @@
-import React, { useCallback, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { httpsCallable } from "firebase/functions";
 import { FeatureGate, NoAccessView } from "../../components/feature-gate";
 import { StaffScreenHeader } from "../../components/staff-dashboard/staff-screen-header";
+import { useStaffAuth } from "../../context/staff-auth-context";
 import { StaffErrorView } from "../../components/staff-dashboard/staff-error-view";
-import { useOrdersMetrics } from "../../hooks/use-orders-metrics";
+import { EmptyState } from "../../components/ux/empty-state";
+import { useOrdersMetrics, type OrderDocShape } from "../../hooks/use-orders-metrics";
 import { staffFunctions } from "../../lib/firebase";
+import { space } from "../../theme/design-tokens";
 import { cardShadow, staffColors } from "../../theme/staff-ui";
 
 function statusColor(status: string) {
@@ -19,10 +22,87 @@ function statusColor(status: string) {
   return staffColors.muted;
 }
 
+type OrderRowProps = {
+  o: OrderDocShape;
+  busyId: string | null;
+  onAccept: (id: string) => void;
+  onPreparing: (id: string) => void;
+  onReady: (id: string) => void;
+  onOutForDelivery: (id: string) => void;
+  onDelivered: (id: string) => void;
+};
+
+const ManagerOrderRow = React.memo(function ManagerOrderRow({
+  o,
+  busyId,
+  onAccept,
+  onPreparing,
+  onReady,
+  onOutForDelivery,
+  onDelivered
+}: OrderRowProps) {
+  const st = (o.status ?? "pending").toLowerCase();
+  const total = o.total ?? o.totalAmount ?? 0;
+  const accent = statusColor(st);
+  return (
+    <View
+      style={[
+        {
+          marginBottom: space.md,
+          borderRadius: 16,
+          padding: 14,
+          backgroundColor: staffColors.surface,
+          borderLeftWidth: 4,
+          borderLeftColor: accent,
+          borderWidth: 1,
+          borderColor: staffColors.border
+        },
+        cardShadow()
+      ]}
+    >
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={{ fontWeight: "900", color: staffColors.text, fontSize: 15 }}>{o.customerName?.trim() || "Order"}</Text>
+          <Text style={{ marginTop: 2, color: staffColors.muted, fontSize: 12 }}>#{o.id}</Text>
+          <Text style={{ marginTop: 4, color: staffColors.muted, fontSize: 12 }}>
+            {o.orderType ? `${o.orderType} · ` : ""}Rs. {Number(total).toLocaleString()}
+          </Text>
+        </View>
+        <View style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: `${accent}22` }}>
+          <Text style={{ fontSize: 11, fontWeight: "800", color: accent }}>{st.toUpperCase()}</Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+        {st === "pending" || st === "created" || st === "confirmed" ? (
+          <MiniAction label="Accept" onPress={() => onAccept(o.id)} disabled={busyId === o.id} />
+        ) : null}
+        {st === "accepted" ? <MiniAction label="Preparing" onPress={() => onPreparing(o.id)} disabled={busyId === o.id} /> : null}
+        {st === "preparing" ? <MiniAction label="Ready" onPress={() => onReady(o.id)} disabled={busyId === o.id} /> : null}
+        {st === "ready" ? <MiniAction label="Out for delivery" onPress={() => onOutForDelivery(o.id)} disabled={busyId === o.id} /> : null}
+        {st === "out_for_delivery" ? <MiniAction label="Delivered" onPress={() => onDelivered(o.id)} disabled={busyId === o.id} /> : null}
+        {busyId === o.id ? <ActivityIndicator style={{ marginLeft: 4 }} color={staffColors.accent} /> : null}
+      </View>
+    </View>
+  );
+});
+
 export function ManagerOrdersScreen() {
-  const [retry, setRetry] = useState(0);
+  const { staff } = useStaffAuth();
+  const headerRole = staff?.role === "admin" ? "admin" : "manager";
+  const [listenerKey, setListenerKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const metrics = useOrdersMetrics(true, retry);
+  const metrics = useOrdersMetrics(true, listenerKey);
+
+  useEffect(() => {
+    if (!metrics.loading) setRefreshing(false);
+  }, [metrics.loading]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setListenerKey((n) => n + 1);
+  }, []);
 
   const updateStatus = useCallback(async (orderId: string, status: string) => {
     setBusyId(orderId);
@@ -36,72 +116,55 @@ export function ManagerOrdersScreen() {
     }
   }, []);
 
+  const onAccept = useCallback((id: string) => void updateStatus(id, "accepted"), [updateStatus]);
+  const onPreparing = useCallback((id: string) => void updateStatus(id, "preparing"), [updateStatus]);
+  const onReady = useCallback((id: string) => void updateStatus(id, "ready"), [updateStatus]);
+  const onOutForDelivery = useCallback((id: string) => void updateStatus(id, "out_for_delivery"), [updateStatus]);
+  const onDelivered = useCallback((id: string) => void updateStatus(id, "delivered"), [updateStatus]);
+
   return (
     <FeatureGate feature="orders" fallback={<NoAccessView subtitle="You do not have access to orders." />}>
-      <ScrollView style={{ flex: 1, backgroundColor: staffColors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-        <StaffScreenHeader role="manager" title="All orders" subtitle="Live Firestore feed — update status for the line." />
+      <ScrollView
+        style={{ flex: 1, backgroundColor: staffColors.bg }}
+        contentContainerStyle={{ padding: space.lg, paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={staffColors.accent}
+            colors={[staffColors.accent]}
+          />
+        }
+      >
+        <StaffScreenHeader role={headerRole} title="All orders" subtitle="Live Firestore — pull to refresh." />
 
-        {metrics.error ? <StaffErrorView message={metrics.error} onRetry={() => setRetry((n) => n + 1)} /> : null}
+        {metrics.error ? (
+          <StaffErrorView message={metrics.error} onRetry={() => setListenerKey((n) => n + 1)} />
+        ) : null}
 
         {metrics.loading && !metrics.error ? (
-          <View style={{ padding: 24, alignItems: "center" }}>
+          <View style={{ paddingVertical: space.xl, alignItems: "center" }}>
             <ActivityIndicator color={staffColors.accent} size="large" />
-            <Text style={{ marginTop: 10, color: staffColors.muted }}>Loading orders…</Text>
+            <Text style={{ marginTop: space.sm, color: staffColors.muted, fontWeight: "600" }}>Loading orders…</Text>
           </View>
         ) : null}
 
-        {!metrics.loading && metrics.recentOrders.length === 0 ? (
-          <Text style={{ color: staffColors.muted }}>No orders in the current sample.</Text>
+        {!metrics.loading && !metrics.error && metrics.recentOrders.length === 0 ? (
+          <EmptyState icon="📦" title="No orders in sample" subtitle="Orders appear here as they are created. Pull down to refresh." />
         ) : null}
 
-        {metrics.recentOrders.map((o) => {
-          const st = (o.status ?? "pending").toLowerCase();
-          const total = o.total ?? o.totalAmount ?? 0;
-          const accent = statusColor(st);
-          return (
-            <View
-              key={o.id}
-              style={[
-                {
-                  marginBottom: 12,
-                  borderRadius: 16,
-                  padding: 14,
-                  backgroundColor: staffColors.surface,
-                  borderLeftWidth: 4,
-                  borderLeftColor: accent,
-                  borderWidth: 1,
-                  borderColor: staffColors.border
-                },
-                cardShadow()
-              ]}
-            >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={{ fontWeight: "900", color: staffColors.text, fontSize: 15 }}>{o.customerName?.trim() || "Order"}</Text>
-                  <Text style={{ marginTop: 2, color: staffColors.muted, fontSize: 12 }}>#{o.id}</Text>
-                  <Text style={{ marginTop: 4, color: staffColors.muted, fontSize: 12 }}>
-                    {o.orderType ? `${o.orderType} · ` : ""}Rs. {Number(total).toLocaleString()}
-                  </Text>
-                </View>
-                <View style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: `${accent}22` }}>
-                  <Text style={{ fontSize: 11, fontWeight: "800", color: accent }}>{st.toUpperCase()}</Text>
-                </View>
-              </View>
-
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                {st === "pending" || st === "created" || st === "confirmed" ? (
-                  <MiniAction label="Preparing" onPress={() => void updateStatus(o.id, "preparing")} disabled={busyId === o.id} />
-                ) : null}
-                {(st === "preparing" || st === "accepted") && (
-                  <MiniAction label="Ready" onPress={() => void updateStatus(o.id, "ready")} disabled={busyId === o.id} />
-                )}
-                {st === "ready" ? <MiniAction label="Out for delivery" onPress={() => void updateStatus(o.id, "out_for_delivery")} disabled={busyId === o.id} /> : null}
-                {st === "out_for_delivery" ? <MiniAction label="Delivered" onPress={() => void updateStatus(o.id, "delivered")} disabled={busyId === o.id} /> : null}
-                {busyId === o.id ? <ActivityIndicator style={{ marginLeft: 4 }} color={staffColors.accent} /> : null}
-              </View>
-            </View>
-          );
-        })}
+        {metrics.recentOrders.map((o) => (
+          <ManagerOrderRow
+            key={o.id}
+            o={o}
+            busyId={busyId}
+            onAccept={onAccept}
+            onPreparing={onPreparing}
+            onReady={onReady}
+            onOutForDelivery={onOutForDelivery}
+            onDelivered={onDelivered}
+          />
+        ))}
       </ScrollView>
     </FeatureGate>
   );

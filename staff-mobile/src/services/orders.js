@@ -1,6 +1,13 @@
 /**
  * Unified Firestore `orders/{orderId}` — same documents for POS, kitchen, delivery, admin, customer.
  * Real-time via onSnapshot; `id` field mirrors the document id.
+ *
+ * Indexing (deploy `backend/firestore.indexes.json`):
+ * - Kitchen + delivery live lists: composite on `status` (Ascending) + `createdAt` (Descending) for
+ *   `where("status","in",[...])` + `orderBy("createdAt","desc")`.
+ * - Manager / metrics: `orderBy("createdAt","desc")` only (single-field index is automatic).
+ * - Cashier menu: full `menu_items` collection listen (no composite required).
+ * - Optional scale-up: add `branchId` equality + same composite for multi-branch filters.
  */
 import {
   collection,
@@ -13,12 +20,73 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   writeBatch
 } from "firebase/firestore";
 import { staffAuth as auth, staffDb as db } from "../lib/firebase";
+import { isFirestoreCompositeIndexError, logFirestoreQueryError } from "../lib/firestore-query-errors";
+import { assertValidTransition, ORDER_LIFECYCLE } from "../lib/order-status-lifecycle";
 
 export const ORDERS_COLLECTION = "orders";
 export const INVOICES_COLLECTION = "invoices";
+
+/** Kitchen realtime — active line only (no `ready`; that moves to delivery). */
+export const KITCHEN_ORDER_STATUS_IN = ["pending", "accepted", "preparing", "created", "confirmed"];
+
+/** Restaurant table tickets on the kitchen KDS (`where status in` + `orderBy createdAt` — same composite as {@link getKitchenOrdersQuery}). */
+export const RESTAURANT_KITCHEN_QUEUE_STATUS_IN = ["PLACED", "PREPARING"];
+
+/** Delivery realtime — handoff + active runs (not `delivered`; saves reads). */
+export const DELIVERY_ORDER_STATUS_IN = ["ready", "out_for_delivery"];
+
+const KITCHEN_ORDER_STATUS_SET = new Set(KITCHEN_ORDER_STATUS_IN.map((s) => s.toLowerCase()));
+
+const DELIVERY_STATUS_SET = new Set(DELIVERY_ORDER_STATUS_IN.map((s) => s.toLowerCase()));
+
+/**
+ * Server-filtered kitchen queue (needs composite index: `status` ASC + `createdAt` DESC).
+ * @returns {import('firebase/firestore').Query}
+ */
+export function getKitchenOrdersQuery() {
+  return query(
+    collection(db, ORDERS_COLLECTION),
+    where("status", "in", KITCHEN_ORDER_STATUS_IN),
+    orderBy("createdAt", "desc"),
+    limit(150)
+  );
+}
+
+/**
+ * @returns {import('firebase/firestore').Query}
+ */
+export function getRestaurantKitchenQueueQuery() {
+  return query(
+    collection(db, ORDERS_COLLECTION),
+    where("status", "in", RESTAURANT_KITCHEN_QUEUE_STATUS_IN),
+    orderBy("createdAt", "desc"),
+    limit(150)
+  );
+}
+
+/**
+ * Fallback when the composite index is missing: recent orders only, filter in app (extra reads).
+ * @returns {import('firebase/firestore').Query}
+ */
+export function getRecentOrdersFallbackQuery() {
+  return query(collection(db, ORDERS_COLLECTION), orderBy("createdAt", "desc"), limit(250));
+}
+
+/**
+ * @returns {import('firebase/firestore').Query}
+ */
+export function getDeliveryOrdersQuery() {
+  return query(
+    collection(db, ORDERS_COLLECTION),
+    where("status", "in", DELIVERY_ORDER_STATUS_IN),
+    orderBy("createdAt", "desc"),
+    limit(200)
+  );
+}
 
 /**
  * Load persisted `invoices/{orderId}` (same id as order).
@@ -209,7 +277,9 @@ export async function createOrder(orderData) {
     lat: DEFAULT_DELIVERY_LAT,
     lng: DEFAULT_DELIVERY_LNG
   };
-  const at = orderData.assignedTo ? normalizeAssignedToMap(orderData.assignedTo) : { kitchenId: "", deliveryId: "" };
+  const at = orderData.assignedTo
+    ? normalizeAssignedToMap(orderData.assignedTo)
+    : { kitchenId: "auto", deliveryId: "" };
 
   const batch = writeBatch(db);
   batch.set(ref, {
@@ -276,7 +346,7 @@ export async function createDineInOrder(payload) {
     status: "pending",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-    assignedTo: { kitchenId: "", deliveryId: "" }
+    assignedTo: { kitchenId: "auto", deliveryId: "" }
   });
   batch.set(invRef, {
     orderId: id,
@@ -364,8 +434,11 @@ export async function updateDeliveryLocation(orderId, location) {
  * @param {(err: import('firebase/firestore').FirestoreError) => void} [onError]
  * @returns {() => void}
  */
+/** Manager — bounded “all orders” window (newest first). Keep in sync with metrics dashboards. */
+export const MANAGER_ORDERS_LIMIT = 250;
+
 export function subscribeToOrders(callback, onError) {
-  const q = query(collection(db, ORDERS_COLLECTION), orderBy("createdAt", "desc"), limit(250));
+  const q = query(collection(db, ORDERS_COLLECTION), orderBy("createdAt", "desc"), limit(MANAGER_ORDERS_LIMIT));
   return onSnapshot(
     q,
     (snap) => {
@@ -376,64 +449,186 @@ export function subscribeToOrders(callback, onError) {
   );
 }
 
-/** Pending / accepted (inbox) + preparing (cooking) — excludes ready+ (handed to delivery). */
-const KITCHEN_ACTIVE = new Set(["pending", "accepted", "preparing", "created", "confirmed"]);
-
 /**
- * Kitchen queue (onSnapshot) — same `orders` docs as POS; filter keeps active kitchen work only.
+ * Kitchen queue — server-side `status in` (no full-table scan).
  * @param {(orders: StaffOrder[]) => void} callback
  * @param {(err: import('firebase/firestore').FirestoreError) => void} [onError]
  */
+/**
+ * Raw `orders` docs for KDS UI (same server filter as {@link subscribeKitchenOrders}, with index fallback).
+ * @param {(docs: Array<{ id: string; data: Record<string, unknown> }>) => void} callback
+ */
+export function subscribeKitchenOrderDocs(callback, onError) {
+  let unsubFallback = () => {};
+
+  const emitPrimary = (snap) => {
+    const next = snap.docs.map((d) => ({ id: d.id, data: d.data() || {} }));
+    callback(next);
+  };
+
+  const emitFallback = (snap) => {
+    const next = snap.docs
+      .filter((d) => KITCHEN_ORDER_STATUS_SET.has(String(d.data()?.status ?? "").toLowerCase()))
+      .map((d) => ({ id: d.id, data: d.data() || {} }));
+    callback(next);
+  };
+
+  const unsubPrimary = onSnapshot(
+    getKitchenOrdersQuery(),
+    emitPrimary,
+    (err) => {
+      if (!isFirestoreCompositeIndexError(err)) {
+        logFirestoreQueryError("kitchen-board-primary", err);
+        onError?.(err);
+        return;
+      }
+      logFirestoreQueryError("kitchen-board-fallback", err);
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[orders] Kitchen board: missing composite index — using recent-orders fallback (deploy backend/firestore.indexes.json)."
+        );
+      }
+      unsubFallback = onSnapshot(
+        getRecentOrdersFallbackQuery(),
+        emitFallback,
+        (err2) => {
+          logFirestoreQueryError("kitchen-board-fallback-snapshot", err2);
+          onError?.(err2);
+        }
+      );
+    }
+  );
+
+  return () => {
+    unsubPrimary();
+    unsubFallback();
+  };
+}
+
 export function subscribeKitchenOrders(callback, onError) {
-  const q = query(collection(db, ORDERS_COLLECTION), orderBy("createdAt", "desc"), limit(150));
-  return onSnapshot(
-    q,
+  let unsubFallback = () => {};
+
+  const unsubPrimary = onSnapshot(
+    getKitchenOrdersQuery(),
     (snap) => {
-      const list = snap
-        .docs.map((d) => mapOrderDoc(d.id, d.data()))
-        .filter((o) => {
-          const s = (o.status || "").toLowerCase();
-          return KITCHEN_ACTIVE.has(s);
-        });
+      const list = snap.docs.map((d) => mapOrderDoc(d.id, d.data()));
       callback(list);
     },
-    onError
+    (err) => {
+      if (!isFirestoreCompositeIndexError(err)) {
+        logFirestoreQueryError("kitchen-primary", err);
+        onError?.(err);
+        return;
+      }
+      logFirestoreQueryError("kitchen-fallback", err);
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[orders] Kitchen: missing composite index — using recent-orders fallback (deploy backend/firestore.indexes.json)."
+        );
+      }
+      unsubFallback = onSnapshot(
+        getRecentOrdersFallbackQuery(),
+        (snap) => {
+          const list = snap.docs
+            .map((d) => mapOrderDoc(d.id, d.data()))
+            .filter((o) => KITCHEN_ORDER_STATUS_SET.has(String(o.status ?? "").toLowerCase()));
+          callback(list);
+        },
+        (err2) => {
+          logFirestoreQueryError("kitchen-fallback-snapshot", err2);
+          onError?.(err2);
+        }
+      );
+    }
   );
+
+  return () => {
+    unsubPrimary();
+    unsubFallback();
+  };
 }
 
 /**
- * Delivery — ready pool + out_for_delivery assigned to this rider.
+ * Delivery — `ready` + `out_for_delivery` only; client hides other riders’ active runs except your own.
  * @param {string} deliveryUid
  * @param {(orders: StaffOrder[]) => void} callback
  * @param {(err: import('firebase/firestore').FirestoreError) => void} [onError]
  */
 export function subscribeDeliveryOrders(deliveryUid, callback, onError) {
-  const q = query(collection(db, ORDERS_COLLECTION), orderBy("createdAt", "desc"), limit(150));
-  return onSnapshot(
-    q,
+  let unsubFallback = () => {};
+
+  const applyDeliveryFilter = (all) => {
+    const filtered = all.filter((o) => {
+      const s = String(o.status ?? "").toLowerCase();
+      if (s === "ready") return true;
+      if (s === "out_for_delivery") {
+        const dAssign = o.assignedTo?.deliveryId ?? o.assignedTo?.delivery ?? "";
+        return dAssign === deliveryUid;
+      }
+      return false;
+    });
+    callback(filtered);
+  };
+
+  const unsubPrimary = onSnapshot(
+    getDeliveryOrdersQuery(),
     (snap) => {
       const all = snap.docs.map((d) => mapOrderDoc(d.id, d.data()));
-      const filtered = all.filter((o) => {
-        if (o.status === "ready") return true;
-        if (o.status === "out_for_delivery") {
-          const dAssign = o.assignedTo?.deliveryId ?? o.assignedTo?.delivery ?? "";
-          return dAssign === deliveryUid;
-        }
-        return false;
-      });
-      callback(filtered);
+      applyDeliveryFilter(all);
     },
-    onError
+    (err) => {
+      if (!isFirestoreCompositeIndexError(err)) {
+        logFirestoreQueryError("delivery-primary", err);
+        onError?.(err);
+        return;
+      }
+      logFirestoreQueryError("delivery-fallback", err);
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[orders] Delivery: missing composite index — using recent-orders fallback (deploy backend/firestore.indexes.json)."
+        );
+      }
+      unsubFallback = onSnapshot(
+        getRecentOrdersFallbackQuery(),
+        (snap) => {
+          const all = snap.docs
+            .map((d) => mapOrderDoc(d.id, d.data()))
+            .filter((o) => DELIVERY_STATUS_SET.has(String(o.status ?? "").toLowerCase()));
+          applyDeliveryFilter(all);
+        },
+        (err2) => {
+          logFirestoreQueryError("delivery-fallback-snapshot", err2);
+          onError?.(err2);
+        }
+      );
+    }
   );
+
+  return () => {
+    unsubPrimary();
+    unsubFallback();
+  };
 }
 
 /**
+ * Single write path for lifecycle `status` on `orders/{orderId}` — validates one step forward only.
  * @param {string} orderId
- * @param {string} status
+ * @param {import("../lib/order-status-lifecycle").OrderLifecycleStatus} status
  * @param {Record<string, unknown>} [extra] merged into update (e.g. dot paths for assignedTo)
  */
 export async function updateOrderStatus(orderId, status, extra = {}) {
-  await updateDoc(doc(db, ORDERS_COLLECTION, orderId), {
+  if (!ORDER_LIFECYCLE.includes(status)) {
+    throw new Error(`Invalid target status: ${status}`);
+  }
+  const ref = doc(db, ORDERS_COLLECTION, orderId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("Order not found");
+  const current = snap.data()?.status;
+  assertValidTransition(current, status);
+  await updateDoc(ref, {
     status,
     updatedAt: serverTimestamp(),
     ...extra
@@ -452,12 +647,12 @@ export async function assignDelivery(orderId, deliveryUid) {
 }
 
 /**
- * Accept → preparing with kitchen uid on ticket.
+ * Kitchen acknowledges ticket: pending → accepted (then use preparing step separately).
  * @param {string} orderId
  * @param {string} kitchenUid
  */
 export async function acceptKitchenOrder(orderId, kitchenUid) {
-  await updateOrderStatus(orderId, "preparing", {
+  await updateOrderStatus(orderId, "accepted", {
     "assignedTo.kitchenId": kitchenUid
   });
 }
@@ -467,9 +662,7 @@ export async function acceptKitchenOrder(orderId, kitchenUid) {
  * @param {string} deliveryUid
  */
 export async function startDelivery(orderId, deliveryUid) {
-  await updateDoc(doc(db, ORDERS_COLLECTION, orderId), {
-    status: "out_for_delivery",
-    "assignedTo.deliveryId": deliveryUid,
-    updatedAt: serverTimestamp()
+  await updateOrderStatus(orderId, "out_for_delivery", {
+    "assignedTo.deliveryId": deliveryUid
   });
 }

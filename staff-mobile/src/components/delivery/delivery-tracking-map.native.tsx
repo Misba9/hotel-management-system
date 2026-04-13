@@ -5,14 +5,10 @@ import MapView, { Marker, Polyline, type Region } from "react-native-maps";
 export type LatLng = { lat: number; lng: number };
 
 type Props = {
-  /** Customer drop-off (from order `deliveryLocation`). */
   customerDrop: LatLng;
-  /** Live delivery agent position (GPS or `riderLocation` from Firestore). */
   rider: LatLng | null;
-  /** Optional title for markers */
   customerTitle?: string;
   customerDescription?: string;
-  /** Draw geodesic line rider → customer (straight-line; road routing needs Directions API). */
   showRoute?: boolean;
   mapHeight: number;
 };

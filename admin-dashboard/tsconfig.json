@@ -31,6 +31,9 @@
       ],
       "@shared/utils/*": [
         "../shared/utils/*"
+      ],
+      "@shared/hooks/*": [
+        "../shared/hooks/*"
       ]
     },
     "allowJs": true,

@@ -1,12 +1,13 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { useCallback } from "react";
 import { Star, X } from "lucide-react";
 import { Product } from "@/lib/menu-data";
 import { useCart } from "@/components/cart/cart-provider";
+import { SafeFillImage } from "@/components/shared/safe-fill-image";
 
 type ProductQuickViewModalProps = {
   product: Product | null;
@@ -32,8 +33,15 @@ export function ProductQuickViewModal({
       ? reviewAverage.toFixed(1)
       : Number(product.rating).toFixed(1);
 
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      queueMicrotask(() => onOpenChange(next));
+    },
+    [onOpenChange]
+  );
+
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px]" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[min(90dvh,640px)] w-[95%] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto overscroll-contain rounded-xl bg-white p-4 shadow-md transition-all duration-200 focus:outline-none dark:bg-slate-900 sm:w-full sm:p-5 md:max-w-xl hover:shadow-lg">
@@ -53,10 +61,9 @@ export function ProductQuickViewModal({
             {product ? (
               <div className="space-y-4">
                 <div className="relative h-40 w-full overflow-hidden rounded-xl sm:h-48 md:h-56 md:rounded-2xl">
-                  <Image
+                  <SafeFillImage
                     src={product.image}
                     alt={product.name}
-                    fill
                     sizes="(max-width: 640px) 95vw, 36rem"
                     className="object-cover transition-all duration-200"
                   />

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Linking, ScrollView, Text, TouchableOpacity, TextInput, View } from "react-native";
-import * as Location from "expo-location";
-import { collection, getDocs, onSnapshot, query, where, limit } from "firebase/firestore";
+import { collection, getDocs, onSnapshot } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { staffDb, staffFunctions } from "../lib/firebase";
 import { useAuth } from "../context/AuthProvider";
@@ -100,21 +99,32 @@ function OrderBoardColumn({
   );
 }
 
-export function WaiterPanel() {
-  type Product = { id: string; name: string; price: number };
+export function WaiterPanel({
+  reloadNonce = 0,
+  initialTableNumber
+}: { reloadNonce?: number; initialTableNumber?: number } = {}) {
+  type Product = { id: string; name: string; price: number; categoryId: string };
   type CartLine = { productId: string; name: string; price: number; quantity: number };
 
   const { user } = useAuth();
-  const [selectedTable, setSelectedTable] = useState<number | null>(null);
+  const [selectedTable, setSelectedTable] = useState<number | null>(() =>
+    initialTableNumber != null && Number.isFinite(initialTableNumber) ? initialTableNumber : null
+  );
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [cart, setCart] = useState<Record<string, CartLine>>({});
 
   const cartLines = useMemo(() => Object.values(cart), [cart]);
   const cartTotal = useMemo(() => cartLines.reduce((sum, l) => sum + l.price * l.quantity, 0), [cartLines]);
+
+  useEffect(() => {
+    if (initialTableNumber != null && Number.isFinite(initialTableNumber)) {
+      setSelectedTable(initialTableNumber);
+    }
+  }, [initialTableNumber]);
 
   useEffect(() => {
     void (async () => {
@@ -136,36 +146,59 @@ export function WaiterPanel() {
         setMenuLoading(false);
       }
     })();
-  }, []);
+  }, [reloadNonce]);
 
   useEffect(() => {
-    if (!selectedCategoryId) return;
+    let unsub: (() => void) | undefined;
     setMenuLoading(true);
-    void (async () => {
-      try {
-        const q = query(collection(staffDb, "products"), where("categoryId", "==", selectedCategoryId));
-        const snap = await getDocs(q);
-        const items = snap.docs
-          .map((d) => {
-            const data = d.data() as { name?: string; price?: number; isAvailable?: boolean; available?: boolean };
-            return {
-              id: d.id,
-              name: String(data.name ?? ""),
-              price: Number(data.price ?? 0),
-              isAvailable: Boolean(data.isAvailable ?? data.available ?? false)
+    try {
+      unsub = onSnapshot(
+        collection(staffDb, "products"),
+        (snap) => {
+          const items: Product[] = [];
+          snap.forEach((d) => {
+            const data = d.data() as {
+              name?: string;
+              price?: number;
+              isAvailable?: boolean;
+              available?: boolean;
+              categoryId?: string;
+              category?: string;
             };
-          })
-          .filter((p) => p.isAvailable)
-          .map(({ id, name, price }) => ({ id, name, price }));
-        setProducts(items);
-      } catch (e) {
-        console.error("Failed loading products:", e);
-        Alert.alert("Menu error", "Unable to load items.");
-      } finally {
-        setMenuLoading(false);
-      }
-    })();
-  }, [selectedCategoryId]);
+            const isAvailable = Boolean(data.isAvailable ?? data.available ?? false);
+            if (!isAvailable) return;
+            const name = String(data.name ?? "").trim();
+            if (!name) return;
+            items.push({
+              id: d.id,
+              name,
+              price: Number(data.price ?? 0),
+              categoryId: String(data.categoryId ?? data.category ?? "")
+            });
+          });
+          setAllProducts(items);
+          setMenuLoading(false);
+        },
+        (err) => {
+          console.error("Failed loading products:", err);
+          Alert.alert("Menu error", "Unable to load items.");
+          setMenuLoading(false);
+        }
+      );
+    } catch (e) {
+      console.error("Failed loading products:", e);
+      Alert.alert("Menu error", "Unable to load items.");
+      setMenuLoading(false);
+    }
+    return () => {
+      unsub?.();
+    };
+  }, [reloadNonce]);
+
+  const products = useMemo(() => {
+    if (!selectedCategoryId) return [];
+    return allProducts.filter((p) => p.categoryId === selectedCategoryId);
+  }, [allProducts, selectedCategoryId]);
 
   function addToCart(product: Product) {
     setCart((prev) => {

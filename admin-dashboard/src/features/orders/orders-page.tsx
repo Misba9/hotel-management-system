@@ -42,11 +42,11 @@ export type Order = {
   createdAt?: string | null;
 };
 
-/** Status values the admin API may set (server uses Admin SDK merge — bypasses strict client rules). */
+/** Next lifecycle step only (admin PATCH enforces {@link assertValidTransition} on server). */
 export type AdminOrderStatusAction =
   | "accepted"
-  | "rejected"
   | "preparing"
+  | "ready"
   | "out_for_delivery"
   | "delivered";
 
@@ -294,10 +294,16 @@ function statusActionButtons(status: string | undefined): {
   const s = (status ?? "pending").toLowerCase();
   switch (s) {
     case "pending":
+    case "created":
+    case "confirmed":
       return [{ key: "accept", label: "Accept", next: "accepted", variant: "primary" }];
     case "accepted":
       return [{ key: "prep", label: "Preparing", next: "preparing", variant: "primary" }];
     case "preparing":
+      return [{ key: "ready", label: "Ready", next: "ready", variant: "primary" }];
+    case "ready":
+      return [{ key: "out", label: "Out for delivery", next: "out_for_delivery", variant: "primary" }];
+    case "out_for_delivery":
       return [{ key: "done", label: "Delivered", next: "delivered", variant: "primary" }];
     default:
       return [];

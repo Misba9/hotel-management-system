@@ -4,7 +4,7 @@ import { z } from "zod";
 import { StaffEmailUnavailableError, assertStaffEmailAvailable } from "./assertStaffEmailAvailable";
 import { authenticateHttp, auth, db } from "./v1/common";
 
-const staffRoleSchema = z.enum(["admin", "manager", "cashier", "kitchen", "delivery"]);
+const staffRoleSchema = z.enum(["admin", "manager", "cashier", "kitchen", "delivery", "waiter"]);
 
 const createStaffBodySchema = z.object({
   name: z.string().min(2).max(120),
@@ -28,6 +28,8 @@ function staffManagementRoleToAuthClaim(role: StaffMgmtRole): string {
       return "kitchen_staff";
     case "delivery":
       return "delivery_boy";
+    case "waiter":
+      return "waiter";
     default:
       return "cashier";
   }
@@ -133,6 +135,8 @@ export const createStaffUser = onRequest(
             role: claimRole,
             isActive: body.isActive,
             status: body.isActive ? "active" : "inactive",
+            approved: body.isActive,
+            pendingApproval: false,
             createdAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp()
           },

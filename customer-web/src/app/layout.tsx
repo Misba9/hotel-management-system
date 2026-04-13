@@ -26,7 +26,12 @@ const plusJakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: "Nausheen Fruits Juice Center",
-  description: "Order fresh juices, shakes, smoothies, and fruit bowls online."
+  description: "Order fresh juices, shakes, smoothies, and fruit bowls online.",
+  icons: {
+    icon: [{ url: "/favicon.ico", sizes: "any" }],
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico"
+  }
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

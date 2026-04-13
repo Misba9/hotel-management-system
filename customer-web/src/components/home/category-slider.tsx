@@ -1,9 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Category, getMenuPayload } from "@/lib/menu-data";
+import { SafeFillImage } from "@/components/shared/safe-fill-image";
+
+const CATEGORY_ROW_SKELETON_KEYS = ["cr1", "cr2", "cr3", "cr4", "cr5", "cr6", "cr7", "cr8"] as const;
 
 export function CategorySlider() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -62,7 +64,7 @@ export function CategorySlider() {
           {loading
             ? Array.from({ length: 8 }).map((_, index) => (
                 <div
-                  key={index}
+                  key={CATEGORY_ROW_SKELETON_KEYS[index]}
                   className="flex min-w-[70px] shrink-0 snap-start flex-col items-center"
                   aria-hidden
                 >
@@ -94,10 +96,9 @@ export function CategorySlider() {
                     }`}
                   >
                     {category.image ? (
-                      <Image
+                      <SafeFillImage
                         src={category.image}
                         alt={category.name}
-                        fill
                         sizes="(max-width: 640px) 56px, 64px"
                         className="object-cover"
                         loading="lazy"

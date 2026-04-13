@@ -76,6 +76,16 @@ export const orderStatusSchema = z.enum([
   "cancelled"
 ]);
 
+/** Strict linear pipeline — use for all `orders.status` *transitions* (not order creation). */
+export const orderLifecycleStatusSchema = z.enum([
+  "pending",
+  "accepted",
+  "preparing",
+  "ready",
+  "out_for_delivery",
+  "delivered"
+]);
+
 export const paymentMethodSchema = z.enum(["cash", "upi", "online"]);
 export const paymentStatusSchema = z.enum(["pending", "paid", "failed", "refunded"]);
 export const deliveryStatusSchema = z.enum(["assigned", "picked_up", "on_the_way", "delivered", "failed"]);

@@ -12,6 +12,13 @@
           "locationAlwaysAndWhenInUsePermission": "Allow Fruit Hotel Staff to use your location for live delivery tracking.",
           "locationWhenInUsePermission": "Allow Fruit Hotel Staff to use your location for live delivery tracking."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "androidMode": "default",
+          "androidCollapsedTitle": "Staff"
+        }
       ]
     ],
     "ios": {

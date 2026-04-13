@@ -30,7 +30,7 @@ export function ReviewCarousel() {
           >
             <div className="mb-2 flex items-center gap-1">
               {Array.from({ length: review.rating }).map((_, i) => (
-                <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
+                <Star key={`${review.id}-star-${i}`} className="h-4 w-4 fill-amber-400 text-amber-400" />
               ))}
             </div>
             <p className="text-slate-700">&ldquo;{review.text}&rdquo;</p>

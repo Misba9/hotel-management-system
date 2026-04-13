@@ -37,11 +37,11 @@ const app: FirebaseApp = getOrCreateFirebaseApp();
 export const auth: Auth = getAuth(app);
 export const db: Firestore = getFirestore(app);
 
-if (process.env.NODE_ENV === "development") {
-  console.log("DB:", db);
-}
-
 export async function getClientMessaging() {
-  if (!(await isSupported())) return null;
-  return getMessaging(app);
+  try {
+    if (!(await isSupported())) return null;
+    return getMessaging(app);
+  } catch {
+    return null;
+  }
 }

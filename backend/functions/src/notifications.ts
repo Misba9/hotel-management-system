@@ -1,3 +1,19 @@
+/**
+ * Staff FCM triggers (Firebase Cloud Messaging via Admin SDK):
+ *
+ * Setup
+ * - Firebase Console → Project settings → Cloud Messaging: enable; add Android app + iOS (APNs) as needed.
+ * - Staff mobile: `registerStaffPushToken` writes device tokens to `users/{uid}.fcmToken` / `fcmTokens`.
+ * - Auth custom claims `role` must match staff roles (see {@link collectStaffUidsByRoles}): `kitchen_staff`
+ *   (kitchen), `waiter`, `cashier`, `admin`, `manager`, etc.
+ * - Deploy functions with a billing-enabled GCP project; FCM uses the same Firebase project as Firestore.
+ *
+ * Triggers (this module)
+ * - New `orders/*` create → kitchen: table/dine-in uses table-specific copy; other order types get a generic kitchen alert.
+ * - Order `status` → READY (table / dine-in) → all users with role `waiter`.
+ * - `paymentStatus` → REQUESTED (table / dine-in) → all users with role `cashier`.
+ */
+
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { getMessaging } from "firebase-admin/messaging";
@@ -11,7 +27,12 @@ type OrderDocShape = {
   status?: string;
   userId?: string;
   total?: number;
+  totalAmount?: number;
   createdAt?: string;
+  orderType?: string;
+  tableNumber?: number;
+  createdByUid?: string;
+  paymentStatus?: string;
 };
 
 const STATUS_TO_CUSTOMER_MESSAGE: Record<string, string> = {
@@ -80,18 +101,23 @@ async function sendFcmToUser(
   }
 }
 
-async function collectAdminAndManagerUids(): Promise<string[]> {
+async function collectStaffUidsByRoles(roles: string[]): Promise<string[]> {
+  const want = new Set(roles);
   const out = new Set<string>();
   let nextPageToken: string | undefined;
   do {
     const page = await adminAuth.listUsers(1000, nextPageToken);
     for (const user of page.users) {
       const role = String(user.customClaims?.role ?? "");
-      if (role === "admin" || role === "manager") out.add(user.uid);
+      if (want.has(role)) out.add(user.uid);
     }
     nextPageToken = page.pageToken;
   } while (nextPageToken);
   return [...out];
+}
+
+async function collectAdminAndManagerUids(): Promise<string[]> {
+  return collectStaffUidsByRoles(["admin", "manager"]);
 }
 
 async function collectFcmTokensForUids(uids: string[]): Promise<string[]> {
@@ -114,6 +140,22 @@ async function collectFcmTokensForUids(uids: string[]): Promise<string[]> {
   return [...tokens].slice(0, 500);
 }
 
+async function sendStaffMulticast(
+  tokens: string[],
+  notification: { title: string; body: string },
+  data: Record<string, string>
+): Promise<void> {
+  if (tokens.length === 0) return;
+  const multicast = await messaging.sendEachForMulticast({
+    tokens,
+    notification,
+    data
+  });
+  if (process.env.FUNCTIONS_EMULATOR && multicast.failureCount > 0) {
+    console.warn("FCM multicast failures", multicast.failureCount, multicast.responses);
+  }
+}
+
 async function sendFcmToAdminsOnNewOrder(orderId: string, total: number): Promise<void> {
   const uids = await collectAdminAndManagerUids();
   const tokens = await collectFcmTokensForUids(uids);
@@ -129,6 +171,91 @@ async function sendFcmToAdminsOnNewOrder(orderId: string, total: number): Promis
       orderId
     }
   });
+}
+
+function isWaiterFloorOrder(order: OrderDocShape): boolean {
+  const ot = String(order.orderType ?? "").toLowerCase();
+  return ot === "table" || ot === "dine_in";
+}
+
+/** FCM to kitchen devices when a waiter opens a table / dine-in ticket. */
+async function sendFcmToKitchenOnWaiterPlacedOrder(orderId: string, order: OrderDocShape): Promise<void> {
+  const uids = await collectStaffUidsByRoles(["kitchen", "kitchen_staff"]);
+  const tokens = await collectFcmTokensForUids(uids);
+  const tableHint =
+    order.tableNumber != null && Number.isFinite(Number(order.tableNumber))
+      ? `Table ${order.tableNumber}`
+      : "Dine-in";
+  const amount = Number(order.totalAmount ?? order.total ?? 0);
+  await sendStaffMulticast(
+    tokens,
+    {
+      title: "New kitchen order",
+      body: `${tableHint} · #${orderId.slice(0, 8)} · Rs. ${Math.round(amount)}`
+    },
+    {
+      type: "new_kitchen_order",
+      orderId,
+      orderType: String(order.orderType ?? "")
+    }
+  );
+}
+
+/** Web / API-created orders (delivery, pickup, dine_in, …) — notify kitchen staff. */
+async function sendFcmToKitchenOnGenericNewOrder(orderId: string, order: OrderDocShape): Promise<void> {
+  const uids = await collectStaffUidsByRoles(["kitchen", "kitchen_staff"]);
+  const tokens = await collectFcmTokensForUids(uids);
+  const ot = String(order.orderType ?? "order").trim().toLowerCase() || "order";
+  const amount = Math.round(Number(order.totalAmount ?? order.total ?? 0));
+  await sendStaffMulticast(
+    tokens,
+    {
+      title: "New order — kitchen",
+      body: `${ot} · #${orderId.slice(0, 8)} · Rs. ${amount}`
+    },
+    {
+      type: "new_kitchen_order",
+      orderId,
+      orderType: String(order.orderType ?? "")
+    }
+  );
+}
+
+async function sendFcmToWaitersTableOrderReady(orderId: string, order: OrderDocShape): Promise<void> {
+  const uids = await collectStaffUidsByRoles(["waiter"]);
+  const tokens = await collectFcmTokensForUids(uids);
+  const tn = order.tableNumber != null ? String(order.tableNumber) : "—";
+  await sendStaffMulticast(
+    tokens,
+    {
+      title: "Order ready",
+      body: `Table ${tn} — order #${orderId.slice(0, 8)} is ready to serve.`
+    },
+    {
+      type: "order_ready_waiter",
+      orderId,
+      orderType: String(order.orderType ?? "")
+    }
+  );
+}
+
+async function sendFcmToCashiersBillRequested(orderId: string, order: OrderDocShape): Promise<void> {
+  const uids = await collectStaffUidsByRoles(["cashier"]);
+  const tokens = await collectFcmTokensForUids(uids);
+  const tn = order.tableNumber != null ? String(order.tableNumber) : "—";
+  const amount = Math.round(Number(order.totalAmount ?? order.total ?? 0));
+  await sendStaffMulticast(
+    tokens,
+    {
+      title: "Bill requested",
+      body: `Table ${tn} · #${orderId.slice(0, 8)} · Rs. ${amount} — open cashier to collect payment.`
+    },
+    {
+      type: "table_bill_requested",
+      orderId,
+      orderType: String(order.orderType ?? "")
+    }
+  );
 }
 
 export const onOrderCreatedRealtimeAlerts = onDocumentCreated("orders/{orderId}", async (event) => {
@@ -155,10 +282,17 @@ export const onOrderCreatedRealtimeAlerts = onDocumentCreated("orders/{orderId}"
   });
 
   await updateHighOrderVolumeAlert();
-  await sendFcmToAdminsOnNewOrder(orderId, Number(order.total ?? 0));
+  await sendFcmToAdminsOnNewOrder(orderId, Number(order.totalAmount ?? order.total ?? 0));
+
+  const waiterPlaced = isWaiterFloorOrder(order);
+  if (waiterPlaced) {
+    await sendFcmToKitchenOnWaiterPlacedOrder(orderId, order);
+  } else {
+    await sendFcmToKitchenOnGenericNewOrder(orderId, order);
+  }
 
   const uid = order.userId;
-  if (typeof uid === "string" && uid.length > 0) {
+  if (typeof uid === "string" && uid.length > 0 && !waiterPlaced) {
     const push = getPushForStatus(status);
     await sendFcmToUser(
       uid,
@@ -173,14 +307,36 @@ export const onOrderCreatedRealtimeAlerts = onDocumentCreated("orders/{orderId}"
 });
 
 export const onOrderStatusChanged = onDocumentUpdated("orders/{orderId}", async (event) => {
-  const before = event.data?.before.data() as { status?: string; userId?: string } | undefined;
+  const before = event.data?.before.data() as OrderDocShape | undefined;
   const after = event.data?.after.data() as OrderDocShape | undefined;
-  if (!after || before?.status === after.status || !after.userId) return;
+  if (!after) return;
   const orderId = event.params.orderId;
   const now = new Date().toISOString();
 
+  const beforePay = String(before?.paymentStatus ?? "").toUpperCase();
+  const afterPay = String(after.paymentStatus ?? "").toUpperCase();
+  if (isWaiterFloorOrder(after) && afterPay === "REQUESTED" && beforePay !== "REQUESTED") {
+    await sendFcmToCashiersBillRequested(orderId, after);
+  }
+
+  const statusBefore = String(before?.status ?? "");
+  const statusAfter = String(after.status ?? "");
+  const statusChanged = statusBefore !== statusAfter;
+  if (statusChanged && isWaiterFloorOrder(after) && statusAfter.toLowerCase() === "ready") {
+    await sendFcmToWaitersTableOrderReady(orderId, after);
+  }
+
+  if (!statusChanged || !after.userId) return;
+
   const statusKey = after.status ?? "pending";
-  const push = getPushForStatus(statusKey);
+  let push = getPushForStatus(statusKey);
+  if (isWaiterFloorOrder(after) && String(statusKey).toLowerCase() === "ready") {
+    const tn = after.tableNumber != null ? String(after.tableNumber) : "—";
+    push = {
+      title: "Order ready",
+      body: `Table ${tn} — ready to serve.`
+    };
+  }
 
   const notificationRef = db.collection("notifications").doc();
   await notificationRef.set({
@@ -203,12 +359,18 @@ export const onOrderStatusChanged = onDocumentUpdated("orders/{orderId}", async 
     createdAt: FieldValue.serverTimestamp()
   });
 
+  const floorReady = isWaiterFloorOrder(after) && String(statusKey).toLowerCase() === "ready";
+  if (floorReady) {
+    return;
+  }
+
+  const fcmType = "order_status";
   await sendFcmToUser(
     after.userId,
     { title: push.title, body: push.body },
     {
       orderId,
-      type: "order_status",
+      type: fcmType,
       status: String(after.status ?? "")
     }
   );

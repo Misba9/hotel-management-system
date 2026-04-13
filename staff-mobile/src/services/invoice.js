@@ -2,8 +2,6 @@
  * Receipt HTML → PDF (expo-print), system print, and plain-text share.
  */
 import { Platform, Share } from "react-native";
-import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 
 const HOTEL_NAME = process.env.EXPO_PUBLIC_HOTEL_NAME || "Fruit Hotel";
 
@@ -109,6 +107,10 @@ function escapeHtml(s) {
  * @returns {Promise<string>} local PDF file URI
  */
 export async function generateInvoicePdf(order) {
+  if (Platform.OS === "web") {
+    throw new Error("PDF receipts are available in the iOS / Android app.");
+  }
+  const Print = await import("expo-print");
   const html = buildInvoiceHtml(order);
   const { uri } = await Print.printToFileAsync({ html });
   return uri;
@@ -124,6 +126,10 @@ export async function generateInvoice(order) {
  * @param {Parameters<typeof buildInvoiceHtml>[0]} order
  */
 export async function printInvoice(order) {
+  if (Platform.OS === "web") {
+    throw new Error("Printing is available in the iOS / Android app.");
+  }
+  const Print = await import("expo-print");
   const html = buildInvoiceHtml(order);
   await Print.printAsync({ html });
 }
@@ -132,6 +138,10 @@ export async function printInvoice(order) {
  * @param {string} pdfUri from {@link generateInvoicePdf}
  */
 export async function shareInvoicePdf(pdfUri) {
+  if (Platform.OS === "web") {
+    throw new Error("PDF sharing is available in the iOS / Android app.");
+  }
+  const Sharing = await import("expo-sharing");
   const can = await Sharing.isAvailableAsync();
   if (!can) throw new Error("Sharing is not available on this device.");
   await Sharing.shareAsync(pdfUri, {

@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { Minus, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/components/cart/cart-provider";
 import { useToast } from "@/components/providers/toast-provider";
+import { SafeFillImage } from "@/components/shared/safe-fill-image";
 
 const PLACEHOLDER_IMAGE =
   "https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=800";
@@ -139,13 +139,7 @@ export function CartDrawer() {
                       className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-md transition-all duration-200 dark:border-slate-700 dark:bg-slate-900 hover:shadow-lg"
                     >
                       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-100 dark:bg-slate-800">
-                        <Image
-                          src={imageSrc}
-                          alt={item.name}
-                          fill
-                          sizes="80px"
-                          className="object-cover"
-                        />
+                        <SafeFillImage src={imageSrc} alt={item.name} sizes="80px" className="object-cover" />
                       </div>
                       <div className="flex min-w-0 flex-1 flex-col justify-between">
                         <div className="flex items-start justify-between gap-2">

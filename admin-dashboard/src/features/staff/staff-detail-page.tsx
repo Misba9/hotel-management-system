@@ -16,6 +16,7 @@ const ROLE_BADGE: Record<StaffDirectoryRoleId, string> = {
   cashier: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
   kitchen: "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200",
   delivery: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
+  waiter: "bg-fuchsia-100 text-fuchsia-900 ring-1 ring-fuchsia-200",
   staff: "bg-amber-50 text-amber-900 ring-1 ring-amber-300"
 };
 

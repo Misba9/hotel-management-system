@@ -70,6 +70,7 @@ const ROLE_BADGE: Record<StaffDirectoryRoleId, string> = {
   cashier: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
   kitchen: "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200",
   delivery: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
+  waiter: "bg-fuchsia-100 text-fuchsia-900 ring-1 ring-fuchsia-200",
   staff: "bg-amber-50 text-amber-900 ring-1 ring-amber-300"
 };
 
@@ -398,6 +399,9 @@ export function StaffPageFeature() {
           </div>
           <p className="mt-1 max-w-xl text-sm text-slate-600">
             Approve self-signups, assign roles, activate or disable accounts. Changes sync in real time from Firestore.
+            Assign <span className="font-semibold text-slate-800">waiter</span> and click <span className="font-semibold text-slate-800">Approve</span> (or use{" "}
+            <span className="font-semibold text-slate-800">Add staff</span> with role waiter) — the staff mobile app opens the{" "}
+            <span className="font-semibold text-slate-800">Waiter Dashboard</span> after sign-in.
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
             {(Object.keys(STAFF_DIRECTORY_ROLE_DESCRIPTIONS) as StaffDirectoryRoleId[]).map((rid) => (

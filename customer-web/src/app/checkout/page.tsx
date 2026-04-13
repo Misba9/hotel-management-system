@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Banknote, CreditCard, Loader2, MapPin, Tag } from "lucide-react";
@@ -183,7 +183,14 @@ export default function CheckoutPage() {
       title: "Order placed successfully",
       description: `Order #${data.orderId}`
     });
-    router.replace("/order-success");
+
+    await new Promise<void>((resolve) => {
+      queueMicrotask(() => resolve());
+    });
+
+    startTransition(() => {
+      router.replace("/order-success");
+    });
   }
 
   async function placeOrder() {

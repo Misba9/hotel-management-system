@@ -71,8 +71,10 @@ if (getApps().length > 0) {
   app = initializeApp(firebaseConfig);
 }
 
-// eslint-disable-next-line no-console
-console.log("[Firebase] projectId:", app.options.projectId);
+if (typeof __DEV__ !== "undefined" && __DEV__) {
+  // eslint-disable-next-line no-console
+  console.log("[Firebase] projectId:", app.options.projectId);
+}
 
 export const firebaseApp = app;
 export const firestoreDb: Firestore = getFirestore(app);

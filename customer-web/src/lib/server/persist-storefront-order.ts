@@ -5,6 +5,7 @@ import { setOrderFeed } from "@shared/utils/order-feed-firestore";
 import type { PricedOrderItem } from "@shared/utils/server-order-pricing";
 import { resolveServerPricing } from "@shared/utils/server-order-pricing";
 import { generateSignedTrackingToken } from "@shared/utils/tracking-token";
+import { DEFAULT_ORDER_ASSIGNED_TO } from "@shared/utils/order-assignment-defaults";
 import { buildInvoiceDoc } from "@shared/utils/invoice-payload";
 
 export type StorefrontOrderBody = {
@@ -107,7 +108,7 @@ export async function persistStorefrontOrder(args: {
     })),
     totalAmount,
     invoiceId: orderRef.id,
-    assignedTo: { kitchenId: "", deliveryId: "" },
+    assignedTo: { ...DEFAULT_ORDER_ASSIGNED_TO },
     address: args.body.address.trim(),
     status: "pending",
     createdAt: now,

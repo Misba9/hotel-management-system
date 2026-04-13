@@ -7,13 +7,10 @@ import { ChevronRight, Loader2, MapPin, Package } from "lucide-react";
 import { withRetry } from "@shared/utils/retry";
 import { db } from "@/lib/firebase";
 import type { CustomerOrderListItem } from "@/lib/order-service";
-import {
-  USER_ORDERS_LIVE_LIMIT,
-  fetchUserOrdersPage,
-  subscribeToUserOrders
-} from "@/lib/order-service";
+import { USER_ORDERS_LIVE_LIMIT, fetchUserOrdersPage } from "@/lib/order-service";
 import { RequireAuth } from "@/components/auth/require-auth";
 import { useAuth } from "@/context/auth-context";
+import { useCustomerOrders } from "@/hooks/use-customer-orders";
 import { CANCELLABLE_ORDER_STATUSES, getOrderStatusPresentation } from "@/lib/order-status-ui";
 import { buildUserHeaders } from "@/lib/user-session";
 
@@ -34,66 +31,47 @@ function mergeOrderLists(live: OrderHistory[], older: OrderHistory[]): OrderHist
 
 function OrdersAuthenticatedContent() {
   const { user } = useAuth();
-  const [recentOrders, setRecentOrders] = useState<OrderHistory[]>([]);
-  const [olderOrders, setOlderOrders] = useState<OrderHistory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMoreOlder, setHasMoreOlder] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [cancellingId, setCancellingId] = useState<string>("");
-  const [showLiveIndicator, setShowLiveIndicator] = useState(false);
-
   const liveLastDocRef = useRef<QueryDocumentSnapshot | null>(null);
   const olderCursorRef = useRef<QueryDocumentSnapshot | null>(null);
 
+  const {
+    orders: recentOrders,
+    loading,
+    error: subscriptionError
+  } = useCustomerOrders({
+    onMeta: (lastSnap) => {
+      liveLastDocRef.current = lastSnap;
+    }
+  });
+
+  const [olderOrders, setOlderOrders] = useState<OrderHistory[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string>("");
+
   const displayOrders = useMemo(() => mergeOrderLists(recentOrders, olderOrders), [recentOrders, olderOrders]);
+
+  const error = subscriptionError ?? pageError;
 
   useEffect(() => {
     if (!user) return;
-    setShowLiveIndicator(true);
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
     setOlderOrders([]);
     olderCursorRef.current = null;
-    liveLastDocRef.current = null;
-
-    const unsub = subscribeToUserOrders(db, user.uid, {
-      maxDocs: USER_ORDERS_LIVE_LIMIT,
-      onData: (items) => {
-        if (!cancelled) {
-          setRecentOrders(items);
-          setLoading(false);
-          setError(null);
-          setHasMoreOlder(items.length === USER_ORDERS_LIVE_LIMIT);
-        }
-      },
-      onMeta: (lastSnap) => {
-        if (!cancelled) {
-          liveLastDocRef.current = lastSnap;
-        }
-      },
-      onError: (msg) => {
-        if (!cancelled) {
-          setError(msg);
-          setLoading(false);
-        }
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      unsub();
-    };
   }, [user]);
+
+  useEffect(() => {
+    if (olderOrders.length > 0) return;
+    setHasMoreOlder(recentOrders.length === USER_ORDERS_LIVE_LIMIT);
+  }, [recentOrders.length, olderOrders.length]);
 
   const loadMore = useCallback(async () => {
     if (!user || loadingMore) return;
     const cursor = olderCursorRef.current ?? liveLastDocRef.current;
     if (!cursor) return;
     setLoadingMore(true);
-    setError(null);
+    setPageError(null);
     try {
       const { items, lastDoc, hasMore } = await withRetry(
         () => fetchUserOrdersPage(db, user.uid, USER_ORDERS_LIVE_LIMIT, cursor),
@@ -103,7 +81,7 @@ function OrdersAuthenticatedContent() {
       if (lastDoc) olderCursorRef.current = lastDoc;
       setHasMoreOlder(hasMore);
     } catch {
-      setError("Could not load older orders. Try again.");
+      setPageError("Could not load older orders. Try again.");
     } finally {
       setLoadingMore(false);
     }
@@ -122,7 +100,6 @@ function OrdersAuthenticatedContent() {
       if (!res.ok || !payload.success) {
         throw new Error(payload.error ?? "Failed to cancel order.");
       }
-      setRecentOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status: "cancelled" } : order)));
       setOlderOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status: "cancelled" } : order)));
       setActionMessage("Order cancelled successfully.");
     } catch (cancelError) {
@@ -141,7 +118,7 @@ function OrdersAuthenticatedContent() {
             Live updates for your recent orders. Older history loads in pages.
           </p>
         </div>
-        {showLiveIndicator ? (
+        {user ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -255,14 +232,20 @@ function OrdersAuthenticatedContent() {
 
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Link
+                    href={`/orders/${encodeURIComponent(order.id)}`}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                  >
+                    Live progress
+                  </Link>
+                  <Link
                     href={
                       order.trackingId
                         ? `/tracking?trackingId=${encodeURIComponent(order.trackingId)}${order.trackingToken ? `&t=${encodeURIComponent(order.trackingToken)}` : ""}`
                         : `/tracking?trackingId=${encodeURIComponent(order.id)}`
                     }
-                    className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                    className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-800 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800"
                   >
-                    Track order
+                    Map & ETA
                   </Link>
                   <Link
                     href="/menu"
