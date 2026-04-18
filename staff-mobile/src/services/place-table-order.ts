@@ -55,9 +55,10 @@ export async function placeTableOrder(input: PlaceTableOrderInput): Promise<Plac
     totalAmount,
     status: "PLACED",
     paymentStatus: "PENDING",
-    createdAt: serverTimestamp()
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
   });
-  batch.update(tableRef, { status: "OCCUPIED" });
+  batch.update(tableRef, { status: "OCCUPIED", currentOrderId: orderId });
 
   try {
     await batch.commit();

@@ -21,11 +21,16 @@
       ],
       "@shared/hooks/*": [
         "../shared/hooks/*"
+      ],
+      "@shared/types/*": [
+        "../shared/types/*"
       ]
     }
   },
   "include": [
     "App.tsx",
+    "app/**/*.ts",
+    "app/**/*.tsx",
     "src/**/*.ts",
     "src/**/*.tsx",
     "src/**/*.js"

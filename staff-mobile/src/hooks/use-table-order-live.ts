@@ -11,6 +11,8 @@ export type TableOrderLive = {
   displayStatus: string;
   paymentStatus: string;
   orderType: string;
+  /** Firestore `tables/{id}` when present (table service tickets). */
+  tableId: string;
   tableNumber: number;
   items: TableActiveOrderLine[];
   totalAmount: number;
@@ -77,6 +79,7 @@ export function useTableOrderLive(orderId: string | null | undefined, enabled: b
           displayStatus: toTableOrderDisplayStatus(data.status),
           paymentStatus: String(data.paymentStatus ?? "").trim(),
           orderType: String(data.orderType ?? "").trim(),
+          tableId: typeof data.tableId === "string" ? data.tableId : "",
           tableNumber: Number(data.tableNumber ?? 0),
           items: parseItems(data.items),
           totalAmount: Number(data.totalAmount ?? data.total ?? 0),

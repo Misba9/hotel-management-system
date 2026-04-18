@@ -2,9 +2,12 @@
   "expo": {
     "name": "Nausheen Staff",
     "slug": "nausheen-staff",
+    "scheme": "nausheen-staff",
     "version": "1.0.0",
     "orientation": "portrait",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "plugins": [
       [
         "expo-location",
@@ -19,7 +22,8 @@
           "androidMode": "default",
           "androidCollapsedTitle": "Staff"
         }
-      ]
+      ],
+      "expo-router"
     ],
     "ios": {
       "supportsTablet": true,
@@ -30,7 +34,10 @@
     },
     "android": {
       "package": "com.hotel.staffapp",
-      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     }
   }
 }

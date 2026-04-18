@@ -10,6 +10,8 @@ export type FloorTable = {
   id: string;
   number: number;
   status: TableStatus;
+  /** Set by POS / waiter flows when a table has an active ticket. */
+  currentOrderId?: string | null;
 };
 
 function parseStatus(data: Record<string, unknown>): TableStatus {
@@ -25,7 +27,7 @@ function parseStatus(data: Record<string, unknown>): TableStatus {
   return "free";
 }
 
-function parseTableDoc(id: string, data: DocumentData): FloorTable {
+export function parseFloorTableDoc(id: string, data: DocumentData): FloorTable {
   const r = data as Record<string, unknown>;
   let number =
     typeof r.tableNumber === "number" && Number.isFinite(r.tableNumber)
@@ -41,7 +43,13 @@ function parseTableDoc(id: string, data: DocumentData): FloorTable {
     const fromId = parseInt(id.replace(/\D/g, ""), 10);
     number = Number.isFinite(fromId) ? fromId : 0;
   }
-  return { id, number, status: parseStatus(r) };
+  const base: FloorTable = { id, number, status: parseStatus(r) };
+  if (typeof r.currentOrderId === "string") {
+    base.currentOrderId = r.currentOrderId;
+  } else if (r.currentOrderId === null) {
+    base.currentOrderId = null;
+  }
+  return base;
 }
 
 function sortTables(rows: FloorTable[]): FloorTable[] {
@@ -70,7 +78,7 @@ export function useTables(db: Firestore | null | undefined, options: UseTablesOp
   const { items, loading, error, refresh } = useFirestoreQuerySnapshot(
     db,
     buildQuery,
-    parseTableDoc,
+    parseFloorTableDoc,
     { enabled }
   );
 

@@ -3,7 +3,8 @@ import type { Timestamp } from "firebase/firestore";
 import { onSnapshot } from "firebase/firestore";
 import {
   getRecentOrdersFallbackQuery,
-  getRestaurantKitchenQueueQuery,
+  getRestaurantKitchenPlacedOrdersQuery,
+  getRestaurantKitchenPreparingOrdersQuery,
   RESTAURANT_KITCHEN_QUEUE_STATUS_IN
 } from "../services/orders.js";
 import { isFirestoreCompositeIndexError, logFirestoreQueryError } from "../lib/firestore-query-errors";
@@ -69,8 +70,8 @@ export type UseKitchenQueueResult = {
 };
 
 /**
- * Realtime kitchen queue: `orders` where `status` in `PLACED`, `PREPARING` (restaurant table flow).
- * Uses composite `status` + `createdAt` when available; falls back to recent window + client filter.
+ * Realtime kitchen queue: restaurant table tickets — **new** orders use `status == "PLACED"` (waiter “Send to Kitchen”);
+ * in-progress tickets use `status == "PREPARING"`. Merges two listeners; falls back to recent window + client filter if indexes are missing.
  */
 export function useKitchenQueue(enabled = true): UseKitchenQueueResult {
   const [orders, setOrders] = useState<KitchenQueueOrder[]>([]);
@@ -95,6 +96,23 @@ export function useKitchenQueue(enabled = true): UseKitchenQueueResult {
     setLoading(true);
     setError(null);
     let unsubFallback = () => {};
+    let unsubPlaced: () => void = () => {};
+    let unsubPreparing: () => void = () => {};
+    let fallbackStarted = false;
+
+    const placedById = new Map<string, KitchenQueueOrder>();
+    const preparingById = new Map<string, KitchenQueueOrder>();
+
+    const mergeAndSet = () => {
+      const merged = new Map<string, KitchenQueueOrder>([...placedById, ...preparingById]);
+      const list = [...merged.values()].sort(
+        (a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
+      );
+      setOrders(list);
+      setLoading(false);
+      setRefreshing(false);
+      setError(null);
+    };
 
     const applyDocs = (docs: Array<{ id: string; data: () => Record<string, unknown> }>) => {
       const list: KitchenQueueOrder[] = [];
@@ -111,39 +129,68 @@ export function useKitchenQueue(enabled = true): UseKitchenQueueResult {
       setError(null);
     };
 
-    const unsubPrimary = onSnapshot(
-      getRestaurantKitchenQueueQuery(),
-      (snap) => {
-        applyDocs(snap.docs);
-      },
-      (err) => {
-        if (!isFirestoreCompositeIndexError(err)) {
-          logFirestoreQueryError("kitchen-queue-primary", err);
+    const startFallback = () => {
+      if (fallbackStarted) return;
+      fallbackStarted = true;
+      unsubPlaced();
+      unsubPreparing();
+      unsubFallback = onSnapshot(
+        getRecentOrdersFallbackQuery(),
+        (snap) => {
+          applyDocs(snap.docs);
+        },
+        (err2) => {
+          logFirestoreQueryError("kitchen-queue-fallback-snapshot", err2);
           setOrders([]);
           setLoading(false);
           setRefreshing(false);
-          setError(err instanceof Error ? err.message : "Could not load kitchen queue.");
-          return;
+          setError(err2 instanceof Error ? err2.message : "Could not load kitchen queue.");
         }
-        logFirestoreQueryError("kitchen-queue-fallback", err);
-        unsubFallback = onSnapshot(
-          getRecentOrdersFallbackQuery(),
-          (snap) => {
-            applyDocs(snap.docs);
-          },
-          (err2) => {
-            logFirestoreQueryError("kitchen-queue-fallback-snapshot", err2);
-            setOrders([]);
-            setLoading(false);
-            setRefreshing(false);
-            setError(err2 instanceof Error ? err2.message : "Could not load kitchen queue.");
-          }
-        );
+      );
+    };
+
+    const onPrimaryError = (err: unknown) => {
+      if (!isFirestoreCompositeIndexError(err)) {
+        logFirestoreQueryError("kitchen-queue-primary", err);
+        unsubPlaced();
+        unsubPreparing();
+        setOrders([]);
+        setLoading(false);
+        setRefreshing(false);
+        setError(err instanceof Error ? err.message : "Could not load kitchen queue.");
+        return;
       }
+      logFirestoreQueryError("kitchen-queue-fallback", err);
+      startFallback();
+    };
+
+    unsubPlaced = onSnapshot(
+      getRestaurantKitchenPlacedOrdersQuery(),
+      (snap) => {
+        placedById.clear();
+        for (const d of snap.docs) {
+          placedById.set(d.id, mapDoc(d.id, (d.data() || {}) as Record<string, unknown>));
+        }
+        mergeAndSet();
+      },
+      onPrimaryError
+    );
+
+    unsubPreparing = onSnapshot(
+      getRestaurantKitchenPreparingOrdersQuery(),
+      (snap) => {
+        preparingById.clear();
+        for (const d of snap.docs) {
+          preparingById.set(d.id, mapDoc(d.id, (d.data() || {}) as Record<string, unknown>));
+        }
+        mergeAndSet();
+      },
+      onPrimaryError
     );
 
     return () => {
-      unsubPrimary();
+      unsubPlaced();
+      unsubPreparing();
       unsubFallback();
     };
   }, [enabled, listenKey]);

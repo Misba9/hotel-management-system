@@ -81,6 +81,16 @@ export const seedInitialData = onCall(async (request) => {
     });
   });
 
+  /** Floor `tables` — creates the collection with sample FREE rows (ids `table_1` … `table_8`). */
+  for (let n = 1; n <= 8; n++) {
+    const id = `table_${n}`;
+    batch.set(db.collection("tables").doc(id), {
+      id,
+      tableNumber: n,
+      status: "FREE"
+    });
+  }
+
   await batch.commit();
   return { ok: true };
 });

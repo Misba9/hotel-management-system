@@ -8,7 +8,7 @@ import ManagerScreen from "../screens/ManagerScreen";
 import CashierScreen from "../screens/CashierScreen";
 import KitchenScreen from "../screens/KitchenScreen";
 import DeliveryScreen from "../screens/DeliveryScreen";
-import { WaiterStackNavigator } from "./waiter-stack-navigator";
+import { WaiterExpoRouterEntry } from "./waiter-expo-router-entry";
 import { StaffLoadingView } from "../components/staff-dashboard/staff-loading-view";
 import { PendingApprovalScreen } from "../screens/pending-approval-screen";
 import { InactiveAccountScreen } from "../screens/inactive-account-screen";
@@ -24,7 +24,7 @@ const STAFF_ROOT_COMPONENTS = {
   CashierRoot: CashierScreen,
   KitchenRoot: KitchenScreen,
   DeliveryRoot: DeliveryScreen,
-  WaiterDashboard: WaiterStackNavigator
+  WaiterDashboard: WaiterExpoRouterEntry
 };
 
 /**

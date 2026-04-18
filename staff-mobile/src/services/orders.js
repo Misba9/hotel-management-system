@@ -3,8 +3,9 @@
  * Real-time via onSnapshot; `id` field mirrors the document id.
  *
  * Indexing (deploy `backend/firestore.indexes.json`):
- * - Kitchen + delivery live lists: composite on `status` (Ascending) + `createdAt` (Descending) for
- *   `where("status","in",[...])` + `orderBy("createdAt","desc")`.
+ * - Restaurant kitchen queue: composite on `status` (Ascending) + `createdAt` (Descending) for
+ *   `where("status","==","PLACED"|"PREPARING")` + `orderBy("createdAt","desc")`.
+ * - Other kitchen lists: `where("status","in",[...])` + `orderBy("createdAt","desc")`.
  * - Manager / metrics: `orderBy("createdAt","desc")` only (single-field index is automatic).
  * - Cashier menu: full `menu_items` collection listen (no composite required).
  * - Optional scale-up: add `branchId` equality + same composite for multi-branch filters.
@@ -33,7 +34,7 @@ export const INVOICES_COLLECTION = "invoices";
 /** Kitchen realtime — active line only (no `ready`; that moves to delivery). */
 export const KITCHEN_ORDER_STATUS_IN = ["pending", "accepted", "preparing", "created", "confirmed"];
 
-/** Restaurant table tickets on the kitchen KDS (`where status in` + `orderBy createdAt` — same composite as {@link getKitchenOrdersQuery}). */
+/** Restaurant table tickets shown on the kitchen KDS (merged: new tickets `PLACED`, in-progress `PREPARING`). */
 export const RESTAURANT_KITCHEN_QUEUE_STATUS_IN = ["PLACED", "PREPARING"];
 
 /** Delivery realtime — handoff + active runs (not `delivered`; saves reads). */
@@ -57,6 +58,34 @@ export function getKitchenOrdersQuery() {
 }
 
 /**
+ * New table tickets (waiter “Send to Kitchen” creates `status: "PLACED"`).
+ * Composite: `status` ASC + `createdAt` DESC (see `backend/firestore.indexes.json`).
+ * @returns {import('firebase/firestore').Query}
+ */
+export function getRestaurantKitchenPlacedOrdersQuery() {
+  return query(
+    collection(db, ORDERS_COLLECTION),
+    where("status", "==", "PLACED"),
+    orderBy("createdAt", "desc"),
+    limit(150)
+  );
+}
+
+/**
+ * Tickets the kitchen has accepted but not marked ready yet.
+ * @returns {import('firebase/firestore').Query}
+ */
+export function getRestaurantKitchenPreparingOrdersQuery() {
+  return query(
+    collection(db, ORDERS_COLLECTION),
+    where("status", "==", "PREPARING"),
+    orderBy("createdAt", "desc"),
+    limit(150)
+  );
+}
+
+/**
+ * @deprecated Prefer {@link getRestaurantKitchenPlacedOrdersQuery} + {@link getRestaurantKitchenPreparingOrdersQuery} merged in the client.
  * @returns {import('firebase/firestore').Query}
  */
 export function getRestaurantKitchenQueueQuery() {

@@ -63,8 +63,8 @@ export type UseTableActiveOrdersResult = {
 };
 
 /**
- * Realtime: `orders` where `tableNumber` matches, excluding `status == "COMPLETED"` (case-insensitive).
- * Uses Firestore `onSnapshot` + client filter so we do not need a composite index for status inequality.
+ * Realtime: `orders` collection query (`tableNumber` equality) via `onSnapshot`, excluding `COMPLETED`.
+ * Client filter avoids a composite index for status inequality; enable while the table row exists so FREE→OCCUPIED updates apply immediately.
  */
 export function useTableActiveOrders(tableNumber: number, enabled: boolean): UseTableActiveOrdersResult {
   const [orders, setOrders] = useState<TableActiveOrder[]>([]);

@@ -8,7 +8,7 @@ import {
 import { staffDb } from "../lib/firebase";
 
 export type { FloorTable, TableStatus, UseTablesResult };
-export { TABLES_COLLECTION };
+export { TABLES_COLLECTION, parseFloorTableDoc } from "@shared/hooks/useTables";
 
 /**
  * Real-time listener for `tables` — delegates to shared {@link useTablesShared} with staff Firestore.

@@ -640,8 +640,13 @@ service cloud.firestore {
       allow create, delete: if staffUserActive() && hasAnyRole(["manager", "admin"]);
       allow update: if (staffUserActive() && hasAnyRole(["manager", "admin"])) ||
         (staffUserActive() && hasRole("waiter") &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(["status"]) &&
-          request.resource.data.status in ["OCCUPIED", "FREE"]) ||
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "currentOrderId"]) &&
+          request.resource.data.status in ["OCCUPIED", "FREE"] &&
+          (
+            !request.resource.data.keys().hasAny(["currentOrderId"]) ||
+            request.resource.data.currentOrderId == null ||
+            request.resource.data.currentOrderId is string
+          )) ||
         (staffUserActive() && hasRole("cashier") &&
           request.resource.data.diff(resource.data).changedKeys().hasOnly(["status"]) &&
           request.resource.data.status == "FREE");
