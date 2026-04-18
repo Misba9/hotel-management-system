@@ -1,9 +1,12 @@
 import React from "react";
+import { NavigationContainer } from "@react-navigation/native";
 import { AppNavigator } from "../src/navigation/AppNavigator";
 
-/**
- * Legacy role roots (admin, manager, kitchen, …) stay on React Navigation until migrated to Expo Router.
- */
+/** Role roots use React Navigation until fully on Expo Router. With `expo-router/entry`, wrap the stack here (App.tsx is unused). */
 export default function IndexRoute() {
-  return <AppNavigator />;
+  return (
+    <NavigationContainer>
+      <AppNavigator />
+    </NavigationContainer>
+  );
 }

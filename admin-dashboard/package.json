@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@next/env": "14.2.35",
+    "@swc/helpers": "0.5.5",
     "firebase": "^12.12.0",
     "firebase-admin": "^13.8.0",
     "lucide-react": "^0.453.0",
