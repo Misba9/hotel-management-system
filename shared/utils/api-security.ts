@@ -1,4 +1,5 @@
 import { adminAuth } from "../../backend/firebase/admin";
+import { getClientIpFromRequest } from "./client-ip";
 import { logServerInfo } from "./monitoring";
 import type { DecodedIdToken } from "firebase-admin/auth";
 
@@ -181,9 +182,5 @@ function applyRateLimit(
 }
 
 function extractClientIp(request: Request) {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
-  return request.headers.get("x-real-ip") ?? "unknown";
+  return getClientIpFromRequest(request);
 }

@@ -3,8 +3,11 @@ import { adminDb } from "@shared/firebase/admin";
 import { requireAdmin } from "@shared/utils/admin-api-auth";
 import {
   ACTIVE_ORDER_STATUSES,
+  aggregateTopProducts,
   bucketsToChartSeries,
+  ordersTodayFromDayMap,
   reduceOrdersForWindow,
+  revenueTodayFromDayMap,
   utcDayKeysDescending
 } from "@/lib/analytics-aggregator";
 import type { AdminAnalyticsPayload } from "@/lib/analytics-types";
@@ -17,6 +20,7 @@ const CACHE_HEADERS = { "Cache-Control": "no-store" } as const;
 const WINDOW_QUERY_LIMIT = 10_000;
 const CHART_DAYS = 14;
 const REVENUE_WINDOW_DAYS = 30;
+const TOP_PRODUCTS_LIMIT = 8;
 
 export type { AdminAnalyticsPayload };
 
@@ -33,7 +37,7 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response;
 
   const now = new Date();
-  const cacheKey = `${now.toISOString().slice(0, 13)}`;
+  const cacheKey = `${now.toISOString().slice(0, 13)}_v2`;
   if (analyticsCache && analyticsCache.key === cacheKey && analyticsCache.expiresAt > Date.now()) {
     return Response.json(analyticsCache.payload, { status: 200, headers: CACHE_HEADERS });
   }
@@ -62,9 +66,13 @@ export async function GET(request: Request) {
     const activeOrders = activeAgg.data().count;
     const deliveredOrders = deliveredAgg.data().count;
 
-    const reduced = reduceOrdersForWindow(windowSnap.docs, revenueStart.getTime(), chartDaySet);
+    const windowStartMs = revenueStart.getTime();
+    const reduced = reduceOrdersForWindow(windowSnap.docs, windowStartMs, chartDaySet);
     const revenueLast30Days = Math.round(reduced.revenueInWindow * 100) / 100;
     const { ordersPerDay, revenuePerDay } = bucketsToChartSeries(chartDayKeysOrdered, reduced.byDay);
+    const ordersToday = ordersTodayFromDayMap(reduced.byDay);
+    const revenueToday = revenueTodayFromDayMap(reduced.byDay);
+    const topProducts = aggregateTopProducts(windowSnap.docs, windowStartMs, TOP_PRODUCTS_LIMIT);
 
     const windowTruncated = windowSnap.size >= WINDOW_QUERY_LIMIT;
 
@@ -73,6 +81,9 @@ export async function GET(request: Request) {
       activeOrders,
       deliveredOrders,
       revenueLast30Days,
+      ordersToday,
+      revenueToday,
+      topProducts,
       ordersPerDay,
       revenuePerDay,
       windowTruncated,

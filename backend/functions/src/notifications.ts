@@ -1,22 +1,25 @@
 /**
- * Staff FCM triggers (Firebase Cloud Messaging via Admin SDK):
+ * FCM (Firebase Cloud Messaging) — staff + customer order alerts (Admin SDK).
  *
  * Setup
- * - Firebase Console → Project settings → Cloud Messaging: enable; add Android app + iOS (APNs) as needed.
- * - Staff mobile: `registerStaffPushToken` writes device tokens to `users/{uid}.fcmToken` / `fcmTokens`.
- * - Auth custom claims `role` must match staff roles (see {@link collectStaffUidsByRoles}): `kitchen_staff`
- *   (kitchen), `waiter`, `cashier`, `admin`, `manager`, etc.
- * - Deploy functions with a billing-enabled GCP project; FCM uses the same Firebase project as Firestore.
+ * - Firebase Console → Cloud Messaging: enable Web Push (VAPID) for customer-web; mobile apps as needed.
+ * - Customer web: `users/{uid}.fcmToken` (+ `fcmTokens[]`) via `registerPushTokenForUser` (see customer-web `fcm.ts`).
+ * - Staff: same user doc fields from staff mobile.
+ *
+ * Customer push (order lifecycle)
+ * - **Updates only** for statuses: `preparing`, `out_for_delivery`, `delivered` (reduces noise vs every transition).
+ * - Callable {@link sendPushNotificationToUser} for admin/manager test sends.
  *
  * Triggers (this module)
- * - New `orders/*` create → kitchen: table/dine-in uses table-specific copy; other order types get a generic kitchen alert.
- * - Order `status` → READY (table / dine-in) → all users with role `waiter`.
- * - `paymentStatus` → REQUESTED (table / dine-in) → all users with role `cashier`.
+ * - New `orders/*` → kitchen + admins (no customer “order placed” push — only status updates below).
+ * - Order `status` → READY (table) → waiters; customer FCM for delivery pipeline statuses above.
+ * - `paymentStatus` → REQUESTED (table) → cashiers.
  */
 
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { getMessaging } from "firebase-admin/messaging";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 
 const db = getFirestore();
@@ -81,6 +84,33 @@ async function collectFcmTokensForUser(userId: string): Promise<string[]> {
     }
   }
   return [...tokens].slice(0, 500);
+}
+
+/** Statuses that trigger a customer push (order **update** — not “placed”). */
+const CUSTOMER_ORDER_PUSH_STATUSES = new Set(["preparing", "out_for_delivery", "delivered"]);
+
+function shouldSendCustomerOrderPush(status: string): boolean {
+  const key = String(status).toLowerCase().trim().replace(/\s+/g, "_");
+  return CUSTOMER_ORDER_PUSH_STATUSES.has(key);
+}
+
+function isFcmEligibleCustomerUid(uid: string | undefined): boolean {
+  if (!uid || typeof uid !== "string") return false;
+  if (uid === "guest_user") return false;
+  return true;
+}
+
+/**
+ * Sends FCM to all tokens on `users/{userId}` (`fcmToken` + `fcmTokens`).
+ * Use for customer order updates and admin test sends.
+ */
+export async function sendNotification(
+  userId: string,
+  title: string,
+  body: string,
+  data: Record<string, string> = {}
+): Promise<void> {
+  await sendFcmToUser(userId, { title, body }, data);
 }
 
 async function sendFcmToUser(
@@ -291,19 +321,6 @@ export const onOrderCreatedRealtimeAlerts = onDocumentCreated("orders/{orderId}"
     await sendFcmToKitchenOnGenericNewOrder(orderId, order);
   }
 
-  const uid = order.userId;
-  if (typeof uid === "string" && uid.length > 0 && !waiterPlaced) {
-    const push = getPushForStatus(status);
-    await sendFcmToUser(
-      uid,
-      { title: push.title, body: push.body },
-      {
-        orderId,
-        type: "order_placed",
-        status: String(status)
-      }
-    );
-  }
 });
 
 export const onOrderStatusChanged = onDocumentUpdated("orders/{orderId}", async (event) => {
@@ -364,16 +381,45 @@ export const onOrderStatusChanged = onDocumentUpdated("orders/{orderId}", async 
     return;
   }
 
-  const fcmType = "order_status";
-  await sendFcmToUser(
-    after.userId,
-    { title: push.title, body: push.body },
-    {
-      orderId,
-      type: fcmType,
-      status: String(after.status ?? "")
-    }
-  );
+  if (shouldSendCustomerOrderPush(String(statusKey)) && isFcmEligibleCustomerUid(after.userId)) {
+    await sendFcmToUser(
+      after.userId,
+      { title: push.title, body: push.body },
+      {
+        orderId,
+        type: "order_status",
+        status: String(after.status ?? "")
+      }
+    );
+  }
+});
+
+/**
+ * Callable: send a one-off FCM to `users/{userId}` (manager/admin only).
+ * Wraps {@link sendNotification} for testing or manual alerts.
+ */
+export const sendPushNotificationToUser = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+  const role = String(request.auth.token?.role ?? "");
+  if (!["manager", "admin"].includes(role)) {
+    throw new HttpsError("permission-denied", "Manager or admin role required.");
+  }
+  const raw = request.data as { userId?: unknown; title?: unknown; body?: unknown; orderId?: unknown };
+  const userId = typeof raw.userId === "string" ? raw.userId.trim() : "";
+  const title = typeof raw.title === "string" ? raw.title.trim() : "";
+  const body = typeof raw.body === "string" ? raw.body.trim() : "";
+  if (!userId || !title || !body) {
+    throw new HttpsError("invalid-argument", "userId, title, and body are required.");
+  }
+  const orderId = typeof raw.orderId === "string" ? raw.orderId : "";
+  await sendNotification(userId, title, body, {
+    type: "admin_push",
+    orderId,
+    status: ""
+  });
+  return { ok: true as const };
 });
 
 async function updateHighOrderVolumeAlert() {

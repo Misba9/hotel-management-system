@@ -246,6 +246,7 @@ function mapOrderDoc(id, data) {
     id,
     items,
     totalAmount: total,
+    riderId: typeof data.riderId === "string" ? data.riderId : undefined,
     status: typeof data.status === "string" ? data.status : "pending",
     createdAt: data.createdAt && typeof data.createdAt.toDate === "function" ? data.createdAt : null,
     updatedAt: data.updatedAt && typeof data.updatedAt.toDate === "function" ? data.updatedAt : null,
@@ -687,11 +688,15 @@ export async function acceptKitchenOrder(orderId, kitchenUid) {
 }
 
 /**
+ * Rider claims a `ready` order and moves it to `out_for_delivery`.
+ * Writes `assignedTo.deliveryId` (existing) and top-level `riderId` (explicit handoff) for rules + analytics.
+ *
  * @param {string} orderId
  * @param {string} deliveryUid
  */
 export async function startDelivery(orderId, deliveryUid) {
   await updateOrderStatus(orderId, "out_for_delivery", {
-    "assignedTo.deliveryId": deliveryUid
+    "assignedTo.deliveryId": deliveryUid,
+    riderId: deliveryUid
   });
 }

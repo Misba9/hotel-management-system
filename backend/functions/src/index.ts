@@ -2,7 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { seedInitialData } from "./seed";
 import { placeOrder, updateDeliveryStatus, updateKitchenStatus } from "./orders";
 import { verifyRazorpayPayment, razorpayWebhook } from "./payments";
-import { onOrderCreatedRealtimeAlerts, onOrderStatusChanged } from "./notifications";
+import { onOrderCreatedRealtimeAlerts, onOrderStatusChanged, sendPushNotificationToUser } from "./notifications";
 import { getAdminAnalytics } from "./analytics";
 import { exportDailyOrdersCsv } from "./reports";
 import { getUpsellSuggestions, grantLoyaltyPointsOnDelivered } from "./growth";
@@ -42,6 +42,7 @@ export {
   razorpayWebhook,
   onOrderCreatedRealtimeAlerts,
   onOrderStatusChanged,
+  sendPushNotificationToUser,
   getAdminAnalytics,
   exportDailyOrdersCsv,
   getUpsellSuggestions,

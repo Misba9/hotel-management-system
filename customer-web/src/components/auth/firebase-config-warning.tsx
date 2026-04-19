@@ -16,7 +16,7 @@ export function FirebaseConfigWarning() {
       <strong>Firebase not configured.</strong> Add{" "}
       <code className="rounded bg-amber-200/80 px-1 dark:bg-amber-900/80">NEXT_PUBLIC_FIREBASE_*</code> to{" "}
       <code className="rounded bg-amber-200/80 px-1 dark:bg-amber-900/80">customer-web/.env.local</code> (see Firebase
-      Console → Project settings → Your apps). For Phone Auth, add{" "}
+      Console - Project settings - Your apps). For Phone Auth, add{" "}
       <code className="rounded bg-amber-200/80 px-1 dark:bg-amber-900/80">localhost</code> under Authentication →
       Authorized domains.
     </div>

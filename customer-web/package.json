@@ -12,14 +12,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@next/env": "14.2.35",
-    "@swc/helpers": "0.5.5",
     "@firebase/database": "^1.1.2",
     "@hookform/resolvers": "^3.9.0",
+    "@next/env": "14.2.35",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-select": "^2.1.1",
     "@radix-ui/react-tabs": "^1.1.13",
     "@react-google-maps/api": "^2.20.8",
+    "@swc/helpers": "0.5.5",
     "@tanstack/react-query": "^5.96.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
@@ -37,6 +37,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/google.maps": "^3.58.1",
     "@types/node": "^22.7.4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

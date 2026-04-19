@@ -1,11 +1,18 @@
-import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
+import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import {
+  getFirestore,
+  initializeFirestore,
+  type Firestore,
+  type FirestoreSettings
+} from "firebase/firestore";
 import { getMessaging, isSupported } from "firebase/messaging";
 
 /**
- * Customer web Firebase — single module, single `initializeApp` (guarded with `getApps()`).
- * Always use `collection(db, ...)` / `doc(db, ...)` with this `db`; never `getFirestore()` without `app`.
+ * Customer web Firebase — `initializeApp` once (`getApps()` guard).
+ * Browser: `initializeFirestore` + long polling + `useFetchStreams: false` (stable behind proxies/VPNs).
+ * Server / RSC: `getFirestore` only.
+ * Opt out: `NEXT_PUBLIC_FIRESTORE_LONG_POLLING=false`.
  */
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "",
@@ -25,17 +32,32 @@ export function isFirebaseClientConfigured(): boolean {
   );
 }
 
-function getOrCreateFirebaseApp(): FirebaseApp {
-  if (getApps().length > 0) {
-    return getApp();
+const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+
+function createFirestoreInstance(): Firestore {
+  if (typeof window === "undefined") {
+    return getFirestore(app);
   }
-  return initializeApp(firebaseConfig);
+
+  const useLongPolling = process.env.NEXT_PUBLIC_FIRESTORE_LONG_POLLING !== "false";
+  if (!useLongPolling) {
+    return getFirestore(app);
+  }
+
+  const settings: FirestoreSettings & { useFetchStreams?: boolean } = {
+    experimentalForceLongPolling: true,
+    useFetchStreams: false
+  };
+
+  try {
+    return initializeFirestore(app, settings as FirestoreSettings);
+  } catch {
+    return getFirestore(app);
+  }
 }
 
-const app: FirebaseApp = getOrCreateFirebaseApp();
-
 export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
+export const db: Firestore = createFirestoreInstance();
 
 export async function getClientMessaging() {
   try {

@@ -66,6 +66,7 @@ export function LoginForm({ defaultEmail = "", defaultPassword = "" }: Props) {
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [honeypotWebsite, setHoneypotWebsite] = useState("");
 
   useEffect(() => {
     if (initializing) return;
@@ -84,9 +85,13 @@ export function LoginForm({ defaultEmail = "", defaultPassword = "" }: Props) {
       return;
     }
     setFieldErrors({});
+    if (honeypotWebsite.trim()) {
+      setSubmitError("Invalid request.");
+      return;
+    }
     setSubmitting(true);
     try {
-      await login(email.trim(), password);
+      await login(email.trim(), password, honeypotWebsite);
     } catch (err) {
       setSubmitError(mapAuthError(err));
     } finally {
@@ -135,7 +140,19 @@ export function LoginForm({ defaultEmail = "", defaultPassword = "" }: Props) {
           </div>
 
           <div className="mt-8 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/50 sm:p-8">
-            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <form onSubmit={handleSubmit} className="relative space-y-5" noValidate>
+              <div className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden" aria-hidden>
+                <label htmlFor="login-website-hp">Leave blank</label>
+                <input
+                  id="login-website-hp"
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={honeypotWebsite}
+                  onChange={(ev) => setHoneypotWebsite(ev.target.value)}
+                />
+              </div>
               {submitError ? (
                 <div
                   role="alert"

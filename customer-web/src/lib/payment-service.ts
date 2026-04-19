@@ -1,6 +1,7 @@
 /**
  * Client-side Razorpay helpers: create payment order via API, load script, open checkout.
  */
+import type { SerializedDeliveryAddress } from "@/lib/delivery-address-types";
 import {
   loadRazorpayScript,
   openRazorpayCheckout,
@@ -17,7 +18,8 @@ export type CreatePaymentOrderBody = {
   couponCode?: string;
   orderType?: "delivery" | "pickup" | "dine_in";
   address: string;
-  /** Expected order total in INR (optional; server rejects if it does not match computed total). */
+  deliveryAddress?: SerializedDeliveryAddress;
+  /** Optional client total in INR — server recomputes from DB; used only to detect drift. */
   amount?: number;
 };
 
@@ -28,8 +30,20 @@ export type CreatePaymentOrderResult =
       amount: number;
       currency: string;
       keyId: string;
+      recalculatedTotal: number;
     }
-  | { ok: false; error: string; status?: number };
+  | {
+      ok: false;
+      priceUpdated: true;
+      correctTotal: number;
+      message: string;
+    }
+  | {
+      ok: false;
+      error: string;
+      status?: number;
+      code?: "RAZORPAY_NOT_CONFIGURED" | string;
+    };
 
 /**
  * POST /api/create-order — returns Razorpay order id and amount in paise (server-priced).
@@ -44,32 +58,85 @@ export async function createRazorpayPaymentOrder(
       headers,
       body: JSON.stringify(body)
     });
-    const json = (await res.json()) as {
+
+    let json: {
       success?: boolean;
       error?: string;
+      code?: string;
+      message?: string;
+      correctTotal?: number;
+      recalculatedTotal?: number;
       razorpayOrderId?: string;
+      orderId?: string;
       amount?: number;
       currency?: string;
       keyId?: string;
-    };
+    } = {};
+
+    try {
+      const text = await res.text();
+      if (text) {
+        json = JSON.parse(text) as typeof json;
+      }
+    } catch {
+      return {
+        ok: false,
+        error: "Invalid response from payment server.",
+        status: res.status
+      };
+    }
+
+    if (res.status === 200 && json.success === false && typeof json.correctTotal === "number") {
+      return {
+        ok: false,
+        priceUpdated: true,
+        correctTotal: json.correctTotal,
+        message: typeof json.message === "string" ? json.message : "Price updated"
+      };
+    }
+
     if (
       !res.ok ||
       !json.success ||
       typeof json.razorpayOrderId !== "string" ||
       typeof json.amount !== "number"
     ) {
-      return { ok: false, error: json.error ?? "Could not start online payment.", status: res.status };
+      const code =
+        json.code === "RAZORPAY_NOT_CONFIGURED" || res.status === 503 ? "RAZORPAY_NOT_CONFIGURED" : json.code;
+      return {
+        ok: false,
+        error: json.error ?? "Could not start online payment.",
+        status: res.status,
+        ...(code ? { code } : {})
+      };
     }
+
+    const recalculated =
+      typeof json.recalculatedTotal === "number" && Number.isFinite(json.recalculatedTotal)
+        ? json.recalculatedTotal
+        : json.amount! / 100;
+
     return {
       ok: true,
       razorpayOrderId: json.razorpayOrderId,
       amount: json.amount,
       currency: json.currency ?? "INR",
-      keyId: json.keyId ?? ""
+      keyId: json.keyId ?? "",
+      recalculatedTotal: recalculated
     };
   } catch {
     return { ok: false, error: "Network error while creating payment order." };
   }
+}
+
+export function shouldFallbackRazorpayToCod(result: CreatePaymentOrderResult): boolean {
+  if (result.ok) return false;
+  if ("priceUpdated" in result && result.priceUpdated) return false;
+  if (!("error" in result)) return false;
+  if (result.status === 503) return true;
+  if (result.code === "RAZORPAY_NOT_CONFIGURED") return true;
+  const msg = (result.error ?? "").toLowerCase();
+  return msg.includes("not configured") || msg.includes("razorpay is not configured");
 }
 
 export { loadRazorpayScript, openRazorpayCheckout, type OpenRazorpayCheckoutParams, type RazorpayHandlerResponse };

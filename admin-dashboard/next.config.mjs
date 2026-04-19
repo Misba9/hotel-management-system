@@ -40,12 +40,21 @@ const nextConfig = {
     ];
   },
   images: {
-    domains: ["images.unsplash.com", "plus.unsplash.com", "images.pexels.com"],
+    domains: [
+      "images.unsplash.com",
+      "plus.unsplash.com",
+      "images.pexels.com",
+      "lovefoodhatewaste.com",
+      "www.lovefoodhatewaste.com",
+      "firebasestorage.googleapis.com"
+    ],
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
       { protocol: "https", hostname: "plus.unsplash.com", pathname: "/**" },
       { protocol: "https", hostname: "images.pexels.com", pathname: "/**" },
-      { protocol: "https", hostname: "firebasestorage.googleapis.com", pathname: "/**" }
+      { protocol: "https", hostname: "firebasestorage.googleapis.com", pathname: "/**" },
+      { protocol: "https", hostname: "lovefoodhatewaste.com", pathname: "/**" },
+      { protocol: "https", hostname: "www.lovefoodhatewaste.com", pathname: "/**" }
     ]
   },
   experimental: {

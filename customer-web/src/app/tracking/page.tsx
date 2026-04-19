@@ -6,9 +6,34 @@ import { motion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { OrderStatusStepperHorizontal } from "@/components/tracking/order-status-stepper-horizontal";
 import { useOrderRealtime } from "@/hooks/use-order-realtime";
+import { computeDistanceKm } from "@/lib/delivery-eta";
 import { formatEstimatedDelivery } from "@/lib/order-tracking";
+import { getDefaultRestaurantLocation } from "@/lib/restaurant-location";
 import { auth } from "@/lib/firebase";
 import { buildUserHeaders } from "@/lib/user-session";
+
+function TrackingStatusHeadline({ status }: { status: string }) {
+  const s = status.toLowerCase().trim().replace(/\s+/g, "_");
+  if (s === "delivered" || s === "completed") {
+    return (
+      <p className="text-base font-semibold text-emerald-800 dark:text-emerald-200" role="status">
+        ✅ Delivered
+      </p>
+    );
+  }
+  if (s === "out_for_delivery" || s === "picked_up") {
+    return (
+      <p className="text-base font-semibold text-orange-800 dark:text-orange-200" role="status">
+        🚴 Out for delivery
+      </p>
+    );
+  }
+  return (
+    <p className="text-base font-semibold text-slate-900 dark:text-slate-50" role="status">
+      🍳 Preparing
+    </p>
+  );
+}
 
 const DeliveryMap = dynamic(
   () => import("@/components/tracking/delivery-map").then((m) => m.DeliveryMap),
@@ -37,6 +62,8 @@ type TrackingResponse = {
     riderName?: string;
     riderPhone?: string;
   } | null;
+  restaurantLocation?: { lat: number; lng: number };
+  deliveryCoords?: { lat: number; lng: number } | null;
 };
 
 export default function TrackingPage() {
@@ -56,6 +83,7 @@ export default function TrackingPage() {
   const [riderName, setRiderName] = useState<string>("");
   const [riderPhone, setRiderPhone] = useState<string>("");
   const [coordinatesRest, setCoordinatesRest] = useState<{ lat: number; lng: number } | null>(null);
+  const [deliveryCoordsRest, setDeliveryCoordsRest] = useState<{ lat: number; lng: number } | null>(null);
   const [orderId, setOrderId] = useState<string>("");
   const [cancelling, setCancelling] = useState(false);
 
@@ -135,6 +163,12 @@ export default function TrackingPage() {
       } else {
         setCoordinatesRest(null);
       }
+      const dc = data.deliveryCoords;
+      if (dc && typeof dc.lat === "number" && typeof dc.lng === "number") {
+        setDeliveryCoordsRest({ lat: dc.lat, lng: dc.lng });
+      } else {
+        setDeliveryCoordsRest(null);
+      }
       setUiState("success");
       window.localStorage.setItem(
         "nausheen_last_tracking",
@@ -162,10 +196,20 @@ export default function TrackingPage() {
   }, [trackingId, isLiveEnabled, refreshTracking]);
 
   const effectiveEtaMinutes = deliveryPatch.etaMinutes ?? etaMinutesRest;
-  const coordinates =
+  const riderCoords =
     deliveryPatch.lat !== undefined && deliveryPatch.lng !== undefined
       ? { lat: deliveryPatch.lat, lng: deliveryPatch.lng }
       : coordinatesRest;
+
+  const mapRestaurant = useMemo(() => getDefaultRestaurantLocation(), []);
+  const mapDelivery = orderLive?.deliveryCoords ?? deliveryCoordsRest;
+  const canShowMap = Boolean(riderCoords || mapDelivery);
+  const mapsLinkTarget = riderCoords ?? mapDelivery;
+
+  const etaDistanceKm = useMemo(
+    () => computeDistanceKm(mapRestaurant, mapDelivery),
+    [mapRestaurant, mapDelivery]
+  );
 
   const etaSummary = useMemo(
     () =>
@@ -173,9 +217,18 @@ export default function TrackingPage() {
         status,
         createdAtIso: createdAtIso || updatedAt || new Date().toISOString(),
         etaMinutesFromRider: effectiveEtaMinutes,
-        estimatedDeliveryAtIso: orderLive?.estimatedDeliveryAtIso ?? estimatedDeliveryAtRest
+        estimatedDeliveryAtIso: orderLive?.estimatedDeliveryAtIso ?? estimatedDeliveryAtRest,
+        distanceKm: etaDistanceKm
       }),
-    [status, createdAtIso, updatedAt, effectiveEtaMinutes, orderLive?.estimatedDeliveryAtIso, estimatedDeliveryAtRest]
+    [
+      status,
+      createdAtIso,
+      updatedAt,
+      effectiveEtaMinutes,
+      orderLive?.estimatedDeliveryAtIso,
+      estimatedDeliveryAtRest,
+      etaDistanceKm
+    ]
   );
 
   async function cancelOrder() {
@@ -285,21 +338,29 @@ export default function TrackingPage() {
           <OrderStatusStepperHorizontal status={status} className="mt-2 border-b border-slate-100 pb-6 dark:border-slate-800" />
         ) : null}
 
-        {uiState === "success" && coordinates ? (
+        {uiState === "success" ? (
+          <div className="mt-4">
+            <TrackingStatusHeadline status={status} />
+          </div>
+        ) : null}
+
+        {uiState === "success" && canShowMap ? (
           <div className="mt-5 space-y-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Live map
             </h2>
             <DeliveryMap
-              lat={coordinates.lat}
-              lng={coordinates.lng}
+              rider={riderCoords ?? null}
+              restaurant={mapRestaurant}
+              delivery={mapDelivery ?? null}
               etaMinutes={effectiveEtaMinutes}
+              arrivingLabel={etaSummary}
               agentMarkerTitle="Delivery partner"
             />
           </div>
         ) : null}
 
-        {uiState === "success" && !coordinates && (status === "out_for_delivery" || status === "ready") ? (
+        {uiState === "success" && !canShowMap && (status === "out_for_delivery" || status === "ready") ? (
           <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
             Live map will appear when your delivery partner shares their location. You can still track status above.
           </div>
@@ -321,14 +382,14 @@ export default function TrackingPage() {
                 {updatedAt ? new Date(updatedAt).toLocaleString() : "N/A"}
               </span>
             </p>
-            {coordinates ? (
+            {mapsLinkTarget ? (
               <a
-                href={`https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}`}
+                href={`https://www.google.com/maps?q=${mapsLinkTarget.lat},${mapsLinkTarget.lng}`}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-block rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white dark:bg-slate-100 dark:text-slate-900"
               >
-                Open live location
+                {riderCoords ? "Open rider location" : "Open delivery area in Maps"}
               </a>
             ) : null}
           </div>

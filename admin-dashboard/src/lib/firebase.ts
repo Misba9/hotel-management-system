@@ -7,7 +7,7 @@
  */
 import { getApp, initializeApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore, type Firestore } from "firebase/firestore";
 
 /** Re-export for consumers typing auth without importing `firebase/auth` directly. */
 export type { Auth };
@@ -153,12 +153,24 @@ export function getFirebaseAuth(): Auth {
   return firebaseAuth;
 }
 
+function createFirestoreForBrowser(app: FirebaseApp): Firestore {
+  const useLongPolling = process.env.NEXT_PUBLIC_FIRESTORE_LONG_POLLING !== "false";
+  if (!useLongPolling) {
+    return getFirestore(app);
+  }
+  try {
+    return initializeFirestore(app, { experimentalForceLongPolling: true });
+  } catch {
+    return getFirestore(app);
+  }
+}
+
 export function getFirebaseDb(): Firestore {
   if (typeof window === "undefined") {
     throw new Error("[firebase] getFirebaseDb() is browser-only.");
   }
   if (!firestoreDb) {
-    firestoreDb = getFirestore(getFirebaseApp());
+    firestoreDb = createFirestoreForBrowser(getFirebaseApp());
   }
   return firestoreDb;
 }

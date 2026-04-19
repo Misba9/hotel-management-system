@@ -10,6 +10,11 @@ export type LiveOrderState = {
   status: string;
   updatedAtIso: string;
   estimatedDeliveryAtIso?: string;
+  /** From `orders.riderLocation` — live GPS from delivery app. */
+  riderLocation: { lat: number; lng: number } | null;
+  /** From `orders.deliveryAddress.lat` / `lng` when geocoded at checkout. */
+  deliveryCoords: { lat: number; lng: number } | null;
+  etaMinutes: number | null;
 };
 
 export type LiveDeliveryPatch = {
@@ -30,26 +35,37 @@ function mapListenerError(err: unknown): string | null {
   return null;
 }
 
+function parseLatLngPair(obj: unknown): { lat: number; lng: number } | null {
+  if (!obj || typeof obj !== "object") return null;
+  const o = obj as Record<string, unknown>;
+  const lat = o.lat;
+  const lng = o.lng;
+  if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
+    return { lat, lng };
+  }
+  return null;
+}
+
 /**
- * Subscribes to `orders/{orderDocId}` and `deliveryLocations/{orderDocId}`.
- * Map position + ETA come from `deliveryLocations` (updated by staff/API or Cloud Functions).
+ * Subscribes to `orders/{orderDocId}` only: status, ETA fields, `riderLocation`, and delivery geocode.
+ * Staff apps write rider GPS to `orders.riderLocation` (and may mirror `deliveryLocations` for legacy).
  */
 export function useOrderRealtime(orderDocId: string | null) {
   const [user, setUser] = useState<User | null>(() => auth.currentUser);
   const [orderLive, setOrderLive] = useState<LiveOrderState | null>(null);
-  const [locMirror, setLocMirror] = useState<LiveDeliveryPatch | null>(null);
   const [realtimeError, setRealtimeError] = useState<string | null>(null);
 
   const deliveryPatch = useMemo((): LiveDeliveryPatch => {
-    const lat = locMirror?.lat;
-    const lng = locMirror?.lng;
-    const eta = locMirror?.etaMinutes;
+    const rl = orderLive?.riderLocation;
+    const eta = orderLive?.etaMinutes;
     const out: LiveDeliveryPatch = {};
-    if (typeof lat === "number" && Number.isFinite(lat)) out.lat = lat;
-    if (typeof lng === "number" && Number.isFinite(lng)) out.lng = lng;
+    if (rl) {
+      out.lat = rl.lat;
+      out.lng = rl.lng;
+    }
     if (typeof eta === "number" && Number.isFinite(eta)) out.etaMinutes = eta;
     return out;
-  }, [locMirror]);
+  }, [orderLive]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUser);
@@ -59,14 +75,12 @@ export function useOrderRealtime(orderDocId: string | null) {
   useEffect(() => {
     if (!orderDocId || !user) {
       setOrderLive(null);
-      setLocMirror(null);
       setRealtimeError(null);
       return;
     }
 
     setRealtimeError(null);
     const orderRef = doc(db, "orders", orderDocId);
-    const locationRef = doc(db, "deliveryLocations", orderDocId);
 
     const offOrder = onSnapshot(
       orderRef,
@@ -77,6 +91,12 @@ export function useOrderRealtime(orderDocId: string | null) {
         }
         const d = snap.data() as Record<string, unknown>;
         const status = String(d.status ?? "pending");
+        const riderLocation = parseLatLngPair(d.riderLocation);
+        const deliveryCoords = parseLatLngPair(d.deliveryAddress);
+        const etaRaw = d.etaMinutes;
+        const etaMinutes =
+          typeof etaRaw === "number" && Number.isFinite(etaRaw) ? etaRaw : null;
+
         setOrderLive({
           status,
           updatedAtIso: firestoreTimeToIso(d.updatedAt ?? d.createdAt),
@@ -85,7 +105,10 @@ export function useOrderRealtime(orderDocId: string | null) {
               ? d.estimatedDeliveryAt
               : typeof d.estimatedDeliveryBy === "string"
                 ? d.estimatedDeliveryBy
-                : undefined
+                : undefined,
+          riderLocation,
+          deliveryCoords,
+          etaMinutes
         });
       },
       (err) => {
@@ -95,33 +118,8 @@ export function useOrderRealtime(orderDocId: string | null) {
       }
     );
 
-    const offLoc = onSnapshot(
-      locationRef,
-      (snap) => {
-        if (!snap.exists()) {
-          setLocMirror(null);
-          return;
-        }
-        const d = snap.data() as Record<string, unknown>;
-        const patch: LiveDeliveryPatch = {};
-        const eta = d.etaMinutes;
-        const lat = d.lat;
-        const lng = d.lng;
-        if (typeof eta === "number" && Number.isFinite(eta)) patch.etaMinutes = eta;
-        if (typeof lat === "number" && Number.isFinite(lat)) patch.lat = lat;
-        if (typeof lng === "number" && Number.isFinite(lng)) patch.lng = lng;
-        setLocMirror(patch);
-      },
-      (err) => {
-        setLocMirror(null);
-        const msg = mapListenerError(err);
-        if (msg) setRealtimeError(msg);
-      }
-    );
-
     return () => {
       offOrder();
-      offLoc();
     };
   }, [orderDocId, user]);
 

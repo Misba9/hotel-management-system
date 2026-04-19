@@ -1,10 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, AlertTriangle, X } from "lucide-react";
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
-type ToastType = "success" | "error";
+type ToastType = "success" | "error" | "warning";
 
 type ToastItem = {
   id: string;
@@ -19,7 +19,7 @@ type ToastContextValue = {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const dismiss = useCallback((id: string) => {
@@ -54,6 +54,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 <div className="inline-flex items-start gap-2">
                   {toast.type === "success" ? (
                     <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
+                  ) : toast.type === "warning" ? (
+                    <Info className="mt-0.5 h-4 w-4 text-amber-600" />
                   ) : (
                     <AlertTriangle className="mt-0.5 h-4 w-4 text-red-600" />
                   )}

@@ -42,5 +42,11 @@ fetch("/api/firebase-messaging-config")
 
 self.addEventListener("notificationclick", function (event) {
   event.notification.close();
-  event.waitUntil(self.clients.openWindow("/orders"));
+  var data = event.notification.data || {};
+  var orderId = data.orderId;
+  var url =
+    typeof orderId === "string" && orderId.length > 0
+      ? "/tracking?trackingId=" + encodeURIComponent(orderId)
+      : "/orders";
+  event.waitUntil(self.clients.openWindow(url));
 });

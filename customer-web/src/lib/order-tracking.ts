@@ -1,4 +1,5 @@
 import { Timestamp } from "firebase/firestore";
+import { formatSmartEstimatedDelivery, type TrackingEtaInput } from "@/lib/delivery-eta";
 
 /** Customer-facing timeline (maps various backend statuses into 5 steps). */
 export const ORDER_TRACKING_STEPS = [
@@ -46,41 +47,27 @@ export function firestoreTimeToIso(value: unknown): string {
 }
 
 /**
- * Human-readable ETA: prefers live rider ETA, then optional server field, then simple heuristics.
+ * Human-readable ETA: rider/server first, then smart model (distance · prep · traffic · kitchen phase).
+ * Pass `distanceKm` / line counts when available for tighter ranges (e.g. tracking page).
  */
 export function formatEstimatedDelivery(args: {
   status: string;
   createdAtIso: string;
   etaMinutesFromRider?: number | null;
   estimatedDeliveryAtIso?: string | null;
+  distanceKm?: number | null;
+  lineCount?: number;
+  totalQuantity?: number;
 }): string {
-  const { status, createdAtIso, etaMinutesFromRider, estimatedDeliveryAtIso } = args;
-  if (isCancelledStatus(status)) return "—";
-
-  if (typeof etaMinutesFromRider === "number" && etaMinutesFromRider > 0) {
-    return `About ${etaMinutesFromRider} min`;
-  }
-
-  if (estimatedDeliveryAtIso) {
-    const t = new Date(estimatedDeliveryAtIso);
-    if (!Number.isNaN(t.getTime())) {
-      return `By ${t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
-    }
-  }
-
-  const s = status.toLowerCase();
-  if (s === "delivered") return "Completed";
-
-  const created = new Date(createdAtIso);
-  if (Number.isNaN(created.getTime())) return "Typically 30–45 min";
-
-  const addMins = (m: number) =>
-    new Date(created.getTime() + m * 60_000).toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-
-  if (s === "out_for_delivery" || s === "ready") return `Often arrives by ${addMins(25)}`;
-  if (s === "preparing" || s === "accepted" || s === "confirmed") return `Often arrives by ${addMins(35)}`;
-  return `Usually ready in 30–45 min`;
+  if (isCancelledStatus(args.status)) return "—";
+  const payload: TrackingEtaInput = {
+    status: args.status,
+    createdAtIso: args.createdAtIso,
+    etaMinutesFromRider: args.etaMinutesFromRider,
+    estimatedDeliveryAtIso: args.estimatedDeliveryAtIso,
+    distanceKm: args.distanceKm,
+    lineCount: args.lineCount,
+    totalQuantity: args.totalQuantity
+  };
+  return formatSmartEstimatedDelivery(payload);
 }

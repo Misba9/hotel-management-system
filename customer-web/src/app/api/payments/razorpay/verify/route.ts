@@ -11,6 +11,19 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const deliveryAddressSchema = z.object({
+  id: z.string().min(1),
+  label: z.enum(["Home", "Work", "Other"]),
+  name: z.string().min(1).max(120),
+  phone: z.string().min(8).max(20),
+  addressLine: z.string().min(1).max(400),
+  landmark: z.string().max(200).optional(),
+  city: z.string().min(1).max(120),
+  pincode: z.string().regex(/^\d{6}$/),
+  lat: z.number().finite().optional(),
+  lng: z.number().finite().optional()
+});
+
 const bodySchema = z.object({
   razorpay_order_id: z.string().min(1),
   razorpay_payment_id: z.string().min(1),
@@ -29,7 +42,8 @@ const bodySchema = z.object({
     .min(1),
   couponCode: z.string().max(40).optional(),
   orderType: z.enum(["delivery", "pickup", "dine_in"]).optional(),
-  address: z.string().min(5).max(500)
+  address: z.string().min(5).max(500),
+  deliveryAddress: deliveryAddressSchema.optional()
 });
 
 async function verifyCustomerUid(request: Request): Promise<string | null> {
@@ -46,7 +60,8 @@ async function verifyCustomerUid(request: Request): Promise<string | null> {
 }
 
 /**
- * POST — Verify Razorpay signature + payment amount, then create Firestore order (paid).
+ * POST — Verify Razorpay HMAC signature + payment amount, then persist Firestore order (`paymentStatus: "paid"`).
+ * Public URL alias: `POST /api/verify-payment`
  */
 export async function POST(request: Request) {
   const secure = await enforceApiSecurity(request, {
@@ -56,9 +71,13 @@ export async function POST(request: Request) {
 
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  if (!keyId || !keySecret) {
+  if (!keyId?.trim() || !keySecret?.trim()) {
     return Response.json(
-      { success: false, error: "Razorpay is not configured on the server." },
+      {
+        success: false,
+        error: "Razorpay is not configured on the server.",
+        code: "RAZORPAY_NOT_CONFIGURED"
+      },
       { status: 503 }
     );
   }
@@ -86,7 +105,8 @@ export async function POST(request: Request) {
       items: body.items,
       couponCode: body.couponCode,
       orderType: body.orderType,
-      address: body.address
+      address: body.address,
+      ...(body.deliveryAddress ? { deliveryAddress: body.deliveryAddress } : {})
     };
 
     const computed = await computeStorefrontOrderTotal(storefrontBody);

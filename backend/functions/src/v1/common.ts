@@ -1,6 +1,9 @@
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
+
+/** Opt-in: set `FIREBASE_FUNCTIONS_ENFORCE_APP_CHECK=true` after every client sends App Check (web + native staff). */
+const enforceAppCheck = process.env.FIREBASE_FUNCTIONS_ENFORCE_APP_CHECK === "true";
 import { z, ZodError } from "zod";
 import type { Request } from "firebase-functions/v2/https";
 
@@ -145,7 +148,7 @@ export function withCallableGuard<TInput, TResult>(
   handler: (input: TInput, ctx: { uid: string; role: string }) => Promise<TResult>,
   schema: z.ZodType<TInput>
 ) {
-  return onCall(async (request) => {
+  return onCall({ enforceAppCheck }, async (request) => {
     try {
       const uid = assertAuthed(request.auth);
       const userRecord = await auth.getUser(uid);

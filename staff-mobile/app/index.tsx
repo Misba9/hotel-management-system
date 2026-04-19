@@ -2,10 +2,13 @@ import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { AppNavigator } from "../src/navigation/AppNavigator";
 
-/** Role roots use React Navigation until fully on Expo Router. With `expo-router/entry`, wrap the stack here (App.tsx is unused). */
+/**
+ * Expo Router already mounts a root `NavigationContainer`. This legacy React Navigation tree
+ * must use an independent container so it is not nested under Expo Router's.
+ */
 export default function IndexRoute() {
   return (
-    <NavigationContainer>
+    <NavigationContainer independent>
       <AppNavigator />
     </NavigationContainer>
   );

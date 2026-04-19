@@ -13,11 +13,18 @@ import {
   where,
   type Timestamp
 } from "firebase/firestore";
+import type { DeliveryAddress } from "@/lib/delivery-address-types";
+import { parseAddressesField } from "@/lib/parse-embedded-addresses";
 import { db } from "@/lib/firebase";
 import { summarizeOrderItems } from "@shared/utils/order-items-summary";
+import { withRetry } from "@shared/utils/retry";
 
 const USERS = "users";
 const ORDERS = "orders";
+
+function isBrowserOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
 
 export type FirestoreUserProfile = {
   uid: string;
@@ -27,6 +34,8 @@ export type FirestoreUserProfile = {
   createdAt?: Timestamp | { toDate?: () => Date } | null;
   updatedAt?: Timestamp | { toDate?: () => Date } | null;
   lastLoginAt?: Timestamp | { toDate?: () => Date } | null;
+  /** Saved on `users/{uid}.addresses` — single source with real-time `onSnapshot` on user doc. */
+  addresses?: DeliveryAddress[];
 };
 
 export type UserOrderSummary = {
@@ -39,8 +48,10 @@ export type UserOrderSummary = {
   itemsSummary?: string;
 };
 
-function mapUserDoc(uid: string, data: Record<string, unknown>): FirestoreUserProfile {
+/** Map a `users/{uid}` document to `FirestoreUserProfile` (used by getDoc + real-time listeners). */
+export function mapUserProfileFromDoc(uid: string, data: Record<string, unknown>): FirestoreUserProfile {
   const name = String(data.name ?? data.fullName ?? "");
+  const addresses = parseAddressesField(uid, data.addresses);
   return {
     uid: String(data.uid ?? uid),
     name,
@@ -48,37 +59,54 @@ function mapUserDoc(uid: string, data: Record<string, unknown>): FirestoreUserPr
     phone: String(data.phone ?? ""),
     createdAt: data.createdAt as FirestoreUserProfile["createdAt"],
     updatedAt: data.updatedAt as FirestoreUserProfile["updatedAt"],
-    lastLoginAt: data.lastLoginAt as FirestoreUserProfile["lastLoginAt"]
+    lastLoginAt: data.lastLoginAt as FirestoreUserProfile["lastLoginAt"],
+    ...(addresses.length > 0 ? { addresses } : {})
   };
 }
 
 /** Create `users/{uid}` only if missing (initial signup / first sign-in). */
 export async function createUserIfNotExists(user: User): Promise<void> {
+  if (isBrowserOffline()) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[user-service] createUserIfNotExists skipped: browser offline.");
+    }
+    return;
+  }
   const ref = doc(db, USERS, user.uid);
-  const snap = await getDoc(ref);
-  if (snap.exists()) return;
-  await setDoc(ref, {
-    uid: user.uid,
-    name: user.displayName?.trim() || "",
-    email: user.email || "",
-    phone: user.phoneNumber?.trim() || "",
-    createdAt: serverTimestamp()
-  });
+  await withRetry(
+    async () => {
+      const snap = await getDoc(ref);
+      if (snap.exists()) return;
+      await setDoc(ref, {
+        uid: user.uid,
+        name: user.displayName?.trim() || "",
+        email: user.email || "",
+        phone: user.phoneNumber?.trim() || "",
+        createdAt: serverTimestamp()
+      });
+    },
+    { maxAttempts: 3, baseDelayMs: 500 }
+  );
 }
 
 /** Merge login timestamp without overwriting edited profile fields. */
 export async function mergeUserLoginStamp(user: User): Promise<void> {
-  await setDoc(
-    doc(db, USERS, user.uid),
-    {
-      uid: user.uid,
-      name: user.displayName?.trim() || "",
-      email: user.email || "",
-      phone: user.phoneNumber?.trim() || "",
-      lastLoginAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    },
-    { merge: true }
+  if (isBrowserOffline()) return;
+  await withRetry(
+    () =>
+      setDoc(
+        doc(db, USERS, user.uid),
+        {
+          uid: user.uid,
+          name: user.displayName?.trim() || "",
+          email: user.email || "",
+          phone: user.phoneNumber?.trim() || "",
+          lastLoginAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      ),
+    { maxAttempts: 3, baseDelayMs: 500 }
   );
 }
 
@@ -99,7 +127,7 @@ export async function loadUserProfileForSession(user: User): Promise<FirestoreUs
 export async function getUser(uid: string): Promise<FirestoreUserProfile | null> {
   const snap = await getDoc(doc(db, USERS, uid));
   if (!snap.exists()) return null;
-  return mapUserDoc(uid, snap.data() as Record<string, unknown>);
+  return mapUserProfileFromDoc(uid, snap.data() as Record<string, unknown>);
 }
 
 export async function updateUser(

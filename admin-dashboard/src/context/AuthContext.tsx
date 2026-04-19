@@ -12,7 +12,7 @@ import {
 } from "react";
 import {
   onAuthStateChanged,
-  signInWithEmailAndPassword,
+  signInWithCustomToken,
   signOut,
   type User
 } from "firebase/auth";
@@ -26,6 +26,7 @@ import {
   type StaffUsersDocFields
 } from "@shared/utils/staff-access-control";
 import { getFirebaseAuth, getFirebaseDb, logFirebaseConfigDebug } from "@/lib/firebase";
+import { getRecaptchaToken } from "@/lib/recaptcha";
 
 /** @deprecated Prefer {@link StaffAppRole} from `@shared/utils/staff-access-control`. */
 export type AppRole = StaffAppRole;
@@ -48,7 +49,7 @@ type AuthContextValue = {
   firebaseConfigError: string | null;
   /** False until `getIdTokenResult()` finishes for the current user. */
   authClaimsResolved: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, honeypotWebsite?: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -175,13 +176,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, honeypotWebsite = "") => {
     if (configErrorRef.current) {
       throw new Error(configErrorRef.current);
     }
+    if (honeypotWebsite.trim()) {
+      throw new Error("Invalid request.");
+    }
     const auth = getFirebaseAuth();
     try {
-      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const recaptchaToken = await getRecaptchaToken("admin_login");
+      const res = await fetch("/api/auth/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "admin_login",
+          email: email.trim(),
+          password,
+          recaptchaToken,
+          website: honeypotWebsite
+        })
+      });
+      const data = (await res.json()) as { customToken?: string; error?: string };
+      if (!res.ok || !data.customToken) {
+        throw new Error(data.error ?? "Sign-in failed.");
+      }
+
+      const cred = await signInWithCustomToken(auth, data.customToken);
       await cred.user.getIdToken(true);
 
       const snap = await getDoc(doc(getFirebaseDb(), "users", cred.user.uid));

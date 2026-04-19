@@ -1,11 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import { Minus, Plus } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/components/cart/cart-provider";
+import { SafeFillImage } from "@/components/shared/safe-fill-image";
 import type { Product } from "@/lib/menu-data-types";
 
 type ApiProduct = {
@@ -71,10 +71,9 @@ const MenuProductCard = memo(function MenuProductCard({ product }: { product: Ap
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
       <Link href={`/product/${product.id}`} className="relative block aspect-[4/3] w-full overflow-hidden">
-        <Image
+        <SafeFillImage
           src={imageUrl}
           alt={product.name}
-          fill
           sizes="(max-width: 1024px) 50vw, 25vw"
           className="object-cover transition duration-300 group-hover:scale-[1.03]"
         />

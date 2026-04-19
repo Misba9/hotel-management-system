@@ -3,7 +3,7 @@ import { createUserIfNotExists, mergeUserLoginStamp } from "@/lib/user-service";
 
 /**
  * Ensures `users/{uid}` exists and records `lastLoginAt`.
- * Profile data for UI is loaded via `UserProfileProvider` / `loadUserProfileForSession`.
+ * Profile for UI is loaded via `UserProfileProvider` (real-time `users/{uid}` listener).
  */
 export async function syncUserToFirestore(user: User): Promise<void> {
   await createUserIfNotExists(user);

@@ -27,7 +27,7 @@ import { getOrderStatusPresentation } from "@/lib/order-status-ui";
 import { useDeliveryAddress } from "@/context/delivery-address-context";
 import { useToast } from "@/components/providers/toast-provider";
 import { fetchUserOrders, updateUser } from "@/lib/user-service";
-import type { DeliveryAddress, DeliveryAddressInput } from "@/lib/delivery-address-types";
+import type { DeliveryAddress, DeliveryAddressInput, SavedAddressLabel } from "@/lib/delivery-address-types";
 import { formatDeliveryAddressForOrder } from "@/lib/delivery-address-types";
 
 type Section = "overview" | "orders" | "addresses" | "account";
@@ -197,6 +197,7 @@ function ProfileAuthenticatedPage() {
   const [addressDialogOpen, setAddressDialogOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<DeliveryAddress | null>(null);
   const [addressForm, setAddressForm] = useState<DeliveryAddressInput>({
+    label: "Home",
     name: "",
     phone: "",
     addressLine: "",
@@ -281,7 +282,15 @@ function ProfileAuthenticatedPage() {
 
   function openNewAddressDialog() {
     setEditingAddress(null);
-    setAddressForm({ name: "", phone: "", addressLine: "", landmark: "", city: "", pincode: "" });
+    setAddressForm({
+      label: "Home",
+      name: "",
+      phone: "",
+      addressLine: "",
+      landmark: "",
+      city: "",
+      pincode: ""
+    });
     setAddressErrors({});
     setAddressDialogOpen(true);
   }
@@ -289,6 +298,7 @@ function ProfileAuthenticatedPage() {
   function openEditAddressDialog(a: DeliveryAddress) {
     setEditingAddress(a);
     setAddressForm({
+      label: a.label,
       name: a.name,
       phone: a.phone,
       addressLine: a.addressLine,
@@ -301,6 +311,14 @@ function ProfileAuthenticatedPage() {
   }
 
   async function submitAddressForm() {
+    if (!user?.uid) {
+      window.alert("User not logged in");
+      return;
+    }
+
+    console.log("USER ID:", user?.uid);
+    console.log(addressForm.addressLine, addressForm.city, addressForm.pincode);
+
     const err = validateAddressInput(addressForm);
     setAddressErrors(err);
     if (Object.keys(err).length > 0) return;
@@ -315,8 +333,9 @@ function ProfileAuthenticatedPage() {
         showToast({ title: "Address added" });
       }
       setAddressDialogOpen(false);
-    } catch {
-      showToast({ type: "error", title: "Could not save address" });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not save address";
+      showToast({ type: "error", title: "Could not save address", description: msg });
     } finally {
       setAddressSaving(false);
     }
@@ -662,6 +681,9 @@ function ProfileAuthenticatedPage() {
                             Default
                           </span>
                         ) : null}
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          {a.label}
+                        </p>
                         <p className="font-medium text-slate-900 dark:text-slate-50">{a.name}</p>
                         <p className="text-sm text-slate-600 dark:text-slate-300">{a.phone}</p>
                         <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{formatDeliveryAddressForOrder(a)}</p>
@@ -763,6 +785,20 @@ function ProfileAuthenticatedPage() {
               </Dialog.Close>
             </div>
             <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Label</label>
+                <select
+                  value={addressForm.label ?? "Home"}
+                  onChange={(e) =>
+                    setAddressForm((f) => ({ ...f, label: e.target.value as SavedAddressLabel }))
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950"
+                >
+                  <option value="Home">Home</option>
+                  <option value="Work">Work</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
               {(
                 [
                   ["name", "Full name"] as const,

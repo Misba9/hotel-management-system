@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import { ProductCard } from "@/components/menu/product-card";
+import { SafeFillImage } from "@/components/shared/safe-fill-image";
 import { ProductQuickViewModal } from "@/components/menu/product-quick-view-modal";
 import { useCart } from "@/components/cart/cart-provider";
 import { Product, getMenuPayload } from "@/lib/menu-data";
@@ -134,7 +134,7 @@ export default function CartPage() {
                   className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900"
                 >
                   <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
-                    <Image src={src} alt={item.name} fill sizes="96px" className="object-cover" />
+                    <SafeFillImage src={src} alt={item.name} sizes="96px" className="object-cover" />
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col justify-between gap-2">
                     <div className="flex items-start justify-between gap-2">

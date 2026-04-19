@@ -8,22 +8,7 @@ loadEnvConfig(__dirname);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: false,
-  compress: true,
-  poweredByHeader: false,
-  async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: [
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self)" }
-        ]
-      }
-    ];
-  },
+  reactStrictMode: true,
   images: {
     domains: [
       "images.unsplash.com",
@@ -33,7 +18,9 @@ const nextConfig = {
       "firebasestorage.googleapis.com",
       "lh3.googleusercontent.com",
       "storage.googleapis.com",
-      "googleusercontent.com"
+      "googleusercontent.com",
+      "lovefoodhatewaste.com",
+      "www.lovefoodhatewaste.com"
     ],
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
@@ -49,11 +36,10 @@ const nextConfig = {
       { protocol: "https", hostname: "i.imgur.com", pathname: "/**" },
       { protocol: "https", hostname: "res.cloudinary.com", pathname: "/**" },
       { protocol: "https", hostname: "cdn.pixabay.com", pathname: "/**" },
-      { protocol: "https", hostname: "placehold.co", pathname: "/**" }
+      { protocol: "https", hostname: "placehold.co", pathname: "/**" },
+      { protocol: "https", hostname: "lovefoodhatewaste.com", pathname: "/**" },
+      { protocol: "https", hostname: "www.lovefoodhatewaste.com", pathname: "/**" }
     ]
-  },
-  experimental: {
-    optimizePackageImports: ["lucide-react", "framer-motion"]
   }
 };
 

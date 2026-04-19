@@ -236,9 +236,7 @@ export function PhoneLoginForm({
               disabled={loading}
             />
             <p className="mt-1.5 text-[11px] leading-snug text-slate-500 dark:text-slate-500">
-              Use E.164 format. In Firebase Console enable Phone, add test numbers if needed, and in Google Cloud enable{" "}
-              <strong>Identity Toolkit API</strong>. For localhost, allow the domain and relax API key restrictions if
-              SMS fails.
+           
             </p>
             <p className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-500">
               Test OTP setup (Firebase test phone): <strong>9059899298</strong> with code <strong>123456</strong>.

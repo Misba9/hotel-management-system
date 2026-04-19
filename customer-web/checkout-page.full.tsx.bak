@@ -1,18 +1,25 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Banknote, CreditCard, Loader2, MapPin, Tag } from "lucide-react";
+import { Banknote, Clock, CreditCard, Loader2, MapPin, Tag } from "lucide-react";
 import { CheckoutAddressModal } from "@/components/checkout/checkout-address-modal";
 import { useCart } from "@/components/cart/cart-provider";
 import { useAuth, type OpenAuthModalOptions } from "@/context/auth-context";
 import { useDeliveryAddress } from "@/context/delivery-address-context";
 import { useToast } from "@/components/providers/toast-provider";
-import { formatDeliveryAddressForOrder } from "@/lib/delivery-address-types";
+import { formatDeliveryAddressForOrder, toSerializedDeliveryAddress } from "@/lib/delivery-address-types";
 import { ORDER_SUCCESS_STORAGE_KEY, type OrderSuccessSnapshot } from "@/lib/order-success-storage";
-import { createRazorpayPaymentOrder, openRazorpayCheckout } from "@/lib/payment-service";
+import {
+  createRazorpayPaymentOrder,
+  openRazorpayCheckout,
+  shouldFallbackRazorpayToCod,
+  type CreatePaymentOrderResult
+} from "@/lib/payment-service";
 import { buildUserHeaders } from "@/lib/user-session";
+import { estimateCheckoutDisplay } from "@/lib/delivery-eta";
+import { getDefaultRestaurantLocation } from "@/lib/restaurant-location";
 
 type PaymentMethod = "cod" | "razorpay";
 
@@ -44,7 +51,14 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items, subtotal, discount, couponCode, deliveryFee, grandTotal, clearCart, applyCoupon, clearCoupon } =
     useCart();
-  const { selectedAddress, loading: addressLoading } = useDeliveryAddress();
+  const {
+    addresses,
+    selectedAddress,
+    selectedId,
+    selectAddress,
+    loading: addressLoading,
+    isSelectedAddressSynced
+  } = useDeliveryAddress();
   const { showToast } = useToast();
   const { user, authReady, login } = useAuth();
   const authPromptedRef = useRef(false);
@@ -55,6 +69,14 @@ export default function CheckoutPage() {
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState("");
   const [couponApplying, setCouponApplying] = useState(false);
+  /** Server-aligned total (INR) when /api/create-order reports a drift vs client `grandTotal`. */
+  const [alignedCheckoutTotal, setAlignedCheckoutTotal] = useState<number | null>(null);
+
+  const payableTotal = alignedCheckoutTotal ?? grandTotal;
+
+  useEffect(() => {
+    setAlignedCheckoutTotal(null);
+  }, [items, couponCode, subtotal, discount, deliveryFee]);
 
   useEffect(() => {
     if (!authReady || user || items.length === 0) return;
@@ -66,6 +88,14 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (user) authPromptedRef.current = false;
   }, [user]);
+
+  /** Auto-select when only one saved address exists (fast checkout). */
+  useEffect(() => {
+    if (!user || addressLoading || addresses.length !== 1) return;
+    if (!selectedId || !addresses.some((a) => a.id === selectedId)) {
+      selectAddress(addresses[0].id);
+    }
+  }, [user, addressLoading, addresses, selectedId, selectAddress]);
 
   useEffect(() => {
     if (items.length === 0 || addressLoading) return;
@@ -102,6 +132,25 @@ export default function CheckoutPage() {
       cancelled = true;
     };
   }, [subtotal, couponCode, items.length, applyCoupon, clearCoupon, showToast]);
+
+  const checkoutEta = useMemo(() => {
+    if (items.length === 0 || !selectedAddress) return null;
+    const totalQty = items.reduce((sum, line) => sum + line.quantity, 0);
+    const lat =
+      typeof selectedAddress.lat === "number" && Number.isFinite(selectedAddress.lat)
+        ? selectedAddress.lat
+        : undefined;
+    const lng =
+      typeof selectedAddress.lng === "number" && Number.isFinite(selectedAddress.lng)
+        ? selectedAddress.lng
+        : undefined;
+    return estimateCheckoutDisplay({
+      restaurant: getDefaultRestaurantLocation(),
+      deliveryLatLng: lat !== undefined && lng !== undefined ? { lat, lng } : null,
+      lineCount: items.length,
+      totalQuantity: totalQty
+    });
+  }, [items, selectedAddress]);
 
   async function applyCheckoutCoupon() {
     setCouponError("");
@@ -140,6 +189,7 @@ export default function CheckoutPage() {
 
   function buildOrderPayload() {
     if (!selectedAddress) return null;
+    const deliveryAddress = toSerializedDeliveryAddress(selectedAddress);
     return {
       customerName: selectedAddress.name.trim(),
       phone: selectedAddress.phone.trim(),
@@ -150,9 +200,27 @@ export default function CheckoutPage() {
         quantity: item.quantity
       })),
       address: formatDeliveryAddressForOrder(selectedAddress),
+      deliveryAddress,
       couponCode: couponCode || undefined,
       orderType: "delivery" as const
     };
+  }
+
+  async function placeCodOrder(
+    base: NonNullable<ReturnType<typeof buildOrderPayload>>
+  ): Promise<CreateOrderResponse> {
+    const headers = await buildUserHeaders({ "Content-Type": "application/json" });
+    const res = await fetch("/api/orders", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...base, paymentMethod: "cod" as const })
+    });
+    const text = await res.text();
+    const data = parseJsonSafe<CreateOrderResponse>(text);
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error ?? "Could not place order.");
+    }
+    return data;
   }
 
   async function finalizeSuccess(data: CreateOrderResponse) {
@@ -218,28 +286,42 @@ export default function CheckoutPage() {
       }
 
       if (paymentMethod === "cod") {
-        const headers = await buildUserHeaders({ "Content-Type": "application/json" });
-        const res = await fetch("/api/orders", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ ...base, paymentMethod: "cod" as const })
-        });
-
-        const text = await res.text();
-        const data = parseJsonSafe<CreateOrderResponse>(text);
-
-        if (!res.ok || !data?.success) {
-          throw new Error(data?.error ?? "Could not place order.");
-        }
-
+        const data = await placeCodOrder(base);
         await finalizeSuccess(data);
         return;
       }
 
       const headers = await buildUserHeaders({ "Content-Type": "application/json" });
-      const created = await createRazorpayPaymentOrder({ ...base, amount: grandTotal }, headers);
+      let created: CreatePaymentOrderResult = await createRazorpayPaymentOrder(
+        { ...base, amount: payableTotal },
+        headers
+      );
+
+      if (!created.ok && "priceUpdated" in created && created.priceUpdated) {
+        showToast({
+          type: "warning",
+          title: "Price updated",
+          description: `${created.message} — new total Rs. ${created.correctTotal}`
+        });
+        setAlignedCheckoutTotal(created.correctTotal);
+        created = await createRazorpayPaymentOrder({ ...base, amount: created.correctTotal }, headers);
+      }
+
       if (!created.ok) {
-        throw new Error(created.error);
+        if (shouldFallbackRazorpayToCod(created)) {
+          showToast({
+            type: "warning",
+            title: "Online payment unavailable",
+            description: "Placing your order with cash on delivery instead."
+          });
+          setPaymentMethod("cod");
+          const data = await placeCodOrder(base);
+          await finalizeSuccess(data);
+          return;
+        }
+        throw new Error(
+          !created.ok && "error" in created ? created.error : "Could not start online payment."
+        );
       }
 
       setSubmitting(false);
@@ -256,7 +338,7 @@ export default function CheckoutPage() {
           setSubmitting(true);
           setMessage("");
           try {
-            const verifyRes = await fetch("/api/payments/razorpay/verify", {
+            const verifyRes = await fetch("/api/verify-payment", {
               method: "POST",
               headers: await buildUserHeaders({ "Content-Type": "application/json" }),
               body: JSON.stringify({
@@ -266,7 +348,8 @@ export default function CheckoutPage() {
                 ...base
               })
             });
-            const verifyJson = parseJsonSafe<CreateOrderResponse>(await verifyRes.text());
+            const verifyText = await verifyRes.text();
+            const verifyJson = parseJsonSafe<CreateOrderResponse>(verifyText);
             if (!verifyRes.ok || !verifyJson?.success) {
               throw new Error(verifyJson?.error ?? "Payment verification failed.");
             }
@@ -281,15 +364,15 @@ export default function CheckoutPage() {
         },
         onDismiss: () => {
           showToast({
-            type: "error",
-            title: "Payment cancelled",
+            type: "warning",
+            title: "Payment window closed",
             description: "You can try again or choose cash on delivery."
           });
         }
       });
 
       if (!opened) {
-        throw new Error("Could not load Razorpay checkout. Check your connection or try again.");
+        throw new Error("Could not load Razorpay checkout. Check your connection or try cash on delivery.");
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Order failed.");
@@ -376,6 +459,14 @@ export default function CheckoutPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-orange-800 dark:text-orange-200">
                   Deliver to
                 </p>
+                <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {selectedAddress.label}
+                </p>
+                {!isSelectedAddressSynced ? (
+                  <p className="mt-1 text-[11px] font-medium text-amber-800 dark:text-amber-200">
+                    Not saved to account (temporary)
+                  </p>
+                ) : null}
                 <p className="mt-1 font-semibold text-slate-900 dark:text-slate-50">{selectedAddress.name}</p>
                 <p className="text-sm text-slate-600 dark:text-slate-300">{selectedAddress.phone}</p>
                 <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
@@ -405,6 +496,21 @@ export default function CheckoutPage() {
               Change
             </button>
           </div>
+          {checkoutEta ? (
+            <div className="mt-4 flex items-start gap-2 rounded-xl border border-teal-200/80 bg-teal-50/90 px-3 py-2.5 text-sm text-teal-950 dark:border-teal-900/50 dark:bg-teal-950/35 dark:text-teal-100">
+              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
+              <div>
+                <p className="font-semibold">{checkoutEta.phrase}</p>
+                <p className="mt-0.5 text-xs text-teal-800/90 dark:text-teal-200/90">
+                  Smart ETA from distance
+                  {checkoutEta.distanceKm != null
+                    ? ` (${checkoutEta.distanceKm.toFixed(1)} km)`
+                    : " (approx. distance)"}{" "}
+                  · prep load · time of day. Updates live on tracking when the rider shares ETA.
+                </p>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-4 dark:border-slate-600 dark:bg-slate-900/50">
@@ -511,7 +617,7 @@ export default function CheckoutPage() {
             </div>
             <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-semibold text-slate-900 dark:border-slate-800 dark:text-slate-50">
               <span>Total (est.)</span>
-              <span className="tabular-nums">Rs. {grandTotal}</span>
+              <span className="tabular-nums">Rs. {payableTotal}</span>
             </div>
             <p className="text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
               Final total is confirmed on the server (tax + delivery). You&apos;ll see the exact amount after placing the order.

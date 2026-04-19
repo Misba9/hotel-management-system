@@ -1,5 +1,6 @@
 /**
- * Client Firestore helpers for `deliveryLocations/{orderId}` (live rider position).
+ * Client Firestore helpers for `deliveryLocations/{orderId}` (legacy mirror of rider GPS).
+ * Primary live position for customers is `orders/{orderId}.riderLocation` via `useOrderRealtime`.
  * Writes require staff role in Firestore rules (delivery / manager / admin).
  */
 import { doc, onSnapshot, serverTimestamp, setDoc, type Firestore } from "firebase/firestore";

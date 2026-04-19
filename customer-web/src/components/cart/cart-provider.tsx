@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode
+} from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import type { Product } from "@/lib/menu-data-types";
 import { useToast } from "@/components/providers/toast-provider";
@@ -51,7 +59,7 @@ function normalizeItemsList(raw: unknown): CartLine[] {
   return raw.map(normalizeCartLine).filter((line): line is CartLine => Boolean(line));
 }
 
-export function CartProvider({ children }: { children: React.ReactNode }) {
+export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartLine[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [discount, setDiscount] = useState(0);

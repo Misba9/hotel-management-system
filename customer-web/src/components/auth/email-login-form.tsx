@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState } from "react";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithCustomToken } from "firebase/auth";
 import { Loader2 } from "lucide-react";
 import { auth } from "@/lib/firebase";
+import { getRecaptchaToken } from "@/lib/recaptcha";
 import { useToast } from "@/components/providers/toast-provider";
 import { mapFirebaseAuthError } from "@/lib/firebase-auth-errors";
 
@@ -49,7 +50,7 @@ function mapAuthError(error: unknown): string {
         break;
     }
   }
-  return mapFirebaseAuthError(error, "Something went wrong. Please try again.");
+      return mapFirebaseAuthError(error, "Something went wrong. Please try again.");
 }
 
 function validateFields(
@@ -100,6 +101,8 @@ export function EmailLoginForm({ onSuccess, onAuthBusyChange }: EmailLoginFormPr
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [authError, setAuthError] = useState<string | null>(null);
+  /** Honeypot — hidden from users; bots often fill it. */
+  const [honeypotWebsite, setHoneypotWebsite] = useState("");
 
   useEffect(() => {
     onAuthBusyChange?.(loading);
@@ -127,16 +130,42 @@ export function EmailLoginForm({ onSuccess, onAuthBusyChange }: EmailLoginFormPr
 
     if (Object.keys(clientErrors).length > 0) return;
 
+    if (honeypotWebsite.trim()) {
+      setAuthError("Something went wrong.");
+      return;
+    }
+
     setLoading(true);
     try {
-      if (mode === "signup") {
-        await createUserWithEmailAndPassword(auth, trimmedEmail, password);
-      } else {
-        await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      const recaptchaAction = mode === "signup" ? "signup" : "login";
+      const recaptchaToken = await getRecaptchaToken(recaptchaAction);
+      const res = await fetch("/api/auth/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: mode === "signin" ? "login" : "signup",
+          email: trimmedEmail,
+          password,
+          recaptchaToken,
+          website: honeypotWebsite
+        })
+      });
+      const data = (await res.json()) as { customToken?: string; error?: string };
+      if (!res.ok || !data.customToken) {
+        const msg = data.error ?? "Something went wrong. Please try again.";
+        throw new Error(msg);
       }
+      await signInWithCustomToken(auth, data.customToken);
       onSuccess?.();
     } catch (err) {
-      const msg = mapAuthError(err);
+      let msg: string;
+      if (err && typeof err === "object" && "code" in err) {
+        msg = mapAuthError(err);
+      } else if (err instanceof Error) {
+        msg = err.message;
+      } else {
+        msg = "Something went wrong. Please try again.";
+      }
       setAuthError(msg);
       showToast({
         type: "error",
@@ -159,7 +188,7 @@ export function EmailLoginForm({ onSuccess, onAuthBusyChange }: EmailLoginFormPr
     "relative z-0 flex-1 rounded-lg py-2.5 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500";
 
   return (
-    <div className="space-y-4">
+    <div className="relative space-y-4">
       <div
         className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100/95 p-1 dark:bg-slate-900/80"
         role="tablist"
@@ -299,6 +328,19 @@ export function EmailLoginForm({ onSuccess, onAuthBusyChange }: EmailLoginFormPr
           <p className="text-sm leading-snug text-red-800 dark:text-red-200">{authError}</p>
         </div>
       ) : null}
+
+      <div className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden" aria-hidden>
+        <label htmlFor={`${uid}-website`}>Leave blank</label>
+        <input
+          id={`${uid}-website`}
+          name="website"
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          value={honeypotWebsite}
+          onChange={(ev) => setHoneypotWebsite(ev.target.value)}
+        />
+      </div>
 
       <button
         type="button"

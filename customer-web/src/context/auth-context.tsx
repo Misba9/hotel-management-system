@@ -64,11 +64,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       if (lastSyncedUidRef.current === u.uid) return;
       lastSyncedUidRef.current = u.uid;
-      void syncUserToFirestore(u).catch((error) => {
-        if (process.env.NODE_ENV !== "production") {
-          console.error("[auth] syncUserToFirestore failed", error);
+      void (async () => {
+        try {
+          await syncUserToFirestore(u);
+        } catch (err) {
+          console.log("skip sync (offline or transient)", err);
         }
-      });
+      })();
     });
     return () => unsub();
   }, []);

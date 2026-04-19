@@ -91,7 +91,11 @@ export async function resolveServerPricing(
     }
 
     if (requested.price !== undefined && Number(requested.price) !== Number(menuEntry.price)) {
-      return { status: 400, error: `Price mismatch detected for ${requested.id}.` };
+      if (process.env.NODE_ENV !== "production") {
+        console.log(
+          `[resolveServerPricing] Ignoring client price ${requested.price} for ${requested.id}; using DB price ${menuEntry.price}`
+        );
+      }
     }
 
     pricedItems.push({

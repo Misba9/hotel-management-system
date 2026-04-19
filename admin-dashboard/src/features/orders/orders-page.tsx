@@ -12,7 +12,7 @@ import {
   startAfter,
   type QueryDocumentSnapshot
 } from "firebase/firestore";
-import { Loader2, Mail, MapPin, Package, Phone } from "lucide-react";
+import { ExternalLink, Loader2, Mail, MapPin, Package, Phone } from "lucide-react";
 import { getFirebaseDb } from "@/lib/firebase";
 import { playNewOrderChime } from "@/lib/new-order-chime";
 import { useAuth } from "@/context/AuthContext";
@@ -27,6 +27,19 @@ type OrderItem = {
   qty?: number;
 };
 
+export type OrderDeliverySnapshot = {
+  id?: string;
+  label?: string;
+  name?: string;
+  phone?: string;
+  addressLine?: string;
+  landmark?: string;
+  city?: string;
+  pincode?: string;
+  lat?: number;
+  lng?: number;
+};
+
 export type Order = {
   id: string;
   customerName?: string;
@@ -39,6 +52,8 @@ export type Order = {
   paymentStatus?: string;
   paymentMethod?: string;
   address?: string;
+  /** Full structured address copied at order time (preferred for ops). */
+  deliveryAddress?: OrderDeliverySnapshot;
   createdAt?: string | null;
 };
 
@@ -122,6 +137,31 @@ function mergeAdminOrderPages(windowOrders: Order[], older: Order[]): Order[] {
   });
 }
 
+function parseDeliverySnapshot(raw: unknown): OrderDeliverySnapshot | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const lat = typeof o.lat === "number" && Number.isFinite(o.lat) ? o.lat : undefined;
+  const lng = typeof o.lng === "number" && Number.isFinite(o.lng) ? o.lng : undefined;
+  return {
+    id: typeof o.id === "string" ? o.id : undefined,
+    label: typeof o.label === "string" ? o.label : undefined,
+    name: typeof o.name === "string" ? o.name : undefined,
+    phone: typeof o.phone === "string" ? o.phone : undefined,
+    addressLine: typeof o.addressLine === "string" ? o.addressLine : undefined,
+    landmark: typeof o.landmark === "string" ? o.landmark : undefined,
+    city: typeof o.city === "string" ? o.city : undefined,
+    pincode: typeof o.pincode === "string" ? o.pincode : undefined,
+    lat,
+    lng
+  };
+}
+
+function formatSnapshotLines(d: OrderDeliverySnapshot): string {
+  const line = [d.addressLine, d.city, d.pincode].filter((x) => typeof x === "string" && x.trim());
+  if (d.landmark?.trim()) line.splice(1, 0, `Near ${d.landmark.trim()}`);
+  return line.join(", ");
+}
+
 function docToOrder(doc: QueryDocumentSnapshot): Order {
   const d = doc.data();
   const totalAmount =
@@ -138,12 +178,16 @@ function docToOrder(doc: QueryDocumentSnapshot): Order {
         : typeof d.customerEmail === "string"
           ? d.customerEmail
           : "";
-  const address =
+  const deliveryAddress = parseDeliverySnapshot(d.deliveryAddress);
+  let address =
     typeof d.address === "string"
       ? d.address.trim()
       : typeof d.deliveryAddress === "string"
         ? d.deliveryAddress.trim()
         : "";
+  if (!address && deliveryAddress) {
+    address = formatSnapshotLines(deliveryAddress);
+  }
   const paymentStatus =
     typeof d.paymentStatus === "string" ? d.paymentStatus.toLowerCase().trim() : "";
   const paymentMethod =
@@ -152,7 +196,7 @@ function docToOrder(doc: QueryDocumentSnapshot): Order {
   return {
     id: doc.id,
     customerName: String(d.customerName ?? ""),
-    phone: String(d.phone ?? ""),
+    phone: String(d.phone ?? d.customerPhone ?? ""),
     email: email || undefined,
     items: Array.isArray(d.items) ? d.items : [],
     totalAmount,
@@ -160,6 +204,7 @@ function docToOrder(doc: QueryDocumentSnapshot): Order {
     paymentStatus: paymentStatus || undefined,
     paymentMethod: paymentMethod || undefined,
     address: address || undefined,
+    deliveryAddress,
     createdAt: serializeClientTimestamp(d.createdAt)
   };
 }
@@ -255,6 +300,38 @@ function AddressSnippet({ text }: { text: string | undefined }) {
       <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
       <span>{short}</span>
     </p>
+  );
+}
+
+function OrderAddressDetail({ order }: { order: Order }) {
+  const d = order.deliveryAddress;
+  const fallback = order.address?.trim();
+  const fullText = d ? formatSnapshotLines(d) : fallback;
+  if (!fullText) {
+    return <span className="text-slate-400">—</span>;
+  }
+  const query =
+    d && typeof d.lat === "number" && typeof d.lng === "number"
+      ? `${d.lat},${d.lng}`
+      : fullText;
+  const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+
+  return (
+    <div className="space-y-1.5">
+      {d?.label ? (
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{d.label}</p>
+      ) : null}
+      <AddressSnippet text={fullText} />
+      <a
+        href={mapsHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 hover:underline dark:text-orange-400"
+      >
+        <ExternalLink className="h-3 w-3" aria-hidden />
+        Open in Maps
+      </a>
+    </div>
   );
 }
 
@@ -449,10 +526,10 @@ function OrderCard({
       </div>
 
       <div className="flex flex-1 flex-col space-y-3 px-4 py-3">
-        {order.address?.trim() ? (
+        {order.address?.trim() || order.deliveryAddress ? (
           <div>
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Address</p>
-            <AddressSnippet text={order.address} />
+            <OrderAddressDetail order={order} />
           </div>
         ) : null}
 

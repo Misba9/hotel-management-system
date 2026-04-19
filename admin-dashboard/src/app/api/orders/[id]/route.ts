@@ -133,6 +133,7 @@ export async function PATCH(request: Request, context: { params: { id: string } 
     }
     if (body.deliveryPartnerId) {
       updates.deliveryPartnerId = body.deliveryPartnerId;
+      updates.riderId = body.deliveryPartnerId;
       const prev = existing.data();
       const at = getAssignedTo(prev as { assignedTo?: unknown });
       updates.assignedTo = {

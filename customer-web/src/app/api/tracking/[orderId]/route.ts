@@ -5,6 +5,24 @@ import { verifySignedTrackingToken } from "@shared/utils/tracking-token";
 
 export const dynamic = "force-dynamic";
 
+function defaultRestaurantLocation(): { lat: number; lng: number } {
+  const lat = Number(process.env.NEXT_PUBLIC_RESTAURANT_LAT ?? process.env.RESTAURANT_LAT ?? "17.4126");
+  const lng = Number(process.env.NEXT_PUBLIC_RESTAURANT_LNG ?? process.env.RESTAURANT_LNG ?? "78.4482");
+  if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  return { lat: 17.4126, lng: 78.4482 };
+}
+
+function parseLatLng(obj: unknown): { lat: number; lng: number } | null {
+  if (!obj || typeof obj !== "object") return null;
+  const o = obj as Record<string, unknown>;
+  const lat = o.lat;
+  const lng = o.lng;
+  if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
+    return { lat, lng };
+  }
+  return null;
+}
+
 const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=5, stale-while-revalidate=30" };
 
 type AuthContext = {
@@ -125,6 +143,21 @@ export async function GET(request: Request, context: { params: { orderId: string
   }
 
   const raw = byTrackingSnap.empty ? (await adminDb.collection("orders").doc(internalOrderId).get()).data() : byTrackingSnap.docs[0].data();
+
+  try {
+    const orderRow = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+    const riderFromOrder = orderRow ? parseLatLng(orderRow.riderLocation) : null;
+    if (riderFromOrder) {
+      const base = realtimeTracking ?? {};
+      realtimeTracking = {
+        ...base,
+        lat: riderFromOrder.lat,
+        lng: riderFromOrder.lng
+      };
+    }
+  } catch {
+    /* ignore */
+  }
   const createdAtRaw = raw && typeof raw === "object" && "createdAt" in raw ? (raw as { createdAt?: unknown }).createdAt : undefined;
   let createdAtIso = "";
   if (createdAtRaw && typeof createdAtRaw === "object" && createdAtRaw !== null && "toDate" in createdAtRaw) {
@@ -144,6 +177,9 @@ export async function GET(request: Request, context: { params: { orderId: string
         ? (estRaw as { toDate: () => Date }).toDate().toISOString()
         : undefined;
 
+  const orderRow = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+  const deliveryCoords = orderRow?.deliveryAddress ? parseLatLng(orderRow.deliveryAddress) : null;
+
   return NextResponse.json({
     orderId: internalOrderId,
     trackingId: order.trackingId ?? trackingId,
@@ -153,6 +189,8 @@ export async function GET(request: Request, context: { params: { orderId: string
     estimatedDeliveryAt,
     orderType: order.orderType,
     delivery,
-    realtimeTracking
+    realtimeTracking,
+    restaurantLocation: defaultRestaurantLocation(),
+    deliveryCoords
   }, { headers: CACHE_HEADERS });
 }

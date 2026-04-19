@@ -40,6 +40,7 @@ const assignDeliveryHttpSchema = z.object({
   deliveryPartnerId: z.string().min(1)
 });
 
+/** App Check for HTTP endpoints: enable in Firebase Console (HTTP functions do not accept `enforceAppCheck` in code like callables). */
 export const platformApiV1 = onRequest(async (request, response) => {
   try {
     const identity = await authenticateHttp(request);

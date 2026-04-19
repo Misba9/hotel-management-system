@@ -1,15 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { FirebaseError } from "firebase/app";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { MapPin, Plus, X } from "lucide-react";
+import { MapPin, Navigation, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useDeliveryAddress } from "@/context/delivery-address-context";
 import { useAuth } from "@/context/auth-context";
 import { useUserProfile } from "@/context/user-profile-context";
 import { useToast } from "@/components/providers/toast-provider";
-import type { DeliveryAddressInput } from "@/lib/delivery-address-types";
-import { withTimeout } from "@/lib/async-utils";
+import { CheckoutAddressPlacesSearch } from "@/components/checkout/checkout-address-places-search";
+import { isGoogleMapsConfigured } from "@/components/providers/google-maps-script";
+import { formatDistanceKm, sortAddressesSmart } from "@/lib/address-suggestions";
+import { getDistanceKm } from "@/lib/geo-distance";
+import type { DeliveryAddress, DeliveryAddressInput, SavedAddressLabel } from "@/lib/delivery-address-types";
 
 type CheckoutAddressModalProps = {
   open: boolean;
@@ -30,16 +34,50 @@ function validateNewAddress(input: DeliveryAddressInput): Partial<Record<keyof D
   return e;
 }
 
+function formToTempDelivery(uid: string, input: DeliveryAddressInput): DeliveryAddress {
+  const label = (input.label ?? "Home") as SavedAddressLabel;
+  const now = new Date().toISOString();
+  return {
+    id: `temp-${Date.now()}`,
+    userId: uid,
+    label,
+    name: input.name.trim(),
+    phone: input.phone.trim(),
+    addressLine: input.addressLine.trim(),
+    landmark: input.landmark.trim(),
+    city: input.city.trim(),
+    pincode: input.pincode.trim(),
+    ...(typeof input.lat === "number" && Number.isFinite(input.lat) ? { lat: input.lat } : {}),
+    ...(typeof input.lng === "number" && Number.isFinite(input.lng) ? { lng: input.lng } : {}),
+    isDefault: false,
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
 export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: CheckoutAddressModalProps) {
-  const { addresses, selectedId, selectAddress, addAddress, loading } = useDeliveryAddress();
+  const {
+    addresses,
+    lastUsedAddressId,
+    selectedId,
+    selectAddress,
+    addAddress,
+    loading,
+    checkoutDraftAddress,
+    setCheckoutDraftAddress,
+    isSelectedAddressSynced
+  } = useDeliveryAddress();
   const { user } = useAuth();
+  /** Same source as `addresses` in context — embedded on `users/{uid}.addresses`. */
   const { profile } = useUserProfile();
   const { showToast } = useToast();
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** Prevents double submit before React re-renders `saving`. */
   const saveInFlightRef = useRef(false);
   const [form, setForm] = useState<DeliveryAddressInput>({
+    label: "Home",
     name: "",
     phone: "",
     addressLine: "",
@@ -49,6 +87,40 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
   });
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof DeliveryAddressInput, string>>>({});
   const [formMessage, setFormMessage] = useState<string | null>(null);
+
+  const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
+  const [locStatus, setLocStatus] = useState<"idle" | "loading" | "ok" | "unavailable">("idle");
+
+  const savedAddresses = profile?.addresses ?? addresses;
+
+  const suggestedAddresses = useMemo(
+    () => sortAddressesSmart(savedAddresses, userLoc),
+    [savedAddresses, userLoc]
+  );
+
+  useEffect(() => {
+    if (!open) {
+      setLocStatus("idle");
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setUserLoc(null);
+      setLocStatus("unavailable");
+      return;
+    }
+    setLocStatus("loading");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocStatus("ok");
+      },
+      () => {
+        setUserLoc(null);
+        setLocStatus("unavailable");
+      },
+      { enableHighAccuracy: false, maximumAge: 300_000, timeout: 12_000 }
+    );
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -73,45 +145,102 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
   }, [requireSelection, onOpenChange]);
 
   const handleConfirmSelection = useCallback(() => {
-    if (!selectedId || !addresses.some((a) => a.id === selectedId)) return;
+    if (!selectedId) return;
+    const inSaved = savedAddresses.some((a) => a.id === selectedId);
+    const inDraft = checkoutDraftAddress?.id === selectedId;
+    if (!inSaved && !inDraft) return;
     onOpenChange(false);
-  }, [addresses, onOpenChange, selectedId]);
+  }, [savedAddresses, checkoutDraftAddress?.id, onOpenChange, selectedId]);
 
-  const SAVE_TIMEOUT_MS = 30_000;
+  const resetFormAfterSave = useCallback(() => {
+    setForm({
+      label: "Home",
+      name: "",
+      phone: "",
+      addressLine: "",
+      landmark: "",
+      city: "",
+      pincode: ""
+    });
+    setFormErrors({});
+    setFormMessage(null);
+    setShowForm(false);
+    onOpenChange(false);
+  }, [onOpenChange]);
 
   const handleSaveAddress = useCallback(async () => {
-    if (saveInFlightRef.current) return;
+    if (saving || saveInFlightRef.current) return;
+    if (!user?.uid) {
+      window.alert("User not logged in");
+      return;
+    }
+
+    console.log("USER ID:", user?.uid);
+    console.log(form.addressLine, form.city, form.pincode);
 
     setFormMessage(null);
     const err = validateNewAddress(form);
     setFormErrors(err);
     if (Object.keys(err).length > 0) return;
 
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      saveInFlightRef.current = true;
+      showToast({
+        title: "You are offline",
+        description: "Using this address for checkout. It will sync to your account when you are back online.",
+        type: "warning"
+      });
+      const tempAddress = formToTempDelivery(user.uid, form);
+      setCheckoutDraftAddress(tempAddress);
+      resetFormAfterSave();
+      saveInFlightRef.current = false;
+      return;
+    }
+
     saveInFlightRef.current = true;
     setSaving(true);
-    try {
-      await withTimeout(addAddress(form), SAVE_TIMEOUT_MS, "Saving timed out. Check your connection and try again.");
 
-      showToast({ title: "Address saved" });
-      setForm({
-        name: "",
-        phone: "",
-        addressLine: "",
-        landmark: "",
-        city: "",
-        pincode: ""
+    try {
+      await addAddress(form);
+      showToast({ title: "Address saved", type: "success" });
+      resetFormAfterSave();
+    } catch (err) {
+      console.error("Save failed:", err);
+      const msg =
+        err instanceof FirebaseError
+          ? err.code === "permission-denied"
+            ? "Permission denied. Sign out and sign in again, then retry."
+            : err.code === "unavailable"
+              ? "Firestore is temporarily unavailable. Check your connection."
+              : err.message
+          : err instanceof Error
+            ? err.message
+            : "Unknown error";
+      showToast({
+        type: "error",
+        title: "Could not save address",
+        description: msg
       });
-      setFormErrors({});
-      setShowForm(false);
-      onOpenChange(false);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Could not save address. Try again.";
-      setFormMessage(msg);
     } finally {
       saveInFlightRef.current = false;
       setSaving(false);
     }
-  }, [addAddress, form, onOpenChange, showToast]);
+  }, [addAddress, form, resetFormAfterSave, saving, setCheckoutDraftAddress, showToast, user?.uid]);
+
+  /** Hard fail-safe: never leave the save button stuck if Firestore hangs past our race timeout. */
+  useEffect(() => {
+    if (!saving) return;
+    const safetyTimer = window.setTimeout(() => {
+      saveInFlightRef.current = false;
+      setSaving(false);
+      showToast({
+        title: "Something went wrong",
+        description: "Try saving again.",
+        type: "error"
+      });
+    }, 8000);
+    return () => clearTimeout(safetyTimer);
+  }, [saving, showToast]);
 
   useEffect(() => {
     if (!open) return;
@@ -181,13 +310,82 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
               ) : (
                 <>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Addresses are saved to your account and used at checkout.
+                    {savedAddresses.length > 0 ? (
+                      <>
+                        <span className="font-medium text-slate-700 dark:text-slate-200">Suggestions</span>
+                        {" · "}
+                        {locStatus === "ok" && userLoc && savedAddresses.some((a) => typeof a.lat === "number" && typeof a.lng === "number") ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Navigation className="h-3 w-3 shrink-0" aria-hidden />
+                            Sorted by nearest
+                          </span>
+                        ) : locStatus === "loading" ? (
+                          "Locating you…"
+                        ) : (
+                          <span>Sorted by most recent</span>
+                        )}
+                      </>
+                    ) : (
+                      "Addresses are saved to your account and used at checkout."
+                    )}
                   </p>
 
-                  {addresses.length > 0 ? (
+                  {!isSelectedAddressSynced && (checkoutDraftAddress || selectedId?.startsWith("temp-")) ? (
+                    <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                      Not saved to account (temporary). You can still check out — we will sync when possible.
+                    </p>
+                  ) : null}
+
+                  {checkoutDraftAddress && !savedAddresses.some((a) => a.id === checkoutDraftAddress.id) ? (
+                    <ul className="space-y-2" role="radiogroup" aria-label="Address for this order">
+                      <li>
+                        <label
+                          className={`flex cursor-pointer gap-3 rounded-2xl border p-3 transition ${
+                            selectedId === checkoutDraftAddress.id
+                              ? "border-orange-400 bg-orange-50/80 dark:border-orange-700 dark:bg-orange-950/30"
+                              : "border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="delivery-address"
+                            checked={selectedId === checkoutDraftAddress.id}
+                            onChange={() => selectAddress(checkoutDraftAddress.id)}
+                            className="mt-1"
+                          />
+                          <div className="min-w-0 text-sm">
+                            <p className="font-semibold text-slate-900 dark:text-slate-50">{checkoutDraftAddress.name}</p>
+                            <p className="text-slate-600 dark:text-slate-300">{checkoutDraftAddress.phone}</p>
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                              Not saved to account · {checkoutDraftAddress.label}
+                            </p>
+                            <p className="mt-1 text-slate-600 dark:text-slate-400">
+                              {checkoutDraftAddress.addressLine}
+                              {checkoutDraftAddress.landmark ? ` · ${checkoutDraftAddress.landmark}` : ""}
+                              {checkoutDraftAddress.city ? ` · ${checkoutDraftAddress.city}` : ""}
+                              {checkoutDraftAddress.pincode ? ` · ${checkoutDraftAddress.pincode}` : ""}
+                            </p>
+                          </div>
+                        </label>
+                      </li>
+                    </ul>
+                  ) : null}
+
+                  {savedAddresses.length > 0 ? (
                     <ul className="space-y-2" role="radiogroup" aria-label="Saved addresses">
-                      {addresses.map((a) => {
+                      {suggestedAddresses.map((a) => {
                         const checked = selectedId === a.id;
+                        const isLastUsed = lastUsedAddressId === a.id;
+                        const labelClass =
+                          a.label === "Home"
+                            ? "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100"
+                            : a.label === "Work"
+                              ? "bg-violet-100 text-violet-900 dark:bg-violet-950/50 dark:text-violet-100"
+                              : "bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100";
+                        const distKm =
+                          userLoc && typeof a.lat === "number" && typeof a.lng === "number"
+                            ? getDistanceKm(userLoc, { lat: a.lat, lng: a.lng })
+                            : null;
                         return (
                           <li key={a.id}>
                             <label
@@ -195,7 +393,7 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
                                 checked
                                   ? "border-orange-400 bg-orange-50/80 dark:border-orange-700 dark:bg-orange-950/30"
                                   : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
-                              }`}
+                              } ${isLastUsed && !checked ? "ring-2 ring-amber-400/90 ring-offset-2 dark:ring-offset-slate-900" : ""}`}
                             >
                               <input
                                 type="radio"
@@ -204,8 +402,23 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
                                 onChange={() => selectAddress(a.id)}
                                 className="mt-1"
                               />
-                              <div className="min-w-0 text-sm">
-                                <p className="font-semibold text-slate-900 dark:text-slate-50">{a.name}</p>
+                              <div className="min-w-0 flex-1 text-sm">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${labelClass}`}>
+                                    {a.label}
+                                  </span>
+                                  {isLastUsed ? (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900 dark:bg-amber-950/60 dark:text-amber-100">
+                                      Last used
+                                    </span>
+                                  ) : null}
+                                  {distKm != null ? (
+                                    <span className="ml-auto text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
+                                      {formatDistanceKm(distKm)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="mt-1 font-semibold text-slate-900 dark:text-slate-50">{a.name}</p>
                                 <p className="text-slate-600 dark:text-slate-300">{a.phone}</p>
                                 <p className="mt-1 text-slate-600 dark:text-slate-400">
                                   {a.addressLine}
@@ -240,6 +453,39 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
                   ) : (
                     <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/50">
                       <p className="text-sm font-medium text-slate-800 dark:text-slate-100">New address</p>
+                      {isGoogleMapsConfigured() ? (
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                            Find on map
+                          </label>
+                          <CheckoutAddressPlacesSearch
+                            disabled={saving}
+                            onApply={(patch) =>
+                              setForm((f) => ({
+                                ...f,
+                                ...patch
+                              }))
+                            }
+                          />
+                          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                            Pick a suggestion to fill street, city, PIN, and map location. You can edit below.
+                          </p>
+                        </div>
+                      ) : null}
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Label</label>
+                        <select
+                          value={form.label ?? "Home"}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, label: e.target.value as SavedAddressLabel }))
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                        >
+                          <option value="Home">Home</option>
+                          <option value="Work">Work</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
                       {[
                         ["name", "Full name", "text", "name"] as const,
                         ["phone", "Phone", "tel", "tel"] as const,
@@ -263,7 +509,7 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
                           {formErrors[key] ? <p className="mt-1 text-xs text-red-600">{formErrors[key]}</p> : null}
                         </div>
                       ))}
-                      {formMessage ? <p className="text-xs text-red-600">{formMessage}</p> : null}
+                      {formMessage ? <p className="text-xs text-amber-700 dark:text-amber-300">{formMessage}</p> : null}
                       <div className="flex gap-2 pt-1">
                         <button
                           type="button"
@@ -278,8 +524,9 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
                         <button
                           type="button"
                           disabled={saving}
+                          aria-busy={saving}
                           onClick={() => void handleSaveAddress()}
-                          className="flex-1 rounded-lg bg-orange-500 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                          className="flex-1 rounded-lg bg-orange-500 py-2 text-sm font-semibold text-white shadow-sm transition-opacity disabled:pointer-events-none disabled:opacity-60"
                         >
                           {saving ? "Saving…" : "Save & use"}
                         </button>
@@ -298,7 +545,7 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
                 >
                   Back to cart
                 </Link>
-                {addresses.length > 0 && selectedId && !showForm ? (
+                {selectedId && !showForm && (savedAddresses.some((a) => a.id === selectedId) || checkoutDraftAddress?.id === selectedId) ? (
                   <button
                     type="button"
                     onClick={handleConfirmSelection}

@@ -101,3 +101,61 @@ export function bucketsToChartSeries(chartDayKeysOrdered: string[], byDay: Map<s
   }));
   return { ordersPerDay, revenuePerDay };
 }
+
+export type TopProductRow = { name: string; sold: number; revenue: number };
+
+/**
+ * Aggregate line items from orders in the same time window as {@link reduceOrdersForWindow}.
+ * `revenue` per line ≈ price × qty (same spirit as `orders.reduce((sum, o) => sum + o.total, 0)` at order level).
+ */
+export function aggregateTopProducts(
+  rows: Array<{ data: () => Record<string, unknown> }>,
+  windowStartMs: number,
+  limit: number
+): TopProductRow[] {
+  const map = new Map<string, { sold: number; revenue: number }>();
+
+  for (const doc of rows) {
+    const raw = doc.data();
+    const created = parseCreatedMs(raw);
+    if (created === null || created < windowStartMs) continue;
+
+    const items = raw.items;
+    if (!Array.isArray(items)) continue;
+
+    for (const line of items) {
+      if (!line || typeof line !== "object") continue;
+      const o = line as Record<string, unknown>;
+      const name = String(o.name ?? o.productName ?? "Item").trim() || "Item";
+      const qtyRaw = o.quantity ?? o.qty;
+      const qty = typeof qtyRaw === "number" && qtyRaw > 0 ? qtyRaw : 1;
+      const priceRaw = o.price ?? o.unitPrice;
+      const price = typeof priceRaw === "number" && Number.isFinite(priceRaw) ? priceRaw : 0;
+      const prev = map.get(name) ?? { sold: 0, revenue: 0 };
+      prev.sold += qty;
+      prev.revenue += price * qty;
+      map.set(name, prev);
+    }
+  }
+
+  return Array.from(map.entries())
+    .map(([name, v]) => ({
+      name,
+      sold: Math.round(v.sold * 100) / 100,
+      revenue: Math.round(v.revenue * 100) / 100
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, Math.max(1, limit));
+}
+
+/** Orders whose `createdAt` falls on today's UTC calendar day (within the chart bucket set). */
+export function ordersTodayFromDayMap(byDay: Map<string, { orders: number; revenue: number }>): number {
+  const todayKey = utcDayKeyFromMs(Date.now());
+  return byDay.get(todayKey)?.orders ?? 0;
+}
+
+/** Revenue for today's UTC day within chart buckets. */
+export function revenueTodayFromDayMap(byDay: Map<string, { orders: number; revenue: number }>): number {
+  const todayKey = utcDayKeyFromMs(Date.now());
+  return Math.round((byDay.get(todayKey)?.revenue ?? 0) * 100) / 100;
+}

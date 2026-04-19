@@ -1,18 +1,21 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { CartDrawer } from "@/components/cart/cart-drawer";
 import { FloatingCartButton } from "@/components/cart/floating-cart-button";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { Navbar } from "@/components/layout/navbar";
+import { OfflineBanner } from "@/components/layout/offline-banner";
 import { FcmBootstrap } from "@/components/notifications/fcm-bootstrap";
 import { RealtimeOrderNotifier } from "@/components/notifications/realtime-order-notifier";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   return (
     <>
+      <OfflineBanner />
       <Navbar />
       <motion.main
         key={pathname}

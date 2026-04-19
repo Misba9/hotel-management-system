@@ -5,6 +5,19 @@ import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
+const deliveryAddressSchema = z.object({
+  id: z.string().min(1),
+  label: z.enum(["Home", "Work", "Other"]),
+  name: z.string().min(1).max(120),
+  phone: z.string().min(8).max(20),
+  addressLine: z.string().min(1).max(400),
+  landmark: z.string().max(200).optional(),
+  city: z.string().min(1).max(120),
+  pincode: z.string().regex(/^\d{6}$/),
+  lat: z.number().finite().optional(),
+  lng: z.number().finite().optional()
+});
+
 const createOrderSchema = z.object({
   customerName: z.string().min(2).max(120),
   phone: z.string().min(8).max(20),
@@ -20,8 +33,10 @@ const createOrderSchema = z.object({
     .min(1),
   couponCode: z.string().max(40).optional(),
   orderType: z.enum(["delivery", "pickup", "dine_in"]).optional(),
-  /** Full delivery address string (required for storefront checkout). */
+  /** Formatted line (search / display). */
   address: z.string().min(5).max(500),
+  /** Full structured snapshot stored on the order document. */
+  deliveryAddress: deliveryAddressSchema.optional(),
   paymentMethod: z.enum(["cod"]).default("cod")
 });
 
@@ -63,7 +78,8 @@ export async function POST(request: Request) {
         items: body.items,
         couponCode: body.couponCode,
         orderType: body.orderType,
-        address: body.address
+        address: body.address,
+        ...(body.deliveryAddress ? { deliveryAddress: body.deliveryAddress } : {})
       },
       paymentMethod: "cod",
       paymentStatus: "pending"

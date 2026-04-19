@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
 export const MENU_ALL_CATEGORY_ID = "all" as const;
 
@@ -11,7 +11,7 @@ type MenuCategoryContextValue = {
 
 const MenuCategoryContext = createContext<MenuCategoryContextValue | null>(null);
 
-export function MenuCategoryProvider({ children }: { children: React.ReactNode }) {
+export function MenuCategoryProvider({ children }: { children: ReactNode }) {
   const [selectedCategoryId, setSelectedCategoryIdState] = useState<string>(MENU_ALL_CATEGORY_ID);
 
   const setSelectedCategoryId = useCallback((id: string) => {

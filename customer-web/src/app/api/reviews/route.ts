@@ -29,11 +29,19 @@ function reviewCreatedAtMs(value: unknown): number | null {
   if (value && typeof (value as Timestamp).toMillis === "function") {
     return (value as Timestamp).toMillis();
   }
+  if (typeof value === "string") {
+    const t = Date.parse(value);
+    return Number.isFinite(t) ? t : null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
   return null;
 }
 
 /**
  * GET — List reviews for a product (newest first).
+ * Uses `where` only (no composite index), sorts in memory — avoids Firestore index errors.
  */
 export async function GET(request: Request) {
   const secure = await enforceApiSecurity(request, {
@@ -44,38 +52,43 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const productId = url.searchParams.get("productId")?.trim() ?? "";
   if (!productId) {
-    return Response.json({ error: "Missing productId." }, { status: 400 });
+    return Response.json({ reviews: [] });
   }
 
   const limitRaw = Number(url.searchParams.get("limit") ?? "50");
   const limit = Number.isFinite(limitRaw) ? Math.min(100, Math.max(1, Math.floor(limitRaw))) : 50;
 
   try {
+    const fetchCap = Math.min(200, Math.max(limit * 4, limit));
     const snap = await adminDb
       .collection("reviews")
       .where("productId", "==", productId)
-      .orderBy("createdAt", "desc")
-      .limit(limit)
+      .limit(fetchCap)
       .get();
 
-    const reviews = snap.docs.map((doc) => {
-      const d = doc.data();
+    const rows = snap.docs.map((doc) => {
+      const d = doc.data() ?? {};
+      const createdAt = reviewCreatedAtMs(d.createdAt);
+      const rating = typeof d.rating === "number" && Number.isFinite(d.rating) ? Math.round(d.rating) : 0;
       return {
         id: doc.id,
-        productId: d.productId as string,
-        rating: d.rating as number,
+        productId: typeof d.productId === "string" ? d.productId : productId,
+        rating: Math.min(5, Math.max(0, rating)),
         comment: typeof d.comment === "string" ? d.comment : "",
         displayName: typeof d.displayName === "string" ? d.displayName : null,
-        createdAt: reviewCreatedAtMs(d.createdAt)
+        createdAt
       };
     });
+
+    rows.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    const reviews = rows.slice(0, limit);
 
     return Response.json({ reviews });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.error("[reviews GET]", error);
     }
-    return Response.json({ error: "Failed to load reviews." }, { status: 500 });
+    return Response.json({ reviews: [] });
   }
 }
 

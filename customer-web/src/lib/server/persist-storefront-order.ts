@@ -7,6 +7,8 @@ import { resolveServerPricing } from "@shared/utils/server-order-pricing";
 import { generateSignedTrackingToken } from "@shared/utils/tracking-token";
 import { DEFAULT_ORDER_ASSIGNED_TO } from "@shared/utils/order-assignment-defaults";
 import { buildInvoiceDoc } from "@shared/utils/invoice-payload";
+import { withRetry } from "@shared/utils/retry";
+import type { SerializedDeliveryAddress } from "@/lib/delivery-address-types";
 
 export type StorefrontOrderBody = {
   customerName: string;
@@ -15,6 +17,7 @@ export type StorefrontOrderBody = {
   couponCode?: string;
   orderType?: "delivery" | "pickup" | "dine_in";
   address: string;
+  deliveryAddress?: SerializedDeliveryAddress;
 };
 
 export type ComputedCheckout = {
@@ -65,6 +68,58 @@ export function verifyRazorpayPaymentSignature(
   }
 }
 
+async function findExistingOrderByRazorpay(
+  userId: string,
+  rz: { orderId: string; paymentId: string }
+): Promise<{ orderId: string; totalAmount: number; trackingToken?: string } | null> {
+  const byPayment = await adminDb
+    .collection("orders")
+    .where("razorpayPaymentId", "==", rz.paymentId)
+    .limit(1)
+    .get();
+  if (!byPayment.empty) {
+    const d = byPayment.docs[0];
+    const data = d.data();
+    if (String(data.userId) !== userId) {
+      throw new Error("This payment is already linked to another account.");
+    }
+    return idempotentOrderReturn(d.id, data);
+  }
+  const byRzOrder = await adminDb
+    .collection("orders")
+    .where("razorpayOrderId", "==", rz.orderId)
+    .limit(1)
+    .get();
+  if (!byRzOrder.empty) {
+    const d = byRzOrder.docs[0];
+    const data = d.data();
+    if (String(data.userId) !== userId) {
+      throw new Error("This Razorpay order is already linked to another account.");
+    }
+    return idempotentOrderReturn(d.id, data);
+  }
+  return null;
+}
+
+function idempotentOrderReturn(
+  orderId: string,
+  data: Record<string, unknown>
+): { orderId: string; totalAmount: number; trackingToken?: string } {
+  const totalAmount =
+    typeof data.totalAmount === "number"
+      ? data.totalAmount
+      : typeof data.total === "number"
+        ? data.total
+        : 0;
+  let trackingToken: string | undefined;
+  try {
+    trackingToken = generateSignedTrackingToken(orderId);
+  } catch {
+    /* optional */
+  }
+  return { orderId, totalAmount, ...(trackingToken ? { trackingToken } : {}) };
+}
+
 export async function persistStorefrontOrder(args: {
   userId: string;
   body: StorefrontOrderBody;
@@ -77,6 +132,14 @@ export async function persistStorefrontOrder(args: {
     throw new Error(computed.error);
   }
   const { items, totalAmount, orderType, subtotal, discount, taxAmount, deliveryFee } = computed.data;
+
+  if (args.paymentMethod === "razorpay" && args.razorpay) {
+    const existing = await findExistingOrderByRazorpay(args.userId, args.razorpay);
+    if (existing) {
+      return existing;
+    }
+  }
+
   const branchId = process.env.STOREFRONT_BRANCH_ID ?? "hyderabad-main";
   const userSnap = await adminDb.collection("users").doc(args.userId).get();
   const userData = (userSnap.data() ?? {}) as { name?: unknown; phone?: unknown; email?: unknown };
@@ -110,6 +173,7 @@ export async function persistStorefrontOrder(args: {
     invoiceId: orderRef.id,
     assignedTo: { ...DEFAULT_ORDER_ASSIGNED_TO },
     address: args.body.address.trim(),
+    ...(args.body.deliveryAddress ? { deliveryAddress: args.body.deliveryAddress } : {}),
     status: "pending",
     createdAt: now,
     paymentMethod: args.paymentMethod,
@@ -144,7 +208,7 @@ export async function persistStorefrontOrder(args: {
   const batch = adminDb.batch();
   batch.set(orderRef, orderDoc);
   batch.set(adminDb.collection("invoices").doc(orderRef.id), invoicePayload);
-  await batch.commit();
+  await withRetry(() => batch.commit(), { maxAttempts: 3 });
 
   let trackingToken: string | undefined;
   try {
