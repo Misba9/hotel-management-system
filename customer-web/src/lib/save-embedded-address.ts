@@ -2,13 +2,13 @@ import { FirebaseError } from "firebase/app";
 import {
   arrayUnion,
   doc,
-  getDoc,
   serverTimestamp,
   setDoc,
   Timestamp,
   updateDoc
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { mirrorUserAddressesToCustomerDoc } from "@/lib/customer-doc-sync";
+import { db, ensureFirestoreOnline, safeGetDoc } from "@/lib/firebase";
 import type { DeliveryAddress, DeliveryAddressInput } from "@/lib/delivery-address-types";
 import { embeddedMapToDelivery, parseAddressesField } from "@/lib/parse-embedded-addresses";
 import { saveUserAddress, type UserAddressPayload } from "@/lib/save-user-address";
@@ -76,53 +76,78 @@ function buildEmbeddedRow(
 
 /**
  * Appends one address to `users/{uid}.addresses` via `arrayUnion`, with setDoc fallback when the user doc is missing.
- * No client-side Promise.race timeout — Firestore handles retries/backoff.
+ *
+ * The flat `address` summary (`saveUserAddress`) is written in the background so a second merge on the same doc
+ * cannot block resolution of this function after the embedded array write succeeds (fixes stuck "Saving…" UI).
  */
 export async function saveAddress(
   userId: string,
   input: DeliveryAddressInput,
   options: { email: string | null; isFirst: boolean }
 ): Promise<DeliveryAddress> {
-  const addressId = crypto.randomUUID();
-  const row = buildEmbeddedRow(userId, input, addressId, options.isFirst);
-  const userRef = doc(db, "users", userId);
-
-  const profileMerge: Record<string, unknown> = {
-    name: row.name as string,
-    phone: row.phone as string,
-    updatedAt: serverTimestamp()
-  };
-  if (options.email?.trim()) profileMerge.email = options.email.trim();
+  console.log("[saveAddress] start", { userId, addressLine: input.addressLine?.slice(0, 40) });
 
   try {
-    await updateDoc(userRef, {
-      ...profileMerge,
-      addresses: arrayUnion(row)
-    });
-  } catch (e) {
-    const code = e instanceof FirebaseError ? e.code : "";
-    if (code === "not-found") {
-      await setDoc(
-        userRef,
-        {
-          uid: userId,
-          ...profileMerge,
-          addresses: [row]
-        },
-        { merge: true }
-      );
-    } else {
-      throw e;
+    await ensureFirestoreOnline();
+    const addressId = crypto.randomUUID();
+    const row = buildEmbeddedRow(userId, input, addressId, options.isFirst);
+    const userRef = doc(db, "users", userId);
+
+    const profileMerge: Record<string, unknown> = {
+      name: row.name as string,
+      phone: row.phone as string,
+      updatedAt: serverTimestamp()
+    };
+    if (options.email?.trim()) profileMerge.email = options.email.trim();
+
+    console.log("[saveAddress] writing embedded addresses[] …");
+    try {
+      await updateDoc(userRef, {
+        ...profileMerge,
+        addresses: arrayUnion(row)
+      });
+    } catch (e) {
+      const code = e instanceof FirebaseError ? e.code : "";
+      if (code === "not-found") {
+        await setDoc(
+          userRef,
+          {
+            uid: userId,
+            ...profileMerge,
+            addresses: [row]
+          },
+          { merge: true }
+        );
+      } else {
+        console.error("[saveAddress] embedded write error", e);
+        throw e;
+      }
     }
-  }
 
-  const parsed = embeddedMapToDelivery(userId, row);
-  if (!parsed) {
-    throw new Error("Failed to save address");
-  }
+    console.log("[saveAddress] embedded write OK");
 
-  await saveUserAddress(userId, inputToUserAddressPayload(input));
-  return parsed;
+    const parsed = embeddedMapToDelivery(userId, row);
+    if (!parsed) {
+      throw new Error("Failed to parse saved address");
+    }
+
+    const summaryPayload = inputToUserAddressPayload(input);
+    void saveUserAddress(userId, summaryPayload)
+      .then(() => console.log("[saveAddress] address summary field OK (background)"))
+      .catch((err) => console.error("[saveAddress] address summary field failed (non-fatal)", err));
+
+    await mirrorUserAddressesToCustomerDoc(userId).catch((err) => {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[saveAddress] customer mirror failed (non-fatal)", err);
+      }
+    });
+
+    console.log("[saveAddress] success (returning)", { id: parsed.id });
+    return parsed;
+  } catch (error) {
+    console.error("[saveAddress] error", error);
+    throw error;
+  }
 }
 
 /** Push a previously offline `temp-*` address to Firestore once the client is online. */
@@ -139,7 +164,8 @@ export async function syncTempAddressToAccount(
 
 /** Read current `addresses` array for full-array updates (edit / delete / default). */
 export async function getEmbeddedAddressesFromUserDoc(userId: string): Promise<DeliveryAddress[]> {
-  const snap = await getDoc(doc(db, "users", userId));
+  await ensureFirestoreOnline();
+  const snap = await safeGetDoc(doc(db, "users", userId));
   if (!snap.exists()) return [];
   const data = snap.data() as Record<string, unknown>;
   return parseAddressesField(userId, data.addresses);
@@ -174,6 +200,7 @@ function deliveryToFirestoreMap(d: DeliveryAddress): Record<string, unknown> {
 
 /** Replaces the entire `addresses` array on `users/{uid}` (edit / remove / default). */
 export async function replaceUserEmbeddedAddresses(userId: string, addresses: DeliveryAddress[]): Promise<void> {
+  await ensureFirestoreOnline();
   const embedded = addresses.map(deliveryToFirestoreMap);
   await setDoc(
     doc(db, "users", userId),

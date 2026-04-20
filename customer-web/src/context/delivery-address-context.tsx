@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Delivery addresses live on `users/{uid}.addresses` (array) — same document as profile.
- * Real-time updates come from `UserProfileProvider` (`onSnapshot` on `users/{uid}`).
- * One-time migration: legacy `addresses` collection → subcollection → embedded array.
+ * Persistent address book for checkout: Firestore `users/{uid}/addresses/{addressId}` + `onSnapshot`.
+ * - Subscribes on login; cached in React state (no refetch each render).
+ * - `addAddress` / selection / default logic live here.
+ * Legacy top-level `addresses` collection → subcollection once; embedded `users.addresses[]` → sub when sub empty.
  */
 
 import {
@@ -31,15 +32,18 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "@/context/auth-context";
 import { useUserProfile } from "@/context/user-profile-context";
-import { auth, db } from "@/lib/firebase";
-import { sortAddressesByRecentCreated } from "@/lib/address-suggestions";
-import { isValidPincode, type DeliveryAddress, type DeliveryAddressInput } from "@/lib/delivery-address-types";
+import { auth, db, ensureFirestoreOnline } from "@/lib/firebase";
 import {
-  getEmbeddedAddressesFromUserDoc,
-  replaceUserEmbeddedAddresses,
-  saveAddress,
-  syncTempAddressToAccount
-} from "@/lib/save-embedded-address";
+  deleteUserAddressDoc,
+  getUserAddressesOnce,
+  migrateEmbeddedAddressesToSubcollection,
+  setDefaultUserAddress,
+  subscribeUserAddresses,
+  updateUserAddressDoc
+} from "@/lib/address-book-firestore";
+import { saveAddress as saveAddressToFirestore } from "@/lib/user-address-service";
+import { deliveryAddressToInput } from "@/lib/save-embedded-address";
+import { isValidPincode, type DeliveryAddress, type DeliveryAddressInput } from "@/lib/delivery-address-types";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 
 const AUTH_SELECTED_PREFIX = "nausheen_delivery_selected_";
@@ -68,9 +72,9 @@ function writeLastUsedAddressId(uid: string, id: string | null) {
     /* ignore */
   }
 }
+
 const LEGACY_COLLECTION = "addresses";
 const MIGRATION_FLAG = "nausheen_legacy_addr_migrated_";
-const SUB_TO_EMBED_KEY = "nausheen_sub_to_embed_";
 
 function authSelectedKey(uid: string) {
   return `${AUTH_SELECTED_PREFIX}${uid}`;
@@ -98,48 +102,11 @@ function parseLabel(raw: unknown): DeliveryAddress["label"] {
   return "Home";
 }
 
-function docToAddress(id: string, fallbackUserId: string, data: Record<string, unknown>): DeliveryAddress | null {
-  const name = String(data.name ?? "").trim();
-  const phone = String(data.phone ?? "").trim();
-  const addressLine = String(data.addressLine ?? data.address ?? "").trim();
-  const city = String(data.city ?? "").trim() || "Local";
-  const landmark = String(data.landmark ?? "").trim();
-  const pincode = String(data.pincode ?? "").trim();
-  if (!name || !phone || !addressLine || !pincode) return null;
-  let createdAt: string | undefined;
-  let updatedAt: string | undefined;
-  const c = data.createdAt;
-  const u = data.updatedAt;
-  if (c && typeof c === "object" && "toDate" in c && typeof (c as Timestamp).toDate === "function") {
-    createdAt = (c as Timestamp).toDate().toISOString();
-  } else if (typeof c === "string") createdAt = c;
-  if (u && typeof u === "object" && "toDate" in u && typeof (u as Timestamp).toDate === "function") {
-    updatedAt = (u as Timestamp).toDate().toISOString();
-  } else if (typeof u === "string") updatedAt = u;
-  const latRaw = data.lat;
-  const lngRaw = data.lng;
-  const lat = typeof latRaw === "number" && Number.isFinite(latRaw) ? latRaw : undefined;
-  const lng = typeof lngRaw === "number" && Number.isFinite(lngRaw) ? lngRaw : undefined;
-  return {
-    id,
-    userId: String(data.userId ?? fallbackUserId),
-    label: parseLabel(data.label),
-    name,
-    phone,
-    addressLine,
-    landmark,
-    city,
-    pincode,
-    lat,
-    lng,
-    isDefault: Boolean(data.isDefault),
-    createdAt,
-    updatedAt
-  };
-}
-
 function pickSelectedId(list: DeliveryAddress[], userId: string, previous: string | null): string | null {
-  if (previous && list.some((a) => a.id === previous)) return previous;
+  if (previous) {
+    if (list.some((a) => a.id === previous)) return previous;
+    if (readAuthSelectedId(userId) === previous) return previous;
+  }
   const stored = readAuthSelectedId(userId);
   if (stored && list.some((a) => a.id === stored)) return stored;
   const def = list.find((a) => a.isDefault);
@@ -204,40 +171,6 @@ async function migrateLegacyTopLevelAddresses(firestore: Firestore, uid: string)
   }
 }
 
-/** Copies `users/{uid}/addresses/*` into `users/{uid}.addresses` once. */
-async function migrateSubcollectionToEmbedded(uid: string): Promise<void> {
-  if (typeof window === "undefined") return;
-  if (sessionStorage.getItem(`${SUB_TO_EMBED_KEY}${uid}`)) return;
-  try {
-    const snap = await getDocs(collection(db, "users", uid, "addresses"));
-    if (snap.empty) {
-      sessionStorage.setItem(`${SUB_TO_EMBED_KEY}${uid}`, "1");
-      return;
-    }
-    const list: DeliveryAddress[] = [];
-    snap.forEach((d) => {
-      const row = docToAddress(d.id, uid, d.data() as Record<string, unknown>);
-      if (row) list.push(row);
-    });
-    if (list.length === 0) {
-      sessionStorage.setItem(`${SUB_TO_EMBED_KEY}${uid}`, "1");
-      return;
-    }
-    const sorted = sortAddressesByRecentCreated(list);
-    const existing = await getEmbeddedAddressesFromUserDoc(uid);
-    if (existing.length > 0) {
-      sessionStorage.setItem(`${SUB_TO_EMBED_KEY}${uid}`, "1");
-      return;
-    }
-    await replaceUserEmbeddedAddresses(uid, sorted);
-    sessionStorage.setItem(`${SUB_TO_EMBED_KEY}${uid}`, "1");
-  } catch (e) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("[delivery-address] subcollection → embedded migration skipped", e);
-    }
-  }
-}
-
 async function mergeUserProfileBasics(uid: string, name: string, phone: string, email: string | null) {
   if (!db) return;
   const payload: Record<string, unknown> = {
@@ -251,15 +184,14 @@ async function mergeUserProfileBasics(uid: string, name: string, phone: string, 
 
 type DeliveryAddressContextValue = {
   addresses: DeliveryAddress[];
-  /** Last address the user tapped for delivery (persisted in `localStorage` per uid). */
   lastUsedAddressId: string | null;
   selectedAddress: DeliveryAddress | null;
   selectedId: string | null;
-  /** False when the chosen address is a `temp-*` local-only row (not yet in Firestore). */
   isSelectedAddressSynced: boolean;
   loading: boolean;
+  /** Firestore/listener failure or offline hint (empty list + message). */
+  addressesLoadError: string | null;
   isAuthenticated: boolean;
-  /** Session-only address when Firestore save fails — still allows checkout. */
   checkoutDraftAddress: DeliveryAddress | null;
   setCheckoutDraftAddress: (address: DeliveryAddress | null) => void;
   selectAddress: (id: string) => void;
@@ -278,49 +210,137 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
   const { profile, loading: profileLoading } = useUserProfile();
   const online = useOnlineStatus();
   const tempSyncInFlightRef = useRef(false);
+  const embeddedMigrateDoneRef = useRef(false);
 
-  const addresses = useMemo(
-    () => sortAddressesByRecentCreated(profile?.addresses ?? []),
-    [profile?.addresses]
-  );
-
+  const [addresses, setAddresses] = useState<DeliveryAddress[]>([]);
+  const [snapshotReady, setSnapshotReady] = useState(false);
   const [lastUsedAddressId, setLastUsedAddressId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checkoutDraftAddress, setCheckoutDraftAddressState] = useState<DeliveryAddress | null>(null);
+  const [pendingSelectedAddress, setPendingSelectedAddress] = useState<DeliveryAddress | null>(null);
+  const [addressesLoadError, setAddressesLoadError] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const selectedAddressRef = useRef<DeliveryAddress | null>(null);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
-  const loading = Boolean(uid && profileLoading);
+  /** Address list must not wait on profile load — snapshot drives truth for `users/{uid}/addresses`. */
+  const loading = Boolean(uid && !snapshotReady);
 
   const isAuthenticated = Boolean(uid);
 
   useEffect(() => {
     if (!uid) {
+      setAddresses([]);
+      setSnapshotReady(false);
+      setAddressesLoadError(null);
       setSelectedId(null);
       setCheckoutDraftAddressState(null);
+      setPendingSelectedAddress(null);
       setLastUsedAddressId(null);
+      embeddedMigrateDoneRef.current = false;
       return;
     }
     setLastUsedAddressId(readLastUsedAddressId(uid));
+    setSnapshotReady(false);
+    setAddressesLoadError(null);
+
+    let cancelled = false;
+    let unsub: (() => void) | null = null;
+    void (async () => {
+      try {
+        await ensureFirestoreOnline();
+      } catch {
+        /* non-fatal */
+      }
+      if (cancelled) return;
+
+      const u = subscribeUserAddresses(
+        uid,
+        (list) => {
+          if (process.env.NODE_ENV !== "production") {
+            console.log("User:", uid);
+            console.log("Fetched address count:", list.length, "Fetched addresses:", list);
+          }
+          setAddressesLoadError(null);
+          setAddresses(list);
+          setSnapshotReady(true);
+        },
+        (err) => {
+          console.error("[delivery-address] addresses snapshot error", err);
+          const offlineHint =
+            /offline|unavailable/i.test(err.message) || err.code === "unavailable";
+          setAddressesLoadError(
+            offlineHint
+              ? "You appear offline or Firestore is unreachable. You can still add an address when you are back online."
+              : "Could not load saved addresses. Try refreshing the page."
+          );
+          setAddresses([]);
+          setSnapshotReady(true);
+        }
+      );
+      if (cancelled) {
+        u();
+        return;
+      }
+      unsub = u;
+    })();
+
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, [uid]);
 
-  /** Legacy + subcollection → embedded (runs once per session when embedded is still empty). */
+  useEffect(() => {
+    if (!pendingSelectedAddress) return;
+    if (addresses.some((a) => a.id === pendingSelectedAddress.id)) {
+      setPendingSelectedAddress(null);
+    }
+  }, [addresses, pendingSelectedAddress]);
+
+  useEffect(() => {
+    if (!pendingSelectedAddress) return;
+    if (selectedId !== pendingSelectedAddress.id) {
+      setPendingSelectedAddress(null);
+    }
+  }, [selectedId, pendingSelectedAddress]);
+
+  /** Legacy collection → subcollection. */
   useEffect(() => {
     if (!uid || profileLoading) return;
-    if (profile?.addresses && profile.addresses.length > 0) return;
     let cancelled = false;
     void (async () => {
       await migrateLegacyTopLevelAddresses(db, uid);
-      if (cancelled) return;
-      await migrateSubcollectionToEmbedded(uid);
     })();
     return () => {
       cancelled = true;
     };
-  }, [uid, profileLoading, profile?.addresses?.length]);
+  }, [uid, profileLoading]);
+
+  /** Embedded array on user doc → subcollection (when sub empty). */
+  useEffect(() => {
+    if (!uid || !snapshotReady || embeddedMigrateDoneRef.current) return;
+    if (addresses.length > 0) {
+      embeddedMigrateDoneRef.current = true;
+      return;
+    }
+    const embedded = profile?.addresses ?? [];
+    if (embedded.length === 0) {
+      embeddedMigrateDoneRef.current = true;
+      return;
+    }
+    void migrateEmbeddedAddressesToSubcollection(uid, embedded)
+      .then(() => {
+        embeddedMigrateDoneRef.current = true;
+      })
+      .catch((e) => {
+        console.warn("[delivery-address] embedded migration skipped", e);
+        embeddedMigrateDoneRef.current = true;
+      });
+  }, [uid, snapshotReady, addresses.length, profile?.addresses]);
 
   useEffect(() => {
     if (!uid) return;
@@ -375,16 +395,24 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
   }, [uid]);
 
   const refreshAddresses = useCallback(async () => {
-    return Promise.resolve();
-  }, []);
+    if (!uid) return;
+    try {
+      await ensureFirestoreOnline();
+      const list = await getUserAddressesOnce(uid);
+      setAddresses(list);
+      setAddressesLoadError(null);
+    } catch (e) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[delivery-address] refreshAddresses failed", e);
+      }
+      setAddressesLoadError("Could not refresh addresses. Check your connection and try again.");
+    }
+  }, [uid]);
 
   const setAddressAsDefault = useCallback(
     async (id: string) => {
       if (!uid || !db) throw new Error("Sign in to manage addresses.");
-      let list = await getEmbeddedAddressesFromUserDoc(uid);
-      if (list.length === 0) return;
-      list = list.map((a) => ({ ...a, isDefault: a.id === id }));
-      await replaceUserEmbeddedAddresses(uid, list);
+      await setDefaultUserAddress(uid, id);
       setSelectedId(id);
       writeAuthSelectedId(uid, id);
     },
@@ -402,11 +430,12 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
       const isFirst = addresses.length === 0;
 
       try {
-        const saved = await saveAddress(uid, input, {
+        const saved = await saveAddressToFirestore(uid, input, {
           email: user?.email ?? null,
           isFirst
         });
         setCheckoutDraftAddressState(null);
+        setPendingSelectedAddress(saved);
         setSelectedId(saved.id);
         writeAuthSelectedId(uid, saved.id);
         writeLastUsedAddressId(uid, saved.id);
@@ -436,28 +465,9 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
       if (!uid || !db) throw new Error("Sign in to manage addresses.");
       const err = validateAddressInput(input);
       if (err) throw new Error(err);
-      const label = input.label ?? "Home";
       const user = auth.currentUser;
       await mergeUserProfileBasics(uid, input.name.trim(), input.phone.trim(), user?.email ?? null);
-
-      let list = await getEmbeddedAddressesFromUserDoc(uid);
-      const idx = list.findIndex((a) => a.id === id);
-      if (idx === -1) throw new Error("Address not found.");
-      const now = new Date().toISOString();
-      list[idx] = {
-        ...list[idx],
-        label: label as DeliveryAddress["label"],
-        name: input.name.trim(),
-        phone: input.phone.trim(),
-        addressLine: input.addressLine.trim(),
-        landmark: input.landmark.trim(),
-        city: input.city.trim(),
-        pincode: input.pincode.trim(),
-        ...(typeof input.lat === "number" && Number.isFinite(input.lat) ? { lat: input.lat } : {}),
-        ...(typeof input.lng === "number" && Number.isFinite(input.lng) ? { lng: input.lng } : {}),
-        updatedAt: now
-      };
-      await replaceUserEmbeddedAddresses(uid, list);
+      await updateUserAddressDoc(uid, id, input);
     },
     [uid]
   );
@@ -465,47 +475,45 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
   const removeAddress = useCallback(
     async (id: string): Promise<void> => {
       if (!uid || !db) throw new Error("Sign in to manage addresses.");
-      let list = await getEmbeddedAddressesFromUserDoc(uid);
-      const target = list.find((a) => a.id === id);
-      if (!target) return;
-      const wasDefault = target.isDefault;
-      list = list.filter((a) => a.id !== id);
-      if (wasDefault && list.length > 0) {
-        list = list.map((a, i) => ({ ...a, isDefault: i === 0 }));
-      }
-      await replaceUserEmbeddedAddresses(uid, list);
+      const remaining = addresses.filter((a) => a.id !== id);
+      await deleteUserAddressDoc(uid, id);
       if (selectedId === id) {
         setCheckoutDraftAddressState(null);
-        const next = list[0]?.id ?? null;
+        const next = remaining[0]?.id ?? null;
         setSelectedId(next);
         if (uid) writeAuthSelectedId(uid, next);
       }
     },
-    [uid, selectedId]
+    [uid, selectedId, addresses]
   );
 
   const selectedAddress = useMemo(() => {
     if (!selectedId) return checkoutDraftAddress;
     if (checkoutDraftAddress && checkoutDraftAddress.id === selectedId) return checkoutDraftAddress;
-    return addresses.find((a) => a.id === selectedId) ?? null;
-  }, [addresses, selectedId, checkoutDraftAddress]);
+    const fromList = addresses.find((a) => a.id === selectedId);
+    if (fromList) return fromList;
+    if (pendingSelectedAddress && pendingSelectedAddress.id === selectedId) return pendingSelectedAddress;
+    return null;
+  }, [addresses, selectedId, checkoutDraftAddress, pendingSelectedAddress]);
+
+  selectedAddressRef.current = selectedAddress;
 
   const isSelectedAddressSynced = Boolean(selectedAddress && !selectedAddress.id.startsWith("temp-"));
 
-  /** When back online, push `temp-*` address to Firestore so it syncs to the account. */
   useEffect(() => {
     if (!online || !uid) return;
-    const addr = selectedAddress;
+    const addr = selectedAddressRef.current;
     if (!addr?.id.startsWith("temp-")) return;
     if (tempSyncInFlightRef.current) return;
     tempSyncInFlightRef.current = true;
     void (async () => {
       try {
-        const saved = await syncTempAddressToAccount(uid, addr, {
+        const saved = await saveAddressToFirestore(uid, deliveryAddressToInput(addr), {
           email: auth.currentUser?.email ?? null,
           isFirst: addresses.length === 0
         });
         setCheckoutDraftAddressState(null);
+        setPendingSelectedAddress(saved);
         setSelectedId(saved.id);
         writeAuthSelectedId(uid, saved.id);
         writeLastUsedAddressId(uid, saved.id);
@@ -516,7 +524,7 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
         tempSyncInFlightRef.current = false;
       }
     })();
-  }, [online, uid, selectedAddress, addresses.length]);
+  }, [online, uid, selectedId, addresses.length]);
 
   const value = useMemo<DeliveryAddressContextValue>(
     () => ({
@@ -526,6 +534,7 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
       selectedId,
       isSelectedAddressSynced,
       loading,
+      addressesLoadError,
       isAuthenticated,
       checkoutDraftAddress,
       setCheckoutDraftAddress,
@@ -544,6 +553,7 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
       selectedId,
       isSelectedAddressSynced,
       loading,
+      addressesLoadError,
       isAuthenticated,
       checkoutDraftAddress,
       setCheckoutDraftAddress,
@@ -564,4 +574,9 @@ export function useDeliveryAddress() {
   const ctx = useContext(DeliveryAddressContext);
   if (!ctx) throw new Error("useDeliveryAddress must be used within DeliveryAddressProvider");
   return ctx;
+}
+
+/** Same as {@link useDeliveryAddress} — persistent saved addresses for checkout. */
+export function useAddressBook() {
+  return useDeliveryAddress();
 }

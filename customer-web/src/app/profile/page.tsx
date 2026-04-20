@@ -29,6 +29,9 @@ import { useToast } from "@/components/providers/toast-provider";
 import { fetchUserOrders, updateUser } from "@/lib/user-service";
 import type { DeliveryAddress, DeliveryAddressInput, SavedAddressLabel } from "@/lib/delivery-address-types";
 import { formatDeliveryAddressForOrder } from "@/lib/delivery-address-types";
+import { promiseWithTimeout } from "@/lib/promise-with-timeout";
+
+const ADDRESS_SAVE_TIMEOUT_MS = 45_000;
 
 type Section = "overview" | "orders" | "addresses" | "account";
 
@@ -175,11 +178,13 @@ function ProfileAuthenticatedPage() {
   const {
     addresses,
     loading: addressesLoading,
+    addressesLoadError,
     addAddress,
     updateAddress,
     removeAddress,
     setAddressAsDefault,
-    isAuthenticated: addressAuth
+    isAuthenticated: addressAuth,
+    refreshAddresses: refreshAddressBook
   } = useDeliveryAddress();
 
   const [section, setSection] = useState<Section>("overview");
@@ -196,6 +201,11 @@ function ProfileAuthenticatedPage() {
 
   const [addressDialogOpen, setAddressDialogOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<DeliveryAddress | null>(null);
+
+  useEffect(() => {
+    if (addressDialogOpen) return;
+    setAddressSaving(false);
+  }, [addressDialogOpen]);
   const [addressForm, setAddressForm] = useState<DeliveryAddressInput>({
     label: "Home",
     name: "",
@@ -311,33 +321,56 @@ function ProfileAuthenticatedPage() {
   }
 
   async function submitAddressForm() {
+    if (addressSaving) return;
     if (!user?.uid) {
       window.alert("User not logged in");
       return;
     }
 
-    console.log("USER ID:", user?.uid);
-    console.log(addressForm.addressLine, addressForm.city, addressForm.pincode);
+    console.log("Saving started");
+    console.log("User ID:", user?.uid);
 
     const err = validateAddressInput(addressForm);
     setAddressErrors(err);
     if (Object.keys(err).length > 0) return;
 
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      showToast({
+        type: "warning",
+        title: "You are offline",
+        description: "Connect to the internet to save addresses to your account."
+      });
+      return;
+    }
+
     setAddressSaving(true);
     try {
       if (editingAddress) {
-        await updateAddress(editingAddress.id, addressForm);
-        showToast({ title: "Address updated" });
+        await promiseWithTimeout(
+          updateAddress(editingAddress.id, addressForm),
+          ADDRESS_SAVE_TIMEOUT_MS,
+          "Save timed out. Check your connection and try again."
+        );
+        console.log("Saved in Firestore (update)");
       } else {
-        await addAddress(addressForm);
-        showToast({ title: "Address added" });
+        await promiseWithTimeout(
+          addAddress(addressForm),
+          ADDRESS_SAVE_TIMEOUT_MS,
+          "Save timed out. Check your connection and try again."
+        );
+        console.log("Saved in Firestore");
       }
       setAddressDialogOpen(false);
+      showToast({ title: editingAddress ? "Address updated" : "Address added" });
+      window.setTimeout(() => {
+        void refreshAddressBook().catch(() => {});
+      }, 300);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not save address";
       showToast({ type: "error", title: "Could not save address", description: msg });
     } finally {
       setAddressSaving(false);
+      console.log("Saving finished");
     }
   }
 
@@ -661,6 +694,18 @@ function ProfileAuthenticatedPage() {
                 </button>
               </div>
               <div className="p-6">
+                {addressesLoadError ? (
+                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50/90 px-3 py-2 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
+                    <p>{addressesLoadError}</p>
+                    <button
+                      type="button"
+                      onClick={() => void refreshAddressBook()}
+                      className="mt-2 text-xs font-semibold text-red-700 underline-offset-2 hover:underline dark:text-red-300"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : null}
                 {addressesLoading ? (
                   <p className="text-sm text-slate-500">Loading addresses…</p>
                 ) : addresses.length === 0 ? (

@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "NEXT_IGNORE_INCORRECT_LOCKFILE=1 next dev -p 3000",
-    "clean": "rm -rf .next",
+    "dev:clean": "npm run clean && NEXT_IGNORE_INCORRECT_LOCKFILE=1 next dev -p 3000",
+    "clean": "rm -rf .next node_modules/.cache",
     "build": "NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build",
     "start": "NEXT_IGNORE_INCORRECT_LOCKFILE=1 next start",
     "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . --ext .js,.cjs,.mjs,.ts,.tsx",

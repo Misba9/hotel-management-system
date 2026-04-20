@@ -1,7 +1,8 @@
 "use client";
 
-import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
+import { GoogleMap, Marker } from "@react-google-maps/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useGoogleMapsReady } from "@/components/providers/google-maps-script";
 
 const MAP_CONTAINER_STYLE = { width: "100%", height: "min(42vh, 320px)" };
 
@@ -91,10 +92,7 @@ export function DeliveryLiveMap({
   agentMarkerTitle
 }: DeliveryMapProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: apiKey,
-    id: "delivery-live-map-script"
-  });
+  const { hasApiKey, isLoaded, loadError } = useGoogleMapsReady();
 
   const riderTarget =
     rider ??
@@ -162,7 +160,7 @@ export function DeliveryLiveMap({
     restaurant?.lat ??
     (typeof lat === "number" ? lat : 0);
 
-  if (!apiKey.trim()) {
+  if (!apiKey.trim() || !hasApiKey) {
     return (
       <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-400">
         <p>

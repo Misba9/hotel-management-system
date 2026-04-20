@@ -13,7 +13,10 @@ import { CheckoutAddressPlacesSearch } from "@/components/checkout/checkout-addr
 import { isGoogleMapsConfigured } from "@/components/providers/google-maps-script";
 import { formatDistanceKm, sortAddressesSmart } from "@/lib/address-suggestions";
 import { getDistanceKm } from "@/lib/geo-distance";
+import { promiseWithTimeout } from "@/lib/promise-with-timeout";
 import type { DeliveryAddress, DeliveryAddressInput, SavedAddressLabel } from "@/lib/delivery-address-types";
+
+const SAVE_FIRESTORE_TIMEOUT_MS = 45_000;
 
 type CheckoutAddressModalProps = {
   open: boolean;
@@ -65,7 +68,8 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
     loading,
     checkoutDraftAddress,
     setCheckoutDraftAddress,
-    isSelectedAddressSynced
+    isSelectedAddressSynced,
+    refreshAddresses
   } = useDeliveryAddress();
   const { user } = useAuth();
   /** Same source as `addresses` in context — embedded on `users/{uid}.addresses`. */
@@ -74,8 +78,10 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  /** Prevents double submit before React re-renders `saving`. */
+  /** Blocks double-submit in the gap before `disabled={saving}` applies. */
   const saveInFlightRef = useRef(false);
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
   const [form, setForm] = useState<DeliveryAddressInput>({
     label: "Home",
     name: "",
@@ -127,8 +133,16 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
       setShowForm(false);
       setFormMessage(null);
       setFormErrors({});
+      setSaving(false);
+      saveInFlightRef.current = false;
     }
   }, [open]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("saving:", saving, "open:", open, "render #", renderCountRef.current);
+    }
+  }, [saving, open]);
 
   useEffect(() => {
     if (!open || !showForm || addresses.length > 0) return;
@@ -152,7 +166,7 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
     onOpenChange(false);
   }, [savedAddresses, checkoutDraftAddress?.id, onOpenChange, selectedId]);
 
-  const resetFormAfterSave = useCallback(() => {
+  const clearFormFields = useCallback(() => {
     setForm({
       label: "Home",
       name: "",
@@ -165,82 +179,87 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
     setFormErrors({});
     setFormMessage(null);
     setShowForm(false);
-    onOpenChange(false);
-  }, [onOpenChange]);
+  }, []);
 
   const handleSaveAddress = useCallback(async () => {
-    if (saving || saveInFlightRef.current) return;
     if (!user?.uid) {
-      window.alert("User not logged in");
+      window.alert("Please sign in to save an address.");
       return;
     }
-
-    console.log("USER ID:", user?.uid);
-    console.log(form.addressLine, form.city, form.pincode);
 
     setFormMessage(null);
     const err = validateNewAddress(form);
     setFormErrors(err);
     if (Object.keys(err).length > 0) return;
 
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      saveInFlightRef.current = true;
-      showToast({
-        title: "You are offline",
-        description: "Using this address for checkout. It will sync to your account when you are back online.",
-        type: "warning"
-      });
-      const tempAddress = formToTempDelivery(user.uid, form);
-      setCheckoutDraftAddress(tempAddress);
-      resetFormAfterSave();
-      saveInFlightRef.current = false;
-      return;
-    }
+    if (saveInFlightRef.current) return;
 
     saveInFlightRef.current = true;
     setSaving(true);
+    console.log("Saving started");
+    console.log("User ID:", user.uid);
 
     try {
-      await addAddress(form);
-      showToast({ title: "Address saved", type: "success" });
-      resetFormAfterSave();
-    } catch (err) {
-      console.error("Save failed:", err);
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const tempAddress = formToTempDelivery(user.uid, form);
+        setCheckoutDraftAddress(tempAddress);
+        onOpenChange(false);
+        clearFormFields();
+        showToast({
+          title: "You are offline",
+          description: "Using this address for checkout. It will sync to your account when you are back online.",
+          type: "warning"
+        });
+        return;
+      }
+
+      const saved = await promiseWithTimeout(
+        addAddress(form),
+        SAVE_FIRESTORE_TIMEOUT_MS,
+        "Save timed out. Check your internet connection and try again."
+      );
+
+      console.log("Saved in Firestore", saved?.id);
+      onOpenChange(false);
+      clearFormFields();
+      showToast({
+        title: "Address saved",
+        description: "Your delivery address is stored on your account.",
+        type: "success"
+      });
+      window.setTimeout(() => {
+        void refreshAddresses().catch(() => {
+          /* best-effort; listener updates list */
+        });
+      }, 300);
+    } catch (error) {
+      console.error("Save error:", error);
+      const offlineMsg =
+        error instanceof FirebaseError &&
+        (error.code === "unavailable" || /offline|client is offline/i.test(error.message));
       const msg =
-        err instanceof FirebaseError
-          ? err.code === "permission-denied"
+        error instanceof FirebaseError
+          ? error.code === "permission-denied"
             ? "Permission denied. Sign out and sign in again, then retry."
-            : err.code === "unavailable"
-              ? "Firestore is temporarily unavailable. Check your connection."
-              : err.message
-          : err instanceof Error
-            ? err.message
+            : offlineMsg
+              ? "Firestore could not reach the server. Check your connection or try again in a moment."
+              : error.code === "unavailable"
+                ? "Firestore is temporarily unavailable. Check your connection."
+                : error.message
+          : error instanceof Error
+            ? error.message
             : "Unknown error";
       showToast({
         type: "error",
-        title: "Could not save address",
+        title: "Failed to save address",
         description: msg
       });
     } finally {
       saveInFlightRef.current = false;
       setSaving(false);
+      console.log("Saving finished");
     }
-  }, [addAddress, form, resetFormAfterSave, saving, setCheckoutDraftAddress, showToast, user?.uid]);
-
-  /** Hard fail-safe: never leave the save button stuck if Firestore hangs past our race timeout. */
-  useEffect(() => {
-    if (!saving) return;
-    const safetyTimer = window.setTimeout(() => {
-      saveInFlightRef.current = false;
-      setSaving(false);
-      showToast({
-        title: "Something went wrong",
-        description: "Try saving again.",
-        type: "error"
-      });
-    }, 8000);
-    return () => clearTimeout(safetyTimer);
-  }, [saving, showToast]);
+  }, [addAddress, clearFormFields, form, onOpenChange, refreshAddresses, setCheckoutDraftAddress, showToast, user?.uid]);
 
   useEffect(() => {
     if (!open) return;
@@ -528,7 +547,7 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
                           onClick={() => void handleSaveAddress()}
                           className="flex-1 rounded-lg bg-orange-500 py-2 text-sm font-semibold text-white shadow-sm transition-opacity disabled:pointer-events-none disabled:opacity-60"
                         >
-                          {saving ? "Saving…" : "Save & use"}
+                          {saving ? "Saving..." : "Save & use"}
                         </button>
                       </div>
                     </div>

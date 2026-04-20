@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode
 } from "react";
@@ -67,28 +68,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [readyToSync, setReadyToSync] = useState(false);
   const [authUid, setAuthUid] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const pendingToastRef = useRef<{ title: string; description?: string } | null>(null);
+  const hydratedLocalRef = useRef(false);
+  const fetchedServerCartRef = useRef<string | null>(null);
   const { showToast } = useToast();
 
   const openCart = useCallback(() => setIsOpen(true), []);
   const closeCart = useCallback(() => setIsOpen(false), []);
 
   const addItem = useCallback(
-    (product: Product) =>
+    (product: Product) => {
       setItems((prev) => {
         const exists = prev.find((item) => item.productId === product.id);
         if (exists) {
-          showToast({
+          pendingToastRef.current = {
             title: "Updated cart",
             description: `${product.name} quantity increased`
-          });
+          };
           return prev.map((item) =>
             item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
           );
         }
-        showToast({
+        pendingToastRef.current = {
           title: "Added to cart",
           description: `${product.name} is now in your cart`
-        });
+        };
         return [
           ...prev,
           {
@@ -99,23 +103,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
             quantity: 1
           }
         ];
-      }),
-    [showToast]
+      });
+    },
+    []
   );
 
   const removeItem = useCallback(
-    (productId: string) =>
+    (productId: string) => {
       setItems((prev) => {
         const item = prev.find((entry) => entry.productId === productId);
         if (item) {
-          showToast({
+          pendingToastRef.current = {
             title: "Removed from cart",
             description: item.name
-          });
+          };
         }
         return prev.filter((entry) => entry.productId !== productId);
-      }),
-    [showToast]
+      });
+    },
+    []
   );
 
   const updateQty = useCallback((productId: string, quantity: number) => {
@@ -173,6 +179,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const payload = pendingToastRef.current;
+    if (!payload) return;
+    showToast(payload);
+    pendingToastRef.current = null;
+  }, [items, showToast]);
+
+  useEffect(() => {
+    if (hydratedLocalRef.current) return;
+    hydratedLocalRef.current = true;
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(CART_STORAGE_KEY) : null;
     const parsed = loadPersistedCart(raw);
     if (parsed) {
@@ -185,6 +200,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!authReady) return;
     if (!authUid) {
+      fetchedServerCartRef.current = null;
+      setReadyToSync(true);
+      return;
+    }
+    if (fetchedServerCartRef.current === authUid) {
       setReadyToSync(true);
       return;
     }
@@ -209,6 +229,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setItems(nextItems);
         setDiscount(0);
         setCouponCode("");
+        fetchedServerCartRef.current = authUid;
       } finally {
         if (!cancelled) setReadyToSync(true);
       }

@@ -9,6 +9,17 @@ loadEnvConfig(__dirname);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  /**
+   * Persistent webpack filesystem cache under `.next/cache/webpack` can get ENOENT/corrupt
+   * if `.next` is removed while `next dev` runs or installs race. Memory cache avoids broken
+   * `/_next/static` 404 storms in dev (HTML 200, all chunks 404).
+   */
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.cache = { type: "memory" };
+    }
+    return config;
+  },
   images: {
     domains: [
       "images.unsplash.com",

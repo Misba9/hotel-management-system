@@ -1,6 +1,7 @@
 import { doc, setDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, ensureFirestoreOnline } from "@/lib/firebase";
 
+/** Flat summary on `users/{userId}.address` (mirrors form lines + phone). */
 export type UserAddressPayload = {
   fullAddress: string;
   city: string;
@@ -8,25 +9,44 @@ export type UserAddressPayload = {
   phone: string;
 };
 
-/** Flat `users/{userId}.address` map (dashboards / debugging) — complements `addresses[]` used by checkout. */
-export async function saveUserAddress(userId: string, addressData: UserAddressPayload): Promise<void> {
+/**
+ * Writes `users/{userId}.address` with merge. Keeps same field names the app already uses.
+ * `fullAddress` comes from `data.fullAddress` or `data.addressLine` when passed from forms.
+ */
+export async function saveUserAddress(
+  userId: string,
+  data: UserAddressPayload | { addressLine: string; city: string; pincode: string; phone: string }
+): Promise<boolean> {
   try {
-    const userRef = doc(db, "users", userId);
+    const fullAddress =
+      "fullAddress" in data ? data.fullAddress.trim() : data.addressLine.trim();
+    const city = data.city.trim();
+    const pincode = data.pincode.trim();
+    const phone = data.phone.trim();
+
+    console.log("[saveUserAddress] start", userId, { fullAddress: fullAddress.slice(0, 48), city, pincode });
+
+    await ensureFirestoreOnline();
+    const ref = doc(db, "users", userId);
 
     await setDoc(
-      userRef,
+      ref,
       {
-        address: addressData,
-        updatedAt: new Date()
+        address: {
+          fullAddress,
+          city,
+          pincode,
+          phone,
+          updatedAt: new Date()
+        }
       },
       { merge: true }
     );
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log("Address saved");
-    }
+    console.log("[saveUserAddress] success");
+    return true;
   } catch (error) {
-    console.error("Error saving address:", error);
+    console.error("[saveUserAddress] error", error);
     throw error;
   }
 }

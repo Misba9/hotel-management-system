@@ -10,6 +10,8 @@ type CustomerListItem = {
   phone: string;
   email: string;
   createdAt: string | null;
+  /** Length of `addresses` on `customers/{id}`. */
+  addressCount: number;
 };
 
 function toIso(value: unknown): string | null {
@@ -25,15 +27,17 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response;
 
   try {
-    const snap = await adminDb.collection("users").orderBy("createdAt", "desc").limit(300).get();
+    const snap = await adminDb.collection("customers").orderBy("createdAt", "desc").limit(400).get();
     const items: CustomerListItem[] = snap.docs.map((d) => {
-      const row = d.data();
+      const row = d.data() as Record<string, unknown>;
+      const addresses = Array.isArray(row.addresses) ? row.addresses : [];
       return {
         id: d.id,
         name: String(row.name ?? ""),
         phone: String(row.phone ?? ""),
         email: String(row.email ?? ""),
-        createdAt: toIso(row.createdAt)
+        createdAt: toIso(row.createdAt),
+        addressCount: addresses.length
       };
     });
     return Response.json({ items }, { status: 200, headers: { "Cache-Control": "no-store" } });

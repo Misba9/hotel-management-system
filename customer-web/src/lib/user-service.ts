@@ -2,7 +2,6 @@ import type { User } from "firebase/auth";
 import {
   collection,
   doc,
-  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -13,9 +12,10 @@ import {
   where,
   type Timestamp
 } from "firebase/firestore";
+import { CUSTOMERS_COLLECTION } from "@/lib/customer-doc-sync";
 import type { DeliveryAddress } from "@/lib/delivery-address-types";
 import { parseAddressesField } from "@/lib/parse-embedded-addresses";
-import { db } from "@/lib/firebase";
+import { db, ensureFirestoreOnline, safeGetDoc } from "@/lib/firebase";
 import { summarizeOrderItems } from "@shared/utils/order-items-summary";
 import { withRetry } from "@shared/utils/retry";
 
@@ -75,7 +75,7 @@ export async function createUserIfNotExists(user: User): Promise<void> {
   const ref = doc(db, USERS, user.uid);
   await withRetry(
     async () => {
-      const snap = await getDoc(ref);
+      const snap = await safeGetDoc(ref);
       if (snap.exists()) return;
       await setDoc(ref, {
         uid: user.uid,
@@ -125,7 +125,8 @@ export async function loadUserProfileForSession(user: User): Promise<FirestoreUs
 }
 
 export async function getUser(uid: string): Promise<FirestoreUserProfile | null> {
-  const snap = await getDoc(doc(db, USERS, uid));
+  await ensureFirestoreOnline();
+  const snap = await safeGetDoc(doc(db, USERS, uid));
   if (!snap.exists()) return null;
   return mapUserProfileFromDoc(uid, snap.data() as Record<string, unknown>);
 }
@@ -140,6 +141,17 @@ export async function updateUser(
     phone: data.phone,
     updatedAt: serverTimestamp()
   });
+  await setDoc(
+    doc(db, CUSTOMERS_COLLECTION, uid),
+    {
+      uid,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      updatedAt: serverTimestamp()
+    },
+    { merge: true }
+  );
 }
 
 function createdAtToIso(value: unknown): string {

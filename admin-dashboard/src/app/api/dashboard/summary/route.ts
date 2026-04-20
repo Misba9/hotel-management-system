@@ -14,7 +14,7 @@ export type DashboardSummaryPayload = {
   revenueToday: number;
   /** Orders currently in pipeline (not delivered / cancelled / rejected). */
   activeOrders: number;
-  /** Distinct user profiles in `users` (best-effort count). */
+  /** Documents in `customers` (synced from the customer app). */
   customers: number;
 };
 
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
 
     const activeStatuses = ["pending", "accepted", "preparing", "ready", "out_for_delivery"];
 
-    const [todaySnap, pendingSnap, activeSnap, usersCountSnap] = await Promise.all([
+    const [todaySnap, pendingSnap, activeSnap, customersCountSnap] = await Promise.all([
       adminDb
         .collection("orders")
         .where("createdAt", ">=", tsStart)
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
         .get(),
       adminDb.collection("orders").where("status", "==", "pending").get(),
       adminDb.collection("orders").where("status", "in", activeStatuses).get(),
-      adminDb.collection("users").count().get().catch(() => null)
+      adminDb.collection("customers").count().get().catch(() => null)
     ]);
 
     let revenueToday = 0;
@@ -80,7 +80,7 @@ export async function GET(request: Request) {
       revenueToday += totalAmountOf(doc.data() as Record<string, unknown>);
     }
 
-    const customers = usersCountSnap?.data().count ?? 0;
+    const customers = customersCountSnap?.data().count ?? 0;
 
     const payload: DashboardSummaryPayload = {
       ordersToday: todaySnap.size,

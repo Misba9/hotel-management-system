@@ -340,6 +340,19 @@ service cloud.firestore {
       }
     }
 
+    /**
+     * Customer directory: customer app mirrors `users/*` + saved addresses here for admin list/search.
+     * Staff dashboard reads with `role` claim; customers read/write only their own doc.
+     */
+    match /customers/{userId} {
+      allow read: if isOwner(userId) ||
+        hasAnyRole(["admin", "manager", "kitchen", "cashier", "waiter", "delivery"]);
+      allow create: if isOwner(userId) && request.resource.data.uid == userId;
+      allow update: if isOwner(userId) &&
+        request.resource.data.uid == resource.data.uid;
+      allow delete: if isOwner(userId);
+    }
+
     match /roles/{roleId} {
       allow read: if isAuthed();
       allow write: if hasRole("admin");

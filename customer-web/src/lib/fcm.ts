@@ -3,12 +3,11 @@ import {
   arrayUnion,
   deleteField,
   doc,
-  getDoc,
   setDoc,
   updateDoc
 } from "firebase/firestore";
 import { getToken, isSupported, onMessage, type Messaging } from "firebase/messaging";
-import { db, getClientMessaging } from "@/lib/firebase";
+import { db, getClientMessaging, safeGetDoc } from "@/lib/firebase";
 
 let lastRegisteredToken: string | null = null;
 let lastRegisteredUid: string | null = null;
@@ -23,7 +22,7 @@ export async function removeFcmTokenFromUser(uid: string): Promise<void> {
   if (!token) return;
   try {
     const ref = doc(db, "users", uid);
-    const snap = await getDoc(ref);
+    const snap = await safeGetDoc(ref);
     const data = snap.data() as { fcmToken?: string } | undefined;
     const updates: Record<string, unknown> = {
       fcmTokens: arrayRemove(token)

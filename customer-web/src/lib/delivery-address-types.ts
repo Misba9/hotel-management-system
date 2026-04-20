@@ -1,4 +1,7 @@
-/** Saved on Firestore `users/{userId}` field `addresses` (array) — see `parse-embedded-addresses.ts`. */
+/**
+ * Saved addresses: primary store is Firestore `users/{userId}/addresses/{addressId}` (subcollection).
+ * Legacy embedded `users/{userId}.addresses` may still exist and is migrated client-side when the subcollection is empty.
+ */
 export type SavedAddressLabel = "Home" | "Work" | "Other";
 
 export type DeliveryAddress = {
