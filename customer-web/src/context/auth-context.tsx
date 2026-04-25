@@ -49,12 +49,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lastSyncedUidRef = useRef<string | null>(null);
 
   useEffect(() => {
+    /** Do not await persistence before subscribing — a stuck `setPersistence` left `authReady` false forever. */
     void setPersistence(auth, browserLocalPersistence).catch(() => {
-      /* ignore — e.g. SSR or unsupported */
+      /* ignore — e.g. unsupported environment */
     });
-  }, []);
 
-  useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setAuthReady(true);
@@ -68,11 +67,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await syncUserToFirestore(u);
         } catch (err) {
-          console.log("skip sync (offline or transient)", err);
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[auth] syncUserToFirestore skipped:", err);
+          }
         }
       })();
     });
-    return () => unsub();
+
+    const fallbackMs = 2000;
+    const fallback = globalThis.setTimeout(() => {
+      setAuthReady((ready) => {
+        if (ready) return ready;
+        setUser(auth.currentUser);
+        return true;
+      });
+    }, fallbackMs);
+
+    return () => {
+      globalThis.clearTimeout(fallback);
+      unsub();
+    };
   }, []);
 
   useEffect(() => {

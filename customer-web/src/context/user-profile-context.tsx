@@ -11,14 +11,13 @@ import {
   type ReactNode
 } from "react";
 import type { User } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/context/auth-context";
-import { db, isFirebaseClientConfigured } from "@/lib/firebase";
+import { isFirebaseClientConfigured } from "@/lib/firebase";
 import {
   getUser,
-  mapUserProfileFromDoc,
   type FirestoreUserProfile
 } from "@/lib/user-service";
+import { listenUserProfile } from "@/lib/listen-user-profile";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { withRetry } from "@shared/utils/retry";
 
@@ -106,24 +105,17 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let unsubscribe: (() => void) | null = null;
 
-    const userRef = doc(db, "users", user.uid);
-
     const attach = () => {
       unsubscribe?.();
-      unsubscribe = onSnapshot(
-        userRef,
-        (snap) => {
+      unsubscribe = listenUserProfile(user.uid, {
+        onData: (nextProfile) => {
           if (cancelled) return;
           snapshotRetryRef.current = 0;
-          if (snap.exists()) {
-            setProfile(mapUserProfileFromDoc(user.uid, snap.data() as Record<string, unknown>));
-          } else {
-            setProfile(fallbackProfileFromAuth(user));
-          }
+          setProfile(nextProfile ?? fallbackProfileFromAuth(user));
           setLoading(false);
           setError(null);
         },
-        (err) => {
+        onError: (err) => {
           console.error("[user-profile]", err);
           if (cancelled) return;
           setLoading(false);
@@ -138,7 +130,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
             }, SNAPSHOT_RETRY_MS);
           }
         }
-      );
+      });
     };
 
     attach();

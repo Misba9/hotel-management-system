@@ -9,12 +9,24 @@ const optionalImageUrl = z.union([z.literal(""), z.string().url()]);
 const menuCreateSchema = z.object({
   name: z.string().min(2).max(120),
   price: z.number().nonnegative(),
+  /** Optional client-generated Firestore doc id (matches Storage upload path). */
+  id: z.string().min(10).max(128).optional(),
   categoryId: z.string().min(1).optional(),
+  categoryName: z.string().min(1).max(120).optional(),
   branchId: z.string().min(1).optional(),
   description: z.string().max(500).optional(),
+  size: z.string().max(120).optional(),
+  ingredients: z.string().max(4000).optional(),
   imageUrl: optionalImageUrl.optional(),
-  available: z.boolean().optional()
+  available: z.boolean().optional(),
+  isAvailable: z.boolean().optional()
 });
+
+async function resolveCategoryName(categoryId: string | undefined): Promise<string> {
+  if (!categoryId) return "";
+  const snap = await adminDb.collection("menu_categories").doc(categoryId).get();
+  return String(snap.data()?.name ?? "");
+}
 
 export async function GET(request: Request) {
   const auth = await requireAdmin(request, {
@@ -22,16 +34,33 @@ export async function GET(request: Request) {
   });
   if (!auth.ok) return auth.response;
   try {
-    const snap = await adminDb.collection("products").orderBy("name").get();
+    const [catSnap, snap] = await Promise.all([
+      adminDb.collection("menu_categories").get(),
+      adminDb.collection("products").orderBy("name").get()
+    ]);
+    const categoryNameByDocId = new Map<string, string>();
+    catSnap.docs.forEach((cd) => {
+      const data = cd.data() as Record<string, unknown>;
+      categoryNameByDocId.set(cd.id, String(data.name ?? "").trim());
+    });
+
     const items = snap.docs.map((doc) => {
       const d = doc.data() as Record<string, unknown>;
+      const categoryId = String(d.categoryId ?? d.category ?? "");
+      const available = d.available !== false && d.availability !== false && d.isAvailable !== false;
+      const storedName = String(d.categoryName ?? "").trim();
+      const resolvedName =
+        storedName || (categoryId ? categoryNameByDocId.get(categoryId) ?? "" : "");
       return {
         id: doc.id,
         name: String(d.name ?? ""),
         price: Number(d.price ?? 0),
-        categoryId: String(d.categoryId ?? d.category ?? "fresh_juices"),
+        categoryId,
+        categoryName: resolvedName,
         imageUrl: String(d.imageUrl ?? d.image ?? ""),
-        available: d.available !== false && d.availability !== false
+        size: String(d.size ?? ""),
+        ingredients: String(d.ingredients ?? d.description ?? ""),
+        available
       };
     });
     if (process.env.NODE_ENV !== "production") {
@@ -53,19 +82,31 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
   try {
     const body = menuCreateSchema.parse(await request.json());
-    const ref = adminDb.collection("products").doc();
+    const ref = body.id ? adminDb.collection("products").doc(body.id) : adminDb.collection("products").doc();
+    const categoryId = body.categoryId ?? "fresh_juices";
+    let categoryName = (body.categoryName ?? "").trim();
+    if (!categoryName) {
+      categoryName = await resolveCategoryName(categoryId);
+    }
+    const available = body.isAvailable ?? body.available ?? true;
+    const ingredients = (body.ingredients ?? body.description ?? "").trim();
+    const size = (body.size ?? "").trim();
     await ref.set({
       id: ref.id,
       name: body.name,
       price: body.price,
       image: body.imageUrl ?? "",
       imageUrl: body.imageUrl ?? "",
-      category: body.categoryId ?? "fresh_juices",
-      categoryId: body.categoryId ?? "fresh_juices",
-      availability: body.available ?? true,
+      category: categoryId,
+      categoryId,
+      categoryName,
+      size,
+      ingredients,
+      availability: available,
+      isAvailable: available,
       branchId: body.branchId ?? "hyderabad-main",
-      description: body.description ?? "",
-      available: body.available ?? true,
+      description: ingredients || body.description?.trim() || "",
+      available,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       tags: []

@@ -327,6 +327,235 @@ service cloud.firestore {
         request.resource.data.status in ["pending", "paid", "failed", "refunded"];
     }
 
+    /** Dine-in lifecycle ticket on `orders` (no `userId` / `branchId` / pipeline fields). */
+    function isRestaurantLifecycleOrderDoc(data) {
+      return data.keys().hasAll([
+            "id",
+            "tableNumber",
+            "items",
+            "total",
+            "status",
+            "paymentStatus",
+            "tokenNumber",
+            "createdAt"
+          ]) &&
+        data.status in ["pending", "preparing", "ready", "served"] &&
+        data.paymentStatus in ["pending", "paid"] &&
+        !data.keys().hasAny(["userId", "branchId", "orderType", "assignedTo"]);
+    }
+
+    function validRestaurantLifecycleOrderCreate(orderId) {
+      return request.resource.data.keys().hasOnly([
+            "id",
+            "tableNumber",
+            "items",
+            "total",
+            "status",
+            "paymentStatus",
+            "tokenNumber",
+            "createdAt",
+            "updatedAt"
+          ]) &&
+        request.resource.data.id == orderId &&
+        request.resource.data.tableNumber is int &&
+        request.resource.data.tableNumber >= 0 &&
+        request.resource.data.items is list &&
+        request.resource.data.items.size() > 0 &&
+        request.resource.data.items.size() <= 200 &&
+        request.resource.data.total is number &&
+        request.resource.data.total >= 0 &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.paymentStatus == "pending" &&
+        request.resource.data.tokenNumber is int &&
+        request.resource.data.tokenNumber >= 0 &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+    }
+
+    function restaurantLifecycleKitchenUpdateOk() {
+      return hasAnyRole(["kitchen_staff", "kitchen"]) &&
+        staffUserActive() &&
+        isRestaurantLifecycleOrderDoc(resource.data) &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "updatedAt"]) &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.status in ["pending", "preparing", "ready", "served"] &&
+        request.resource.data.paymentStatus == resource.data.paymentStatus &&
+        request.resource.data.tokenNumber == resource.data.tokenNumber &&
+        request.resource.data.tableNumber == resource.data.tableNumber &&
+        request.resource.data.items == resource.data.items &&
+        request.resource.data.total == resource.data.total &&
+        (
+          (resource.data.status == "pending" && request.resource.data.status == "preparing") ||
+          (resource.data.status == "preparing" && request.resource.data.status == "ready")
+        );
+    }
+
+    function restaurantLifecycleWaiterUpdateOk() {
+      return hasRole("waiter") &&
+        staffUserActive() &&
+        isRestaurantLifecycleOrderDoc(resource.data) &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "updatedAt"]) &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.status in ["pending", "preparing", "ready", "served"] &&
+        request.resource.data.paymentStatus == resource.data.paymentStatus &&
+        request.resource.data.tokenNumber == resource.data.tokenNumber &&
+        request.resource.data.tableNumber == resource.data.tableNumber &&
+        request.resource.data.items == resource.data.items &&
+        request.resource.data.total == resource.data.total &&
+        resource.data.status == "ready" &&
+        request.resource.data.status == "served";
+    }
+
+    /** Waiter accepts ticket from `pending` → `preparing` (same as kitchen first hop). */
+    function restaurantLifecycleWaiterAcceptUpdateOk() {
+      return hasRole("waiter") &&
+        staffUserActive() &&
+        isRestaurantLifecycleOrderDoc(resource.data) &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "updatedAt"]) &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.status in ["pending", "preparing", "ready", "served"] &&
+        request.resource.data.paymentStatus == resource.data.paymentStatus &&
+        request.resource.data.tokenNumber == resource.data.tokenNumber &&
+        request.resource.data.tableNumber == resource.data.tableNumber &&
+        request.resource.data.items == resource.data.items &&
+        request.resource.data.total == resource.data.total &&
+        resource.data.status == "pending" &&
+        request.resource.data.status == "preparing";
+    }
+
+    function restaurantLifecycleCashierPaymentUpdateOk() {
+      return hasRole("cashier") &&
+        staffUserActive() &&
+        isRestaurantLifecycleOrderDoc(resource.data) &&
+        resource.data.status == "served" &&
+        resource.data.paymentStatus == "pending" &&
+        request.resource.data.paymentStatus == "paid" &&
+        request.resource.data.status == "served" &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(["paymentStatus", "updatedAt"]) &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.tokenNumber == resource.data.tokenNumber &&
+        request.resource.data.tableNumber == resource.data.tableNumber &&
+        request.resource.data.items == resource.data.items &&
+        request.resource.data.total == resource.data.total;
+    }
+
+    function validStaffUserCreate(uid) {
+      return request.resource.data.keys().hasOnly(["uid", "name", "role", "createdAt", "updatedAt"]) &&
+        request.resource.data.uid == uid &&
+        request.resource.data.uid is string &&
+        request.resource.data.name is string &&
+        request.resource.data.role is string &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+    }
+
+    function validStaffUserUpdate(uid) {
+      return request.resource.data.uid == uid &&
+        request.resource.data.uid == resource.data.uid &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(["name", "role", "updatedAt"]) &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.name is string &&
+        request.resource.data.role is string;
+    }
+
+    function validDeliveryCreate() {
+      return request.resource.data.keys().hasOnly([
+            "orderId",
+            "customerName",
+            "mobile",
+            "address",
+            "status",
+            "deliveryBoyId",
+            "createdAt",
+            "updatedAt"
+          ]) &&
+        request.resource.data.orderId is string &&
+        request.resource.data.customerName is string &&
+        request.resource.data.mobile is string &&
+        request.resource.data.address is string &&
+        request.resource.data.status == "assigned" &&
+        (
+          request.resource.data.deliveryBoyId == null ||
+          (request.resource.data.deliveryBoyId is string && request.resource.data.deliveryBoyId != "")
+        ) &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+    }
+
+    function deliveryRiderProgressUpdateOk() {
+      return hasAnyRole(["delivery_boy", "delivery"]) &&
+        staffUserActive() &&
+        resource.data.deliveryBoyId == request.auth.uid &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "updatedAt"]) &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.orderId == resource.data.orderId &&
+        request.resource.data.customerName == resource.data.customerName &&
+        request.resource.data.mobile == resource.data.mobile &&
+        request.resource.data.address == resource.data.address &&
+        request.resource.data.deliveryBoyId == resource.data.deliveryBoyId &&
+        (
+          (resource.data.status == "assigned" && request.resource.data.status == "picked") ||
+          (resource.data.status == "picked" && request.resource.data.status == "delivered")
+        );
+    }
+
+    function deliveryManagerPatchOk() {
+      return hasAnyRole(["manager", "admin"]) &&
+        staffUserActive() &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          "deliveryBoyId",
+          "status",
+          "updatedAt"
+        ]) &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.orderId == resource.data.orderId &&
+        request.resource.data.customerName == resource.data.customerName &&
+        request.resource.data.mobile == resource.data.mobile &&
+        request.resource.data.address == resource.data.address &&
+        request.resource.data.status in ["assigned", "picked", "delivered"];
+    }
+
+    function validPrinterCreate() {
+      return request.resource.data.keys().hasOnly(["name", "type", "ipAddress", "createdAt", "updatedAt"]) &&
+        request.resource.data.name is string &&
+        request.resource.data.type in ["wifi", "bluetooth"] &&
+        request.resource.data.ipAddress is string &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+    }
+
+    function validPrinterUpdate() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(["name", "type", "ipAddress", "updatedAt"]) &&
+        request.resource.data.name is string &&
+        request.resource.data.type in ["wifi", "bluetooth"] &&
+        request.resource.data.ipAddress is string &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    /** Monotonic order token counter (`nextToken`) — incremented by waiter POS. */
+    match /appMeta/{docId} {
+      allow read: if staffUserActive() &&
+        hasAnyRole(["waiter", "cashier", "kitchen", "kitchen_staff", "manager", "admin"]);
+      allow create: if docId == "orderToken" &&
+        staffUserActive() &&
+        hasAnyRole(["waiter", "manager", "admin"]) &&
+        request.resource.data.keys().hasOnly(["nextToken", "updatedAt"]) &&
+        request.resource.data.nextToken is int &&
+        request.resource.data.nextToken >= 1 &&
+        request.resource.data.nextToken <= 999999 &&
+        request.resource.data.updatedAt == request.time;
+      allow update: if docId == "orderToken" &&
+        staffUserActive() &&
+        hasAnyRole(["waiter", "manager", "admin"]) &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(["nextToken", "updatedAt"]) &&
+        request.resource.data.nextToken is int &&
+        request.resource.data.nextToken == resource.data.nextToken + 1 &&
+        request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
     match /users/{userId} {
       /**
        * TEMP: permissive while debugging client address/profile writes on `users/{userId}`.
@@ -459,9 +688,16 @@ service cloud.firestore {
         (request.resource.data.userId == request.auth.uid && validOrderWrite()) ||
         (hasRole("cashier") && staffUserActive() && validUnifiedCashierOrderCreate(orderId)) ||
         (hasRole("waiter") && staffUserActive() && validUnifiedWaiterOrderCreate(orderId)) ||
-        (hasRole("waiter") && staffUserActive() && validWaiterTableOrderCreate(orderId))
+        (hasRole("waiter") && staffUserActive() && validWaiterTableOrderCreate(orderId)) ||
+        (staffUserActive() &&
+          hasAnyRole(["waiter", "cashier", "manager", "admin"]) &&
+          validRestaurantLifecycleOrderCreate(orderId))
       );
       allow update: if isAuthed() && (
+        restaurantLifecycleKitchenUpdateOk() ||
+        restaurantLifecycleWaiterAcceptUpdateOk() ||
+        restaurantLifecycleWaiterUpdateOk() ||
+        restaurantLifecycleCashierPaymentUpdateOk() ||
         kitchenTableOrderProgressUpdate() ||
         waiterTableOrderBillRequestUpdate() ||
         waiterTableOrderMarkServedUpdate() ||
@@ -553,6 +789,20 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
+    /**
+     * Staff roster (canonical shape): `uid`, `name`, `role` — timestamps via `serverTimestamp()`.
+     * Use Admin or manager tooling to keep `staffUsers` in sync with `staff_users` during migration if needed.
+     */
+    match /staffUsers/{uid} {
+      allow read: if isAuthed() && (
+        request.auth.uid == uid ||
+        hasAnyRole(["admin", "manager", "kitchen", "kitchen_staff", "cashier", "waiter", "delivery_boy", "delivery"])
+      );
+      allow create: if hasAnyRole(["admin", "manager"]) && (hasRole("admin") || staffUserActive()) && validStaffUserCreate(uid);
+      allow update: if hasAnyRole(["admin", "manager"]) && (hasRole("admin") || staffUserActive()) && validStaffUserUpdate(uid);
+      allow delete: if hasRole("admin");
+    }
+
     match /inventory/{id} {
       allow read: if hasAnyRole(["manager", "admin", "kitchen_staff"]);
       allow write: if hasAnyRole(["manager", "admin", "kitchen_staff"]);
@@ -606,6 +856,70 @@ service cloud.firestore {
       allow write: if hasAnyRole(["delivery_boy", "delivery", "manager", "admin"]);
     }
 
+    /** Customer may read a delivery row when they own the linked `orders/{orderId}` (tracker + chat). */
+    function deliveryCustomerOwnsOrder(deliveryId) {
+      let d = get(/databases/$(database)/documents/deliveries/$(deliveryId)).data;
+      return d.keys().hasAll(["orderId"]) &&
+        d.orderId is string &&
+        exists(/databases/$(database)/documents/orders/$(d.orderId)) &&
+        get(/databases/$(database)/documents/orders/$(d.orderId)).data.userId == request.auth.uid;
+    }
+
+    /** Outbound delivery runs (restaurant schema) — `deliveryBoyId` = rider uid when assigned. */
+    match /deliveries/{deliveryId} {
+      allow read: if isAuthed() && (
+        hasAnyRole(["admin", "manager", "cashier", "delivery_boy", "delivery"]) ||
+        resource.data.deliveryBoyId == request.auth.uid ||
+        deliveryCustomerOwnsOrder(deliveryId)
+      );
+      allow create: if staffUserActive() && hasAnyRole(["manager", "admin", "cashier"]) && validDeliveryCreate();
+      allow update: if isAuthed() && (
+        deliveryRiderProgressUpdateOk() ||
+        deliveryManagerPatchOk()
+      );
+      allow delete: if hasRole("admin");
+
+      /** Basic rider ↔ store thread (rider is assignee on parent delivery). */
+      match /messages/{msgId} {
+        function deliveryThreadParticipant() {
+          return exists(/databases/$(database)/documents/deliveries/$(deliveryId)) &&
+            get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.deliveryBoyId == request.auth.uid;
+        }
+
+        function validDeliveryChatMessage() {
+          return request.resource.data.keys().hasOnly(["authorUid", "body", "createdAt"]) &&
+            request.resource.data.authorUid == request.auth.uid &&
+            request.resource.data.authorUid is string &&
+            request.resource.data.body is string &&
+            request.resource.data.body.size() > 0 &&
+            request.resource.data.body.size() <= 2000 &&
+            request.resource.data.createdAt == request.time;
+        }
+
+        allow read: if isAuthed() && (
+          hasAnyRole(["manager", "admin", "cashier"]) ||
+          deliveryThreadParticipant() ||
+          deliveryCustomerOwnsOrder(deliveryId)
+        );
+        allow create: if isAuthed() && validDeliveryChatMessage() && (
+          (
+            hasAnyRole(["delivery_boy", "delivery"]) &&
+            staffUserActive() &&
+            deliveryThreadParticipant()
+          ) ||
+          deliveryCustomerOwnsOrder(deliveryId)
+        );
+        allow update, delete: if false;
+      }
+    }
+
+    match /printers/{printerId} {
+      allow read: if staffUserActive() && hasAnyRole(["kitchen", "kitchen_staff", "cashier", "waiter", "manager", "admin"]);
+      allow create: if staffUserActive() && hasAnyRole(["manager", "admin"]) && validPrinterCreate();
+      allow update: if staffUserActive() && hasAnyRole(["manager", "admin"]) && validPrinterUpdate();
+      allow delete: if staffUserActive() && hasAnyRole(["manager", "admin"]);
+    }
+
     match /settings/{id} {
       allow read: if hasAnyRole(["manager", "admin"]);
       allow write: if hasRole("admin") &&
@@ -623,20 +937,57 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    /** Live rider position: order owner or delivery staff (writes restricted below). */
+    /**
+     * Live rider GPS for an order (`deliveryLocations/{orderId}`).
+     * Read: any signed-in client (customers see rider on order tracker when logged in).
+     * Write: assigned rider / managers — optional `riderName`, `riderMobile` for customer UI.
+     */
     match /deliveryLocations/{orderId} {
-      allow read: if isAuthed() && (
-        resource.data.userId == request.auth.uid ||
-        hasAnyRole(["delivery_boy", "delivery", "manager", "admin"])
-      );
+      allow read: if isAuthed();
       allow create: if hasAnyRole(["delivery_boy", "delivery", "manager", "admin"]) &&
+        staffUserActive() &&
+        request.resource.data.keys().hasOnly([
+          "orderId",
+          "userId",
+          "lat",
+          "lng",
+          "updatedAt",
+          "riderName",
+          "riderMobile",
+          "etaMinutes"
+        ]) &&
         request.resource.data.orderId == orderId &&
         request.resource.data.userId is string &&
         request.resource.data.lat is number &&
-        request.resource.data.lng is number;
+        request.resource.data.lng is number &&
+        request.resource.data.updatedAt == request.time &&
+        (
+          !request.resource.data.keys().hasAny(["riderName"]) ||
+          request.resource.data.riderName is string
+        ) &&
+        (
+          !request.resource.data.keys().hasAny(["riderMobile"]) ||
+          request.resource.data.riderMobile is string
+        ) &&
+        (
+          !request.resource.data.keys().hasAny(["etaMinutes"]) ||
+          (request.resource.data.etaMinutes is int && request.resource.data.etaMinutes >= 0)
+        );
       allow update: if hasAnyRole(["delivery_boy", "delivery", "manager", "admin"]) &&
+        staffUserActive() &&
         request.resource.data.orderId == orderId &&
-        request.resource.data.userId == resource.data.userId;
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          "lat",
+          "lng",
+          "updatedAt",
+          "riderName",
+          "riderMobile",
+          "etaMinutes"
+        ]) &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.lat is number &&
+        request.resource.data.lng is number;
     }
 
     match /customerOrderNotifications/{id} {
@@ -656,7 +1007,7 @@ service cloud.firestore {
       allow update: if (staffUserActive() && hasAnyRole(["manager", "admin"])) ||
         (staffUserActive() && hasRole("waiter") &&
           request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "currentOrderId"]) &&
-          request.resource.data.status in ["OCCUPIED", "FREE"] &&
+          request.resource.data.status in ["OCCUPIED", "FREE", "free", "occupied"] &&
           (
             !request.resource.data.keys().hasAny(["currentOrderId"]) ||
             request.resource.data.currentOrderId == null ||
@@ -664,7 +1015,7 @@ service cloud.firestore {
           )) ||
         (staffUserActive() && hasRole("cashier") &&
           request.resource.data.diff(resource.data).changedKeys().hasOnly(["status"]) &&
-          request.resource.data.status == "FREE");
+          request.resource.data.status in ["FREE", "free"]);
     }
 
     match /adminAlerts/{docId} {

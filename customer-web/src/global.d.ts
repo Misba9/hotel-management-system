@@ -6,6 +6,8 @@ declare global {
     recaptchaVerifier?: RecaptchaVerifier | null;
     /** Matches the DOM element id used to construct `recaptchaVerifier`. */
     __phoneRecaptchaContainerId?: string;
+    /** Guards concurrent/verifier duplicate `.render()` attempts. */
+    __phoneRecaptchaRenderPromise?: Promise<number>;
   }
 }
 

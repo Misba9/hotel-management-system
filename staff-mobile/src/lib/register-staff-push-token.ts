@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import * as Notifications from "expo-notifications";
 import { arrayUnion, doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { staffDb } from "./firebase";
 import { logError, logWarn } from "./error-logging";
@@ -11,7 +12,6 @@ export async function registerStaffPushToken(uid: string | undefined): Promise<v
   if (Platform.OS === "web" || !uid?.trim()) return;
 
   try {
-    const Notifications = await import("expo-notifications");
     const { status: existing } = await Notifications.getPermissionsAsync();
     let finalStatus = existing;
     if (existing !== "granted") {

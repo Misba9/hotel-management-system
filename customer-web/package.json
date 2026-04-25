@@ -3,14 +3,20 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "NEXT_IGNORE_INCORRECT_LOCKFILE=1 next dev -p 3000",
-    "dev:clean": "npm run clean && NEXT_IGNORE_INCORRECT_LOCKFILE=1 next dev -p 3000",
     "clean": "rm -rf .next node_modules/.cache",
-    "build": "NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build",
-    "start": "NEXT_IGNORE_INCORRECT_LOCKFILE=1 next start",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . --ext .js,.cjs,.mjs,.ts,.tsx",
-    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint . --ext .js,.cjs,.mjs,.ts,.tsx --fix",
-    "typecheck": "tsc --noEmit"
+    "clean:hard": "npm run clean && rm -rf .turbo",
+    "free-port": "node ./scripts/free-dev-port.mjs",
+    "dev": "next dev -p 3000",
+    "dev:clean": "npm run clean && next dev -p 3000",
+    "dev:hard": "npm run clean:hard && next dev -p 3000",
+    "dev:reset": "npm run free-port && npm run clean && next dev -p 3000",
+    "recover:chunks": "npm run free-port && npm run clean && npm run build && next dev -p 3000",
+    "reinstall": "npm run clean && rm -rf node_modules && npm install",
+    "build": "next build",
+    "build:clean": "npm run clean && next build",
+    "start": "next start -p 3000",
+    "engines:peek": "npm ls next react react-dom --depth=0",
+    "lint": "next lint"
   },
   "dependencies": {
     "@firebase/database": "^1.1.2",
@@ -35,6 +41,7 @@
     "react-hook-form": "^7.53.0",
     "styled-jsx": "^5.1.1",
     "tailwind-merge": "^2.5.2",
+    "twilio": "^6.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

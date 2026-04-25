@@ -10,6 +10,8 @@ import { useAuth } from "@/context/auth-context";
 export type UseCustomerOrdersOptions = {
   /** Last document in the live window (for cursor pagination). */
   onMeta?: (lastVisible: QueryDocumentSnapshot | null) => void;
+  /** Max orders in the live snapshot (default {@link USER_ORDERS_LIVE_LIMIT}). */
+  maxDocs?: number;
 };
 
 export type UseCustomerOrdersResult = {
@@ -23,6 +25,7 @@ export type UseCustomerOrdersResult = {
  */
 export function useCustomerOrders(options?: UseCustomerOrdersOptions): UseCustomerOrdersResult {
   const { user } = useAuth();
+  const maxDocs = options?.maxDocs ?? USER_ORDERS_LIVE_LIMIT;
   const [orders, setOrders] = useState<CustomerOrderListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +44,7 @@ export function useCustomerOrders(options?: UseCustomerOrdersOptions): UseCustom
     setError(null);
 
     const unsub = subscribeToUserOrders(db, user.uid, {
-      maxDocs: USER_ORDERS_LIVE_LIMIT,
+      maxDocs,
       onData: (items) => {
         setOrders(items);
         setLoading(false);
@@ -55,7 +58,7 @@ export function useCustomerOrders(options?: UseCustomerOrdersOptions): UseCustom
     });
 
     return () => unsub();
-  }, [user]);
+  }, [user, maxDocs]);
 
   return { orders, loading, error };
 }

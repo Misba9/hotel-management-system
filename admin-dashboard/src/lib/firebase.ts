@@ -8,6 +8,8 @@
 import { getApp, initializeApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, initializeFirestore, type Firestore } from "firebase/firestore";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
+import { normalizeFirebaseStorageBucket } from "@shared/utils/normalize-firebase-storage-bucket";
 
 /** Re-export for consumers typing auth without importing `firebase/auth` directly. */
 export type { Auth };
@@ -74,7 +76,7 @@ export function getFirebaseWebConfig(): FirebaseWebConfig {
     apiKey: apiKey!,
     authDomain: authDomain!,
     projectId: projectId!,
-    storageBucket: storageBucket!,
+    storageBucket: normalizeFirebaseStorageBucket(storageBucket!, projectId!),
     messagingSenderId: messagingSenderId!,
     appId: appId!
   };
@@ -103,7 +105,7 @@ export function logFirebaseConfigDebug(): void {
     const c = getFirebaseWebConfig();
     const key = c.apiKey;
     console.info(
-      `[firebase] projectId=${c.projectId} apiKey loaded=${Boolean(key)} len=${key.length} prefix=${key.slice(0, 8)}… authDomain=${c.authDomain}`
+      `[firebase] projectId=${c.projectId} storageBucket=${c.storageBucket} apiKey loaded=${Boolean(key)} len=${key.length} prefix=${key.slice(0, 8)}… authDomain=${c.authDomain}`
     );
   } catch (e) {
     console.error("[firebase] config error:", e);
@@ -113,6 +115,7 @@ export function logFirebaseConfigDebug(): void {
 let firebaseApp: FirebaseApp | null = null;
 let firebaseAuth: Auth | null = null;
 let firestoreDb: Firestore | null = null;
+let firebaseStorage: FirebaseStorage | null = null;
 let analyticsInitStarted = false;
 
 function getOrCreateFirebaseApp(): FirebaseApp {
@@ -173,6 +176,17 @@ export function getFirebaseDb(): Firestore {
     firestoreDb = createFirestoreForBrowser(getFirebaseApp());
   }
   return firestoreDb;
+}
+
+/** Firebase Storage (browser-only). Used for menu product/category images. */
+export function getFirebaseStorage(): FirebaseStorage {
+  if (typeof window === "undefined") {
+    throw new Error("[firebase] getFirebaseStorage() is browser-only.");
+  }
+  if (!firebaseStorage) {
+    firebaseStorage = getStorage(getFirebaseApp());
+  }
+  return firebaseStorage;
 }
 
 export async function initFirebaseAnalytics(): Promise<void> {

@@ -120,10 +120,11 @@ export function validateOrderStatusUpdate(input: {
  */
 export function validateMarkTableOrderPaid(currentPaymentStatus: string | undefined): OrderUpdateValidationResult {
   const p = normalizeRestaurantPaymentStatusForTransition(currentPaymentStatus);
-  if (p === RestaurantPaymentStatus.REQUESTED) return { ok: true };
+  /** Counter can close after bill request, or directly when still PENDING after serve (see Firestore table rules). */
+  if (p === RestaurantPaymentStatus.REQUESTED || p === RestaurantPaymentStatus.PENDING) return { ok: true };
   return fail(
     "PAID_BEFORE_REQUESTED",
-    "Payment cannot be marked PAID until a bill is requested (paymentStatus must be REQUESTED)."
+    "Payment cannot be marked PAID until the bill is open (paymentStatus must be PENDING or REQUESTED)."
   );
 }
 

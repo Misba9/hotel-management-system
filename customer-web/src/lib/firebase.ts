@@ -5,16 +5,20 @@ import {
   type DocumentData,
   type DocumentReference,
   type DocumentSnapshot,
-  enableIndexedDbPersistence,
   enableNetwork,
   getDoc,
   getDocFromCache,
   getFirestore,
   initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   type Firestore,
   type FirestoreSettings
 } from "firebase/firestore";
 import { getMessaging, isSupported } from "firebase/messaging";
+import { normalizeFirebaseStorageBucket } from "@shared/utils/normalize-firebase-storage-bucket";
+
+const customerProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "nausheen-fruits-new";
 
 /**
  * Customer web Firebase — `initializeApp` once (`getApps()` guard).
@@ -25,8 +29,11 @@ import { getMessaging, isSupported } from "firebase/messaging";
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "",
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "nausheen-fruits-new.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "nausheen-fruits-new",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "nausheen-fruits-new.firebasestorage.app",
+  projectId: customerProjectId,
+  storageBucket: normalizeFirebaseStorageBucket(
+    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    customerProjectId
+  ),
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? "",
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? ""
 };
@@ -54,7 +61,10 @@ function createFirestoreInstance(): Firestore {
 
   const settings: FirestoreSettings & { useFetchStreams?: boolean } = {
     experimentalForceLongPolling: true,
-    useFetchStreams: false
+    useFetchStreams: false,
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
   };
 
   try {
@@ -86,11 +96,6 @@ export async function ensureFirestoreOnline(): Promise<void> {
 }
 
 if (typeof window !== "undefined") {
-  void enableIndexedDbPersistence(db).catch((err: unknown) => {
-    if (process.env.NODE_ENV !== "production") {
-      console.log("Persistence error:", err);
-    }
-  });
   void ensureFirestoreOnline();
 }
 

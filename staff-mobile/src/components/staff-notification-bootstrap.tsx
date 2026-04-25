@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Platform } from "react-native";
+import * as Notifications from "expo-notifications";
 import { onAuthStateChanged } from "firebase/auth";
 import { logError } from "../lib/error-logging";
 import { staffAuth } from "../lib/firebase";
@@ -8,28 +9,25 @@ import { registerStaffPushToken } from "../lib/register-staff-push-token";
 /**
  * Foreground FCM/device token registration + notification handler (badge + alerts).
  * Tokens live on `users/{uid}` for Cloud Functions (`sendEachForMulticast`).
+ *
+ * Uses a static `expo-notifications` import so Metro does not emit a lazy split bundle
+ * that resolves to missing `staff-mobile/node_modules/...` when the package is hoisted.
  */
 export function StaffNotificationBootstrap() {
   useEffect(() => {
     if (Platform.OS === "web") return undefined;
-    let cancelled = false;
-    void import("expo-notifications")
-      .then((Notifications) => {
-        if (cancelled) return;
-        Notifications.setNotificationHandler({
-          handleNotification: async () => ({
-            shouldShowAlert: true,
-            shouldPlaySound: true,
-            shouldSetBadge: true
-          })
-        });
-      })
-      .catch((e) => {
-        logError("StaffNotificationBootstrap.expo-notifications", e);
+    try {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true
+        })
       });
-    return () => {
-      cancelled = true;
-    };
+    } catch (e) {
+      logError("StaffNotificationBootstrap.expo-notifications", e);
+    }
+    return undefined;
   }, []);
 
   useEffect(() => {

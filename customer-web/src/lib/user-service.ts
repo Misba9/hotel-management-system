@@ -31,12 +31,29 @@ export type FirestoreUserProfile = {
   name: string;
   email: string;
   phone: string;
+  role?: string;
+  address?: string | null;
   createdAt?: Timestamp | { toDate?: () => Date } | null;
   updatedAt?: Timestamp | { toDate?: () => Date } | null;
   lastLoginAt?: Timestamp | { toDate?: () => Date } | null;
   /** Saved on `users/{uid}.addresses` — single source with real-time `onSnapshot` on user doc. */
   addresses?: DeliveryAddress[];
 };
+
+function parseAddressSummary(raw: unknown): string | null | undefined {
+  if (raw === null) return null;
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    return text || null;
+  }
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  const fullAddress = typeof row.fullAddress === "string" ? row.fullAddress.trim() : "";
+  const city = typeof row.city === "string" ? row.city.trim() : "";
+  const pincode = typeof row.pincode === "string" ? row.pincode.trim() : "";
+  const text = [fullAddress, city, pincode].filter(Boolean).join(", ");
+  return text || null;
+}
 
 export type UserOrderSummary = {
   id: string;
@@ -57,6 +74,8 @@ export function mapUserProfileFromDoc(uid: string, data: Record<string, unknown>
     name,
     email: String(data.email ?? ""),
     phone: String(data.phone ?? ""),
+    role: typeof data.role === "string" ? data.role : undefined,
+    address: parseAddressSummary(data.address),
     createdAt: data.createdAt as FirestoreUserProfile["createdAt"],
     updatedAt: data.updatedAt as FirestoreUserProfile["updatedAt"],
     lastLoginAt: data.lastLoginAt as FirestoreUserProfile["lastLoginAt"],
@@ -82,6 +101,8 @@ export async function createUserIfNotExists(user: User): Promise<void> {
         name: user.displayName?.trim() || "",
         email: user.email || "",
         phone: user.phoneNumber?.trim() || "",
+        role: "customer",
+        address: null,
         createdAt: serverTimestamp()
       });
     },

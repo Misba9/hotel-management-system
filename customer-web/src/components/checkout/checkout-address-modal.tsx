@@ -146,12 +146,14 @@ export function CheckoutAddressModal({ open, onOpenChange, requireSelection }: C
 
   useEffect(() => {
     if (!open || !showForm || addresses.length > 0) return;
+    const fallbackAddressLine = profile?.address?.trim() ?? "";
     setForm((prev) => ({
       ...prev,
       name: prev.name || profile?.name || user?.displayName || "",
-      phone: prev.phone || profile?.phone || user?.phoneNumber || ""
+      phone: prev.phone || profile?.phone || user?.phoneNumber || "",
+      addressLine: prev.addressLine || fallbackAddressLine
     }));
-  }, [open, showForm, addresses.length, profile?.name, profile?.phone, user?.displayName, user?.phoneNumber]);
+  }, [open, showForm, addresses.length, profile?.name, profile?.phone, profile?.address, user?.displayName, user?.phoneNumber]);
 
   const handleBackdrop = useCallback(() => {
     if (requireSelection) return;

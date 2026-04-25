@@ -4,8 +4,9 @@
     "slug": "nausheen-fruits-platform",
     "version": "1.0.0",
     "sdkVersion": "51.0.0",
-    "platforms": [
-      "web"
+    "platforms": ["ios", "android", "web"],
+    "plugins": [
+      "expo-router"
     ]
   }
 }

@@ -5,29 +5,36 @@ import { AlertTriangle } from "lucide-react";
 
 type Props = {
   open: boolean;
-  productName: string;
+  title: string;
+  itemName: string;
+  detail?: string;
   submitting: boolean;
   onCancel: () => void;
   onConfirm: () => Promise<void>;
 };
 
-export function MenuDeleteDialog({ open, productName, submitting, onCancel, onConfirm }: Props) {
+export function MenuDeleteDialog({ open, title, itemName, detail, submitting, onCancel, onConfirm }: Props) {
   const titleId = useId();
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
+      if (e.key === "Escape" && !submitting) onCancel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
+  }, [open, onCancel, submitting]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-      <button type="button" aria-label="Close" className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" onClick={() => !submitting && onCancel()} />
+      <button
+        type="button"
+        aria-label="Close"
+        className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
+        onClick={() => !submitting && onCancel()}
+      />
       <div
         role="dialog"
         aria-modal="true"
@@ -40,10 +47,15 @@ export function MenuDeleteDialog({ open, productName, submitting, onCancel, onCo
           </span>
           <div>
             <h2 id={titleId} className="text-lg font-semibold text-slate-900">
-              Delete product?
+              {title}
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              This will remove <span className="font-medium text-slate-900">&quot;{productName}&quot;</span> from the menu. This action cannot be undone.
+              {detail ?? (
+                <>
+                  This will remove <span className="font-medium text-slate-900">&quot;{itemName}&quot;</span>. This
+                  action cannot be undone.
+                </>
+              )}
             </p>
           </div>
         </div>

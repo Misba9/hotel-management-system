@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 const db = getFirestore();
 
@@ -87,9 +87,27 @@ export const seedInitialData = onCall(async (request) => {
     batch.set(db.collection("tables").doc(id), {
       id,
       tableNumber: n,
-      status: "FREE"
+      status: "FREE",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
     });
   }
+
+  const ts = FieldValue.serverTimestamp();
+  batch.set(db.collection("printers").doc("kitchen_receipt_default"), {
+    name: "Kitchen receipt (default)",
+    type: "wifi",
+    ipAddress: "",
+    createdAt: ts,
+    updatedAt: ts
+  });
+  batch.set(db.collection("printers").doc("counter_bluetooth"), {
+    name: "Counter Bluetooth",
+    type: "bluetooth",
+    ipAddress: "",
+    createdAt: ts,
+    updatedAt: ts
+  });
 
   await batch.commit();
   return { ok: true };

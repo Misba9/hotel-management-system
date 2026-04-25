@@ -68,6 +68,7 @@ export async function createRazorpayPaymentOrder(
       recalculatedTotal?: number;
       razorpayOrderId?: string;
       orderId?: string;
+      id?: string;
       amount?: number;
       currency?: string;
       keyId?: string;
@@ -95,12 +96,16 @@ export async function createRazorpayPaymentOrder(
       };
     }
 
-    if (
-      !res.ok ||
-      !json.success ||
-      typeof json.razorpayOrderId !== "string" ||
-      typeof json.amount !== "number"
-    ) {
+    const razorpayOrderId =
+      typeof json.razorpayOrderId === "string"
+        ? json.razorpayOrderId
+        : typeof json.orderId === "string"
+          ? json.orderId
+          : typeof json.id === "string"
+            ? json.id
+            : undefined;
+
+    if (!res.ok || !json.success || typeof razorpayOrderId !== "string" || typeof json.amount !== "number") {
       const code =
         json.code === "RAZORPAY_NOT_CONFIGURED" || res.status === 503 ? "RAZORPAY_NOT_CONFIGURED" : json.code;
       return {
@@ -118,7 +123,7 @@ export async function createRazorpayPaymentOrder(
 
     return {
       ok: true,
-      razorpayOrderId: json.razorpayOrderId,
+      razorpayOrderId,
       amount: json.amount,
       currency: json.currency ?? "INR",
       keyId: json.keyId ?? "",

@@ -1,15 +1,22 @@
-import React from "react";
-import { NavigationContainer } from "@react-navigation/native";
-import { AppNavigator } from "../src/navigation/AppNavigator";
+import { Redirect } from "expo-router";
 
-/**
- * Expo Router already mounts a root `NavigationContainer`. This legacy React Navigation tree
- * must use an independent container so it is not nested under Expo Router's.
- */
-export default function IndexRoute() {
-  return (
-    <NavigationContainer independent>
-      <AppNavigator />
-    </NavigationContainer>
-  );
+import { roleHomeHref } from "../src/lib/staff-role-home";
+import { useAuthStore } from "../store/useAuthStore";
+
+export default function Index() {
+  const authReady = useAuthStore((s) => s.authReady);
+  const loading = useAuthStore((s) => s.loading);
+  const user = useAuthStore((s) => s.user);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const role = useAuthStore((s) => s.role);
+
+  if (!authReady || loading) {
+    return null;
+  }
+
+  if (!user || !isAuthenticated || !role) {
+    return <Redirect href="/login" />;
+  }
+
+  return <Redirect href={roleHomeHref(role)} />;
 }

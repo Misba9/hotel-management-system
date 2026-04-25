@@ -221,7 +221,7 @@ function normalizeAssignedToMap(assigned) {
  * @param {Record<string, unknown>} data
  * @returns {StaffOrder}
  */
-function mapOrderDoc(id, data) {
+export function mapOrderDoc(id, data) {
   const itemsRaw = Array.isArray(data.items) ? data.items : [];
   const items = itemsRaw.map((row) => {
     const r = row && typeof row === "object" ? row : {};

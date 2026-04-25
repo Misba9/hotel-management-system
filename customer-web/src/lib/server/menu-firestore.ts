@@ -1,5 +1,6 @@
 import { adminDb } from "@shared/firebase/admin";
 import type { Category, Product } from "@/lib/menu-data-types";
+import { MENU_IMAGE_FALLBACK, resolveMenuImageSrc } from "@/lib/image-url";
 
 const DEFAULT_PLACEHOLDER_IMAGE =
   "https://images.unsplash.com/photo-1544145945-f90425340c7e?auto=format&fit=crop&w=800&q=80";
@@ -30,6 +31,17 @@ type CategoryRow = {
  * Loads menu for the storefront from Firestore `categories` and `products`.
  * Product fields: id, name, price, image, categoryId, isPopular, isAvailable (plus optional legacy aliases).
  */
+/** Category id → display name (active + inactive with a `name` field). */
+export async function fetchCategoryNameLookup(): Promise<Map<string, string>> {
+  const snap = await adminDb.collection(CATEGORIES_COLLECTION).get();
+  const map = new Map<string, string>();
+  for (const docSnap of snap.docs) {
+    const mapped = mapCategoryDoc(docSnap.id, docSnap.data() as FirestoreCategoryDoc);
+    if (mapped) map.set(mapped.id, mapped.name);
+  }
+  return map;
+}
+
 export async function fetchMenuFromFirestoreAdmin(): Promise<{
   categories: Category[];
   products: Product[];
@@ -95,9 +107,10 @@ function mapProductDoc(
   categories: Map<string, CategoryRow>
 ): Product | null {
   const name = String(raw.name ?? "").trim();
-  const categoryId = String(raw.categoryId ?? "").trim();
+  const categoryId = String(raw.categoryId ?? raw.category ?? "").trim();
   const price = Number(raw.price ?? NaN);
   if (!name || !Number.isFinite(price) || price < 0) return null;
+  if (name.toLowerCase() === "test") return null;
 
   const available =
     raw.isAvailable !== false &&
@@ -108,9 +121,15 @@ function mapProductDoc(
   const featured = Boolean(raw.featured ?? raw.isFeatured);
 
   const effectiveCategoryId = categoryId || "uncategorized";
-  const categoryNameFromDoc = String(raw.categoryName ?? "").trim();
+  const explicit = String(raw.categoryName ?? "").trim();
+  const fromCollection = categories.get(effectiveCategoryId)?.name?.trim() ?? "";
+  const explicitOk =
+    Boolean(explicit) && explicit !== effectiveCategoryId && explicit !== categoryId;
   const categoryName =
-    categoryNameFromDoc || categories.get(effectiveCategoryId)?.name || humanizeId(effectiveCategoryId);
+    fromCollection ||
+    (explicitOk ? explicit : "") ||
+    (effectiveCategoryId === "uncategorized" ? "Uncategorized" : "") ||
+    "Other";
 
   const sizesRaw = Array.isArray(raw.sizes) ? raw.sizes : [];
   const sizes = sizesRaw
@@ -129,6 +148,13 @@ function mapProductDoc(
     .filter((value): value is { label: "Small" | "Medium" | "Large"; multiplier: number } => Boolean(value));
 
   const imageRaw = String(raw.image ?? raw.imageUrl ?? "").trim();
+  let image: string;
+  if (!imageRaw) {
+    image = DEFAULT_PLACEHOLDER_IMAGE;
+  } else {
+    const resolved = resolveMenuImageSrc(imageRaw);
+    image = resolved === MENU_IMAGE_FALLBACK ? DEFAULT_PLACEHOLDER_IMAGE : resolved;
+  }
 
   return {
     id,
@@ -138,20 +164,13 @@ function mapProductDoc(
     categoryName,
     price,
     rating: Number.isFinite(Number(raw.rating)) ? Number(raw.rating) : 4.5,
-    image: imageRaw || DEFAULT_PLACEHOLDER_IMAGE,
+    image,
     ingredients: Array.isArray(raw.ingredients) ? raw.ingredients.map((item) => String(item)) : [],
     sizes: sizes.length > 0 ? sizes : [{ label: "Medium", multiplier: 1 }],
     available,
     featured,
     popular
   };
-}
-
-function humanizeId(id: string): string {
-  if (!id) return "Menu";
-  return id
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function buildCategoryList(categoryRows: CategoryRow[], products: Product[]): Category[] {

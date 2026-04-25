@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConfirmationResult, RecaptchaVerifier } from "firebase/auth";
-import { signInWithPhoneNumber } from "firebase/auth";
+import { signInWithCustomToken, signInWithPhoneNumber } from "firebase/auth";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { auth } from "@/lib/firebase";
@@ -16,6 +16,7 @@ import {
 } from "@/lib/firebase-phone-recaptcha";
 import { mapPhoneAuthError } from "@/lib/phone-auth-errors";
 import { reportOtpServerLog } from "@/lib/phone-otp-client-log";
+import { syncUserToFirestore } from "@/lib/sync-user-to-firestore";
 
 const OTP_LENGTH = 6;
 
@@ -66,9 +67,12 @@ export function PhoneLoginForm({
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [otpChannel, setOtpChannel] = useState<"firebase" | "whatsapp">("firebase");
 
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const verifierRef = useRef<RecaptchaVerifier | null>(null);
+  const currentPhoneE164Ref = useRef<string>("");
+  const sendAttemptRef = useRef(false);
   const verifyAttemptRef = useRef(false);
   const [otpRemountKey, setOtpRemountKey] = useState(0);
 
@@ -97,12 +101,15 @@ export function PhoneLoginForm({
   }, []);
 
   const sendOtp = useCallback(async () => {
+    if (sendAttemptRef.current) return;
+    sendAttemptRef.current = true;
     setLoading(true);
     setError(null);
     verifyAttemptRef.current = false;
     try {
       const e164 = normalizePhoneE164(phone);
       if (!e164 || e164.length < 8) throw new Error("Enter a valid phone number with country code.");
+      currentPhoneE164Ref.current = e164;
 
       const el = document.getElementById(recaptchaContainerId);
       if (!el) {
@@ -126,6 +133,7 @@ export function PhoneLoginForm({
       logPhoneAuthDebug("signInWithPhoneNumber SMS flow started");
 
       confirmationRef.current = confirmationResult;
+      setOtpChannel("firebase");
       resetOtpDigits();
       setStep("otp");
     } catch (e) {
@@ -140,10 +148,35 @@ export function PhoneLoginForm({
         message: e instanceof Error ? e.message : String(e)
       });
       const msg = mapPhoneAuthError(e, "send");
-      setError(msg);
-      showToast({ type: "error", title: "Couldn’t send OTP", description: msg });
       resetPhoneRecaptchaVerifier();
+      try {
+        if (!currentPhoneE164Ref.current) throw new Error("Missing phone number for fallback.");
+        const fallbackRes = await fetch("/api/auth/whatsapp-otp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: currentPhoneE164Ref.current })
+        });
+        const fallbackData = (await fallbackRes.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+        if (!fallbackRes.ok || !fallbackData?.ok) {
+          throw new Error(fallbackData?.error || "Could not send WhatsApp OTP.");
+        }
+        confirmationRef.current = null;
+        setOtpChannel("whatsapp");
+        resetOtpDigits();
+        setStep("otp");
+        setError(null);
+        showToast({
+          type: "warning",
+          title: "Firebase OTP failed",
+          description: "Sent OTP via WhatsApp fallback."
+        });
+      } catch (fallbackErr) {
+        const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : "Fallback OTP failed.";
+        setError(`${msg} WhatsApp fallback also failed: ${fallbackMsg}`);
+        showToast({ type: "error", title: "Couldn’t send OTP", description: `${msg} ${fallbackMsg}` });
+      }
     } finally {
+      sendAttemptRef.current = false;
       setLoading(false);
     }
   }, [phone, recaptchaContainerId, resetOtpDigits, showToast, step]);
@@ -160,10 +193,31 @@ export function PhoneLoginForm({
     setLoading(true);
     setError(null);
     try {
+      if (otpChannel === "whatsapp") {
+        if (!currentPhoneE164Ref.current) {
+          throw new Error("Session expired. Resend OTP.");
+        }
+        const res = await fetch("/api/auth/whatsapp-otp/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: currentPhoneE164Ref.current, otp: code })
+        });
+        const payload = (await res.json().catch(() => null)) as { customToken?: string; error?: string } | null;
+        if (!res.ok || !payload?.customToken) {
+          throw new Error(payload?.error || "Invalid OTP.");
+        }
+        const credential = await signInWithCustomToken(auth, payload.customToken);
+        await syncUserToFirestore(credential.user);
+        clearVerifier();
+        confirmationRef.current = null;
+        onSuccess?.();
+        return;
+      }
       if (!confirmationRef.current) {
         throw new Error("Session expired. Resend OTP.");
       }
-      await confirmationRef.current.confirm(code);
+      const credential = await confirmationRef.current.confirm(code);
+      await syncUserToFirestore(credential.user);
       clearVerifier();
       confirmationRef.current = null;
       onSuccess?.();
@@ -188,7 +242,7 @@ export function PhoneLoginForm({
     } finally {
       setLoading(false);
     }
-  }, [digits, onSuccess, clearVerifier, resetOtpDigits, showToast]);
+  }, [digits, otpChannel, onSuccess, clearVerifier, resetOtpDigits, showToast]);
 
   useEffect(() => {
     if (step !== "otp" || loading) return;
@@ -298,6 +352,7 @@ export function PhoneLoginForm({
                 resetOtpDigits();
                 setError(null);
                 confirmationRef.current = null;
+                setOtpChannel("firebase");
                 clearVerifier();
               }}
               disabled={loading}

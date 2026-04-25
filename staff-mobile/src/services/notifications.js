@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Vibration } from "react-native";
+import * as Notifications from "expo-notifications";
 
 let badgePermissionRequested = false;
 
@@ -11,7 +12,6 @@ async function ensureBadgePermission() {
   if (Platform.OS === "web") return;
   if (badgePermissionRequested) return;
   try {
-    const Notifications = await import("expo-notifications");
     const { status: existing } = await Notifications.getPermissionsAsync();
     if (existing !== "granted") {
       await Notifications.requestPermissionsAsync();
@@ -28,7 +28,6 @@ async function ensureBadgePermission() {
 export async function clearStaffNotificationBadge() {
   if (Platform.OS === "web") return;
   try {
-    const Notifications = await import("expo-notifications");
     await Notifications.setBadgeCountAsync(0);
   } catch {
     /* noop */
@@ -46,7 +45,6 @@ export function useSyncStaffAppBadge(count) {
       await ensureBadgePermission();
       if (cancelled) return;
       try {
-        const Notifications = await import("expo-notifications");
         await Notifications.setBadgeCountAsync(Math.max(0, Math.min(999, Math.floor(Number(count) || 0))));
       } catch {
         /* noop */

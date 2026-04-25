@@ -1,6 +1,6 @@
 /**
  * Legacy fine-grained permission strings (e.g. from Firestore `roles_permissions`).
- * Screen access should use `lib/rbac.ts` → `hasPermission(role, feature)` or `useStaffAuth().hasFeature()`.
+ * Screen access should use `lib/rbac.ts` → `hasPermission(role, feature)` or `useAuthStore` + route guards.
  */
 import type { StaffRoleId } from "../constants/staff-roles";
 

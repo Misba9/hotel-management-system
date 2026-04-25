@@ -5,16 +5,31 @@ import { z } from "zod";
 
 const optionalImageUrl = z.union([z.literal(""), z.string().url()]);
 
+/**
+ * Partial product PATCH (e.g. availability toggle sends only `available`).
+ * Do not use `.min(1)` on optional strings — `""` is sent for cleared names and fails `min(1)` while still "present".
+ */
 const menuUpdateSchema = z
   .object({
     name: z.string().min(2).max(120).optional(),
-    price: z.number().nonnegative().optional(),
-    categoryId: z.string().min(1).optional(),
+    price: z.coerce.number().finite().nonnegative().optional(),
+    categoryId: z.string().min(1).max(128).optional(),
+    categoryName: z.string().max(200).optional(),
     description: z.string().max(500).optional(),
+    size: z.string().max(120).optional(),
+    ingredients: z.string().max(4000).optional(),
     imageUrl: optionalImageUrl.optional(),
-    available: z.boolean().optional()
+    available: z.boolean().optional(),
+    isAvailable: z.boolean().optional()
   })
-  .refine((value) => Object.keys(value).length > 0, { message: "At least one field is required." });
+  .refine((value) => Object.values(value).some((v) => v !== undefined), {
+    message: "At least one field is required."
+  });
+
+async function resolveCategoryName(categoryId: string): Promise<string> {
+  const snap = await adminDb.collection("menu_categories").doc(categoryId).get();
+  return String(snap.data()?.name ?? "");
+}
 
 export async function PATCH(request: Request, context: { params: { id: string } }) {
   const auth = await requireAdmin(request, {
@@ -23,16 +38,46 @@ export async function PATCH(request: Request, context: { params: { id: string } 
   if (!auth.ok) return auth.response;
   try {
     const id = context.params.id;
-    const body = menuUpdateSchema.parse(await request.json());
-    const updates: Record<string, unknown> = { ...body, updatedAt: FieldValue.serverTimestamp() };
+    const raw = (await request.json()) as Record<string, unknown>;
+    const body = menuUpdateSchema.parse(raw);
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[admin/menu] PATCH body", { id, keys: Object.keys(body) });
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.price !== undefined) {
+      const p = Number(body.price);
+      if (!Number.isFinite(p) || p < 0) {
+        return Response.json({ error: "Invalid price." }, { status: 400 });
+      }
+      updates.price = p;
+    }
     if (body.imageUrl !== undefined) {
+      updates.imageUrl = body.imageUrl;
       updates.image = body.imageUrl;
     }
     if (body.categoryId !== undefined) {
       updates.category = body.categoryId;
+      updates.categoryId = body.categoryId;
+      const cn = typeof body.categoryName === "string" ? body.categoryName.trim() : "";
+      updates.categoryName = cn || (await resolveCategoryName(body.categoryId));
+    } else if (body.categoryName !== undefined) {
+      updates.categoryName = body.categoryName.trim();
     }
-    if (body.available !== undefined) {
-      updates.availability = body.available;
+    if (body.size !== undefined) updates.size = body.size;
+    if (body.ingredients !== undefined) {
+      updates.ingredients = body.ingredients;
+      updates.description = body.ingredients;
+    } else if (body.description !== undefined) {
+      updates.description = body.description;
+    }
+    const avail = body.isAvailable ?? body.available;
+    if (avail !== undefined) {
+      updates.available = avail;
+      updates.availability = avail;
+      updates.isAvailable = avail;
     }
     await adminDb.collection("products").doc(id).set(updates, { merge: true });
     if (process.env.NODE_ENV !== "production") {
@@ -41,7 +86,10 @@ export async function PATCH(request: Request, context: { params: { id: string } 
     return Response.json({ success: true }, { status: 200 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return Response.json({ error: "Invalid payload.", details: error.issues }, { status: 400 });
+      return Response.json(
+        { error: "Invalid payload.", details: error.issues, fieldErrors: error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
     if (process.env.NODE_ENV !== "production") {
       console.error("Menu PATCH error:", error);

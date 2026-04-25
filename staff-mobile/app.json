@@ -4,6 +4,7 @@
     "slug": "nausheen-staff",
     "scheme": "nausheen-staff",
     "version": "1.0.0",
+    "platforms": ["ios", "android", "web"],
     "orientation": "portrait",
     "assetBundlePatterns": [
       "**/*"
@@ -38,6 +39,9 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
       ]
+    },
+    "web": {
+      "bundler": "metro"
     }
   }
 }

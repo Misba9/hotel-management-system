@@ -29,6 +29,7 @@ import {
   persistCart
 } from "@/lib/cart";
 import { auth } from "@/lib/firebase";
+import { resolveMenuImageSrc } from "@/lib/image-url";
 
 export type CartContextValue = {
   items: CartLine[];
@@ -99,7 +100,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             productId: product.id,
             name: product.name,
             price: product.price,
-            image: product.image ?? "",
+            image: resolveMenuImageSrc(product.image ?? ""),
             quantity: 1
           }
         ];

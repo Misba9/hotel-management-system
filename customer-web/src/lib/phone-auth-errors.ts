@@ -35,7 +35,7 @@ export function mapPhoneAuthError(error: unknown, phase: "send" | "verify"): str
       case "auth/internal-error":
         return "Firebase internal error. Enable Identity Toolkit API, verify billing, and check Phone Auth is enabled in Firebase Console.";
       case "auth/invalid-app-credential":
-        return "App credential invalid. Confirm reCAPTCHA / SafetyNet setup and that Phone auth is enabled.";
+        return "App credential invalid. Re-send OTP to regenerate reCAPTCHA, verify localhost/production domain is authorized in Firebase Auth settings, and confirm Phone sign-in is enabled.";
       default:
         break;
     }

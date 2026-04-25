@@ -32,9 +32,9 @@ const LEGACY_TO_PERMISSION: Partial<Record<string, StaffPermission>> = {
   waiter_table: "waiter_table"
 };
 
-/** Role → permissions. Navigation is enforced in {@link AppNavigator} (one root screen per role). */
+/** Role → permissions. Route access is enforced in Expo Router (`app/_layout.tsx`) + `useRoleShellGuard`. */
 const ROLE_PERMISSIONS: Record<StaffRoleId, readonly StaffPermission[]> = {
-  /** Same order visibility as manager; analytics tab enabled in manager navigator (see manager-tabs). */
+  /** Same order visibility as manager; analytics can be enabled in-app for admin separately. */
   admin: ["view_orders", "manage_staff"],
   /** Dashboard + orders only (see manager tabs); no in-app analytics tab. */
   manager: ["view_orders"],

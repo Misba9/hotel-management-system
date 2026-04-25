@@ -1,4 +1,5 @@
 import type { Product } from "@/lib/menu-data-types";
+import { resolveMenuImageSrc } from "@/lib/image-url";
 
 /** One line in the shopping cart */
 export type CartLine = {
@@ -34,6 +35,7 @@ export function normalizeCartLine(raw: unknown): CartLine | null {
   const qtyRaw = o.quantity ?? o.qty;
   const quantity = typeof qtyRaw === "number" && Number.isInteger(qtyRaw) ? qtyRaw : NaN;
   if (!Number.isFinite(quantity) || quantity < 1) return null;
-  const image = typeof o.image === "string" ? o.image : "";
+  const imageRaw = typeof o.image === "string" ? o.image : "";
+  const image = resolveMenuImageSrc(imageRaw);
   return { productId, name, price, quantity, image };
 }
