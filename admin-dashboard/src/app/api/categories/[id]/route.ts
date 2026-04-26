@@ -15,6 +15,38 @@ const updateCategorySchema = z
   })
   .refine((value) => Object.keys(value).length > 0, { message: "At least one field is required." });
 
+const COLLECTION = "categories";
+const LEGACY = "menu_categories";
+
+async function cascadeCategoryNameToProducts(categoryId: string, newName: string) {
+  const [byId, byLegacy] = await Promise.all([
+    adminDb.collection("products").where("categoryId", "==", categoryId).get(),
+    adminDb.collection("products").where("category", "==", categoryId).get()
+  ]);
+  const seen = new Set<string>();
+  const docs = [...byId.docs, ...byLegacy.docs].filter((d) => {
+    if (seen.has(d.id)) return false;
+    seen.add(d.id);
+    return true;
+  });
+  const trimmed = newName.trim();
+  const CHUNK = 400;
+  for (let i = 0; i < docs.length; i += CHUNK) {
+    const batch = adminDb.batch();
+    for (const d of docs.slice(i, i + CHUNK)) {
+      batch.set(
+        d.ref,
+        {
+          categoryName: trimmed,
+          updatedAt: FieldValue.serverTimestamp()
+        },
+        { merge: true }
+      );
+    }
+    await batch.commit();
+  }
+}
+
 export async function PATCH(request: Request, context: { params: { id: string } }) {
   const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_categories_patch", limit: 60, windowMs: 60_000 }
@@ -27,14 +59,20 @@ export async function PATCH(request: Request, context: { params: { id: string } 
       updatedAt: FieldValue.serverTimestamp()
     };
     if (body.name !== undefined) patch.name = body.name;
-    if (body.imageUrl !== undefined) patch.imageUrl = body.imageUrl;
+    if (body.imageUrl !== undefined) {
+      patch.imageUrl = body.imageUrl;
+      patch.image = body.imageUrl;
+    }
     if (body.priority !== undefined) patch.priority = Number(body.priority);
     if (body.isActive !== undefined || body.active !== undefined) {
       const flag = body.isActive !== undefined ? body.isActive : body.active!;
       patch.active = flag;
       patch.isActive = flag;
     }
-    await adminDb.collection("menu_categories").doc(id).set(patch, { merge: true });
+    await adminDb.collection(COLLECTION).doc(id).set(patch, { merge: true });
+    if (body.name !== undefined) {
+      await cascadeCategoryNameToProducts(id, body.name);
+    }
     return Response.json({ success: true }, { status: 200 });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -54,7 +92,20 @@ export async function DELETE(request: Request, context: { params: { id: string }
   if (!auth.ok) return auth.response;
   try {
     const id = context.params.id;
-    await adminDb.collection("menu_categories").doc(id).delete();
+    const [byId, byLegacy] = await Promise.all([
+      adminDb.collection("products").where("categoryId", "==", id).limit(1).get(),
+      adminDb.collection("products").where("category", "==", id).limit(1).get()
+    ]);
+    if (!byId.empty || !byLegacy.empty) {
+      return Response.json(
+        { error: "Cannot delete category while products reference it. Reassign or delete those products first." },
+        { status: 409 }
+      );
+    }
+    await Promise.all([
+      adminDb.collection(COLLECTION).doc(id).delete(),
+      adminDb.collection(LEGACY).doc(id).delete()
+    ]);
     return Response.json({ success: true }, { status: 200 });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {

@@ -1,4 +1,4 @@
-/** Admin menu — category row from `menu_categories`. */
+/** Admin menu — category row from `categories` (legacy reads may merge `menu_categories`). */
 export type CategoryRow = {
   id: string;
   name: string;

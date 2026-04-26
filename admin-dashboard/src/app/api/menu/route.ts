@@ -1,6 +1,6 @@
 import { adminDb } from "@shared/firebase/admin";
 import { requireAdmin } from "@shared/utils/admin-api-auth";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { z } from "zod";
 const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" };
 
@@ -19,13 +19,16 @@ const menuCreateSchema = z.object({
   ingredients: z.string().max(4000).optional(),
   imageUrl: optionalImageUrl.optional(),
   available: z.boolean().optional(),
-  isAvailable: z.boolean().optional()
+  isAvailable: z.boolean().optional(),
+  rating: z.number().finite().min(0).max(5).optional()
 });
 
 async function resolveCategoryName(categoryId: string | undefined): Promise<string> {
   if (!categoryId) return "";
-  const snap = await adminDb.collection("menu_categories").doc(categoryId).get();
-  return String(snap.data()?.name ?? "");
+  const snap = await adminDb.collection("categories").doc(categoryId).get();
+  if (snap.exists) return String(snap.data()?.name ?? "");
+  const legacy = await adminDb.collection("menu_categories").doc(categoryId).get();
+  return String(legacy.data()?.name ?? "");
 }
 
 export async function GET(request: Request) {
@@ -34,21 +37,34 @@ export async function GET(request: Request) {
   });
   if (!auth.ok) return auth.response;
   try {
-    const [catSnap, snap] = await Promise.all([
+    const [catSnap, legacyCatSnap, snap] = await Promise.all([
+      adminDb.collection("categories").get(),
       adminDb.collection("menu_categories").get(),
       adminDb.collection("products").orderBy("name").get()
     ]);
     const categoryNameByDocId = new Map<string, string>();
-    catSnap.docs.forEach((cd) => {
+    const categoryIdByName = new Map<string, string>();
+    const registerCat = (cd: QueryDocumentSnapshot) => {
       const data = cd.data() as Record<string, unknown>;
-      categoryNameByDocId.set(cd.id, String(data.name ?? "").trim());
-    });
+      const name = String(data.name ?? "").trim();
+      categoryNameByDocId.set(cd.id, name);
+      if (name) categoryIdByName.set(name.toLowerCase(), cd.id);
+    };
+    legacyCatSnap.docs.forEach(registerCat);
+    catSnap.docs.forEach(registerCat);
 
     const items = snap.docs.map((doc) => {
       const d = doc.data() as Record<string, unknown>;
-      const categoryId = String(d.categoryId ?? d.category ?? "");
+      const rawCategoryId = String(d.categoryId ?? "").trim();
+      const rawCategory = String(d.category ?? "").trim();
+      const rawCategoryName = String(d.categoryName ?? "").trim();
+      const categoryId =
+        rawCategoryId ||
+        categoryIdByName.get(rawCategory.toLowerCase()) ||
+        categoryIdByName.get(rawCategoryName.toLowerCase()) ||
+        rawCategory;
       const available = d.available !== false && d.availability !== false && d.isAvailable !== false;
-      const storedName = String(d.categoryName ?? "").trim();
+      const storedName = rawCategoryName;
       const resolvedName =
         storedName || (categoryId ? categoryNameByDocId.get(categoryId) ?? "" : "");
       return {
@@ -97,7 +113,8 @@ export async function POST(request: Request) {
       price: body.price,
       image: body.imageUrl ?? "",
       imageUrl: body.imageUrl ?? "",
-      category: categoryId,
+      /** Denormalized display name — must match `categories/{id}.name` for customer menu linking. */
+      category: categoryName,
       categoryId,
       categoryName,
       size,
@@ -109,7 +126,8 @@ export async function POST(request: Request) {
       available,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-      tags: []
+      tags: [],
+      rating: typeof body.rating === "number" && Number.isFinite(body.rating) ? body.rating : 4.5
     });
     if (process.env.NODE_ENV !== "production") {
       console.info("[admin/menu] created product", { id: ref.id, name: body.name });

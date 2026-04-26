@@ -91,8 +91,8 @@ export function ProductSection({
             <tbody>
               {items.map((row) => {
                 const catLabel =
+                  categoryNameById.get(row.categoryId)?.trim() ||
                   row.categoryName?.trim() ||
-                  categoryNameById.get(row.categoryId) ||
                   "Uncategorized";
                 return (
                   <tr

@@ -678,6 +678,22 @@ service cloud.firestore {
         );
     }
 
+    /**
+     * Kitchen: one-time KOT auto-print flag while ticket is still "new" (not yet preparing).
+     * Client sets `printed: true` after a successful auto-print; does not change `status`.
+     */
+    function kitchenMarkKotPrintedUpdateOk() {
+      return hasAnyRole(["kitchen_staff", "kitchen"]) &&
+        staffUserActive() &&
+        request.resource.data.printed is bool &&
+        request.resource.data.printed == true &&
+        (!resource.data.keys().hasAny(["printed"]) || resource.data.printed == false) &&
+        request.resource.data.status == resource.data.status &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(["printed", "updatedAt"]) &&
+        request.resource.data.updatedAt == request.time &&
+        resource.data.status in ["pending", "created", "confirmed", "PLACED"];
+    }
+
     match /orders/{orderId} {
       allow read: if isAuthed() && (
         resource.data.userId == request.auth.uid ||
@@ -698,6 +714,7 @@ service cloud.firestore {
         restaurantLifecycleWaiterAcceptUpdateOk() ||
         restaurantLifecycleWaiterUpdateOk() ||
         restaurantLifecycleCashierPaymentUpdateOk() ||
+        kitchenMarkKotPrintedUpdateOk() ||
         kitchenTableOrderProgressUpdate() ||
         waiterTableOrderBillRequestUpdate() ||
         waiterTableOrderMarkServedUpdate() ||

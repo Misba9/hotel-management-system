@@ -7,12 +7,15 @@ import { RAZORPAY_CHECKOUT_SCRIPT_SRC } from "@/lib/razorpay-checkout";
 
 const inter = Inter({
   subsets: ["latin"],
-  variable: "--font-inter"
+  display: "swap"
 });
 
+/** Headings only (globals.css) — disable preload so the file is not preloaded then flagged unused on first paint. */
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
-  variable: "--font-plus-jakarta"
+  display: "swap",
+  variable: "--font-plus-jakarta",
+  preload: false
 });
 
 const checkoutRzpOrigin = new URL(RAZORPAY_CHECKOUT_SCRIPT_SRC).origin;
@@ -42,7 +45,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
       </head>
       <body
         suppressHydrationWarning
-        className={`${inter.variable} ${plusJakarta.variable} overflow-x-hidden bg-brand-background transition-colors`}
+        className={`${inter.className} ${plusJakarta.variable} overflow-x-hidden bg-brand-background transition-colors`}
       >
         <div
           id="recaptcha-container"

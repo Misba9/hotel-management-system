@@ -40,13 +40,18 @@ export const seedInitialData = onCall(async (request) => {
   ];
   categories.forEach((category, index) => {
     const id = category.toLowerCase().replace(/\s+/g, "_");
-    batch.set(db.collection("menu_categories").doc(id), {
+    const row = {
       id,
       branchId: "hyderabad-main",
       name: category,
       priority: index + 1,
-      active: true
-    });
+      active: true,
+      isActive: true,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    batch.set(db.collection("menu_categories").doc(id), row);
+    batch.set(db.collection("categories").doc(id), row);
   });
 
   const starterMenu = [

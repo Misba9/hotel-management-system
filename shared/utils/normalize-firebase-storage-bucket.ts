@@ -1,6 +1,6 @@
 /**
- * Firebase Console may show `PROJECT.firebasestorage.app`. For the JS SDK, prefer the
- * default bucket id `PROJECT.appspot.com` to avoid upload/CORS quirks with the newer hostname.
+ * Normalize only syntax (`gs://` and path suffixes) while preserving the exact bucket host
+ * configured in Firebase Console (`*.appspot.com` or `*.firebasestorage.app`).
  */
 export function normalizeFirebaseStorageBucket(
   raw: string | undefined,
@@ -13,8 +13,5 @@ export function normalizeFirebaseStorageBucket(
     .split("/")[0]
     .trim();
   if (!first) return `${pid}.appspot.com`;
-  if (first.includes(".firebasestorage.app")) {
-    return `${pid}.appspot.com`;
-  }
   return first;
 }

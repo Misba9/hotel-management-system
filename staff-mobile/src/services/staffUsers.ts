@@ -13,6 +13,7 @@ export type StaffProfile = {
   uid: string;
   email: string;
   name: string;
+  phoneNumber: string;
   role: StaffRoleId;
 };
 
@@ -137,6 +138,12 @@ export function resolveStaffSession(
     uid,
     email,
     name,
+    phoneNumber:
+      typeof data.phoneNumber === "string" && data.phoneNumber.trim()
+        ? data.phoneNumber.trim()
+        : typeof data.phone === "string" && data.phone.trim()
+          ? data.phone.trim()
+          : "",
     role: roleNorm
   };
 

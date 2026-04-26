@@ -7,9 +7,17 @@ import { SafeFillImage } from "@/components/shared/safe-fill-image";
 
 const CATEGORY_ROW_SKELETON_KEYS = ["cr1", "cr2", "cr3", "cr4", "cr5", "cr6", "cr7", "cr8"] as const;
 
-export function CategorySlider() {
+type Props = {
+  /** When set, skips static `/api/menu` fetch (parent supplies Firestore live data). */
+  categories?: Category[];
+  loading?: boolean;
+  error?: string | null;
+};
+
+export function CategorySlider({ categories: categoriesProp, loading: loadingProp, error: errorProp }: Props) {
+  const fromParent = categoriesProp !== undefined;
   const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!fromParent);
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const itemRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
@@ -20,6 +28,7 @@ export function CategorySlider() {
   }, []);
 
   useEffect(() => {
+    if (fromParent) return;
     async function loadCategories() {
       setLoading(true);
       setError(null);
@@ -32,9 +41,12 @@ export function CategorySlider() {
         setLoading(false);
       }
     }
-
     void loadCategories();
-  }, []);
+  }, [fromParent]);
+
+  const displayCategories = fromParent ? categoriesProp! : categories;
+  const displayLoading = fromParent ? Boolean(loadingProp) : loading;
+  const displayError = fromParent ? errorProp ?? null : error;
 
   useEffect(() => {
     if (!activeId) return;
@@ -61,7 +73,7 @@ export function CategorySlider() {
           role="list"
           aria-label="Browse categories"
         >
-          {loading
+          {displayLoading
             ? Array.from({ length: 8 }).map((_, index) => (
                 <div
                   key={CATEGORY_ROW_SKELETON_KEYS[index]}
@@ -74,8 +86,8 @@ export function CategorySlider() {
               ))
             : null}
 
-          {!loading &&
-            categories.map((category) => {
+          {!displayLoading &&
+            displayCategories.map((category) => {
               const isActive = activeId === category.id;
               return (
                 <Link
@@ -116,21 +128,19 @@ export function CategorySlider() {
                   >
                     {category.name}
                   </span>
-                  {category.count > 0 ? (
-                    <span className="mt-0.5 text-[10px] tabular-nums text-slate-400 dark:text-slate-500">
-                      {category.count} items
-                    </span>
-                  ) : null}
+                  <span className="mt-0.5 text-[10px] tabular-nums text-slate-400 dark:text-slate-500">
+                    {category.count > 0 ? `${category.count} items` : "0 items"}
+                  </span>
                 </Link>
               );
             })}
         </div>
       </div>
 
-      {!loading && error ? (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      {!displayLoading && displayError ? (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{displayError}</p>
       ) : null}
-      {!loading && !error && categories.length === 0 ? (
+      {!displayLoading && !displayError && displayCategories.length === 0 ? (
         <p className="rounded-xl border bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900">
           No categories available right now.
         </p>

@@ -15,6 +15,8 @@ loadEnvConfig(__dirname);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  /** Default is true; explicit for font CSS inlining / optimization (see `next/font`). */
+  optimizeFonts: true,
   images: {
     domains: [
       "images.unsplash.com",

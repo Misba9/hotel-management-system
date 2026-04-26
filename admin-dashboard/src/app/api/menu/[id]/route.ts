@@ -20,15 +20,18 @@ const menuUpdateSchema = z
     ingredients: z.string().max(4000).optional(),
     imageUrl: optionalImageUrl.optional(),
     available: z.boolean().optional(),
-    isAvailable: z.boolean().optional()
+    isAvailable: z.boolean().optional(),
+    rating: z.number().finite().min(0).max(5).optional()
   })
   .refine((value) => Object.values(value).some((v) => v !== undefined), {
     message: "At least one field is required."
   });
 
 async function resolveCategoryName(categoryId: string): Promise<string> {
-  const snap = await adminDb.collection("menu_categories").doc(categoryId).get();
-  return String(snap.data()?.name ?? "");
+  const snap = await adminDb.collection("categories").doc(categoryId).get();
+  if (snap.exists) return String(snap.data()?.name ?? "");
+  const legacy = await adminDb.collection("menu_categories").doc(categoryId).get();
+  return String(legacy.data()?.name ?? "");
 }
 
 export async function PATCH(request: Request, context: { params: { id: string } }) {
@@ -59,12 +62,16 @@ export async function PATCH(request: Request, context: { params: { id: string } 
       updates.image = body.imageUrl;
     }
     if (body.categoryId !== undefined) {
-      updates.category = body.categoryId;
       updates.categoryId = body.categoryId;
       const cn = typeof body.categoryName === "string" ? body.categoryName.trim() : "";
-      updates.categoryName = cn || (await resolveCategoryName(body.categoryId));
+      const resolvedName = cn || (await resolveCategoryName(body.categoryId));
+      updates.categoryName = resolvedName;
+      /** Same string customer menu matches to `categories[].name` (case-insensitive there). */
+      updates.category = resolvedName;
     } else if (body.categoryName !== undefined) {
-      updates.categoryName = body.categoryName.trim();
+      const trimmed = body.categoryName.trim();
+      updates.categoryName = trimmed;
+      updates.category = trimmed;
     }
     if (body.size !== undefined) updates.size = body.size;
     if (body.ingredients !== undefined) {
@@ -78,6 +85,9 @@ export async function PATCH(request: Request, context: { params: { id: string } 
       updates.available = avail;
       updates.availability = avail;
       updates.isAvailable = avail;
+    }
+    if (body.rating !== undefined) {
+      updates.rating = body.rating;
     }
     await adminDb.collection("products").doc(id).set(updates, { merge: true });
     if (process.env.NODE_ENV !== "production") {

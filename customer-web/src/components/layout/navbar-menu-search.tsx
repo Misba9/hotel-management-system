@@ -58,6 +58,12 @@ export function NavbarMenuSearch() {
   const minN = minPrice === "" ? null : Number(minPrice);
   const maxN = maxPrice === "" ? null : Number(maxPrice);
 
+  const categoryNameFilter = useMemo(() => {
+    if (!categoryId) return null;
+    const row = categories.find((c) => c.id === categoryId);
+    return row?.name ?? null;
+  }, [categories, categoryId]);
+
   const filtered = useMemo(() => {
     const noText = !debouncedQuery.trim();
     const noExtra = !categoryId && minN == null && maxN == null && !popularOnly;
@@ -65,12 +71,12 @@ export function NavbarMenuSearch() {
 
     return filterMenuProducts(products, {
       text: debouncedQuery,
-      categoryId: categoryId || null,
+      categoryName: categoryNameFilter,
       minPrice: minN != null && Number.isFinite(minN) ? minN : null,
       maxPrice: maxN != null && Number.isFinite(maxN) ? maxN : null,
       popularOnly
     });
-  }, [products, debouncedQuery, categoryId, minN, maxN, popularOnly]);
+  }, [products, debouncedQuery, categoryId, categoryNameFilter, minN, maxN, popularOnly]);
 
   const preview = useMemo(() => filtered.slice(0, DROPDOWN_MAX), [filtered]);
 

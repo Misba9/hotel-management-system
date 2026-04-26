@@ -29,6 +29,7 @@ type AuthState = {
 };
 
 let unsubRole: (() => void) | undefined;
+let unsubAuthGlobal: (() => void) | undefined;
 
 const HYDRATE_MS = 12_000;
 
@@ -98,7 +99,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     const name =
       (typeof displayName === "string" && displayName.trim()) ||
       (email.includes("@") ? email.split("@")[0] : "Staff");
-    const profile: StaffProfile = { uid: user.uid, email, name, role };
+    const profile: StaffProfile = {
+      uid: user.uid,
+      email,
+      name,
+      phoneNumber: user.phoneNumber ?? "",
+      role
+    };
     set({ user, role, profile, isAuthenticated: true });
   },
 
@@ -120,10 +127,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   init: () => {
+    unsubAuthGlobal?.();
+    unsubAuthGlobal = undefined;
     unsubRole?.();
     unsubRole = undefined;
 
-    const unsubAuth = onAuthStateChanged(staffAuth, async (user) => {
+    unsubAuthGlobal = onAuthStateChanged(staffAuth, async (user) => {
       unsubRole?.();
       unsubRole = undefined;
 
@@ -168,8 +177,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     });
 
     return () => {
-      unsubAuth();
+      unsubAuthGlobal?.();
+      unsubAuthGlobal = undefined;
       unsubRole?.();
+      unsubRole = undefined;
     };
   }
 }));

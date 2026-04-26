@@ -3,51 +3,59 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import type { StaffOrderRow } from "../services/orders";
 
-export type KitchenTicketAction = "accept" | "ready";
-
-function formatMoney(n: number) {
-  return `₹${Number.isFinite(n) ? n.toFixed(0) : "0"}`;
-}
-
 type Props = {
   order: StaffOrderRow;
-  busy: KitchenTicketAction | null;
-  onAccept: () => Promise<void>;
-  onMarkReady: () => Promise<void>;
+  busy: "accept" | "ready" | "print" | null;
+  onPrint: () => void;
+  onAccept: () => void;
+  onMarkReady: () => void;
+  isNew?: boolean;
 };
 
-export function KitchenTicketCard({ order, busy, onAccept, onMarkReady }: Props) {
+function formatTicketTime(order: StaffOrderRow) {
+  const ms = order.createdAt?.toMillis?.();
+  if (!ms) return "--:--";
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+export function KitchenTicketCard({
+  order,
+  busy,
+  onPrint,
+  onAccept,
+  onMarkReady,
+  isNew = false
+}: Props) {
   const canon = order.canonicalStatus ?? "pending";
   const raw = String(order.status ?? "");
-
-  const { label, chipBg, chipText } = useMemo(() => {
-    if (canon === "pending" || raw === "PLACED") {
-      return { label: "New", chipBg: "#fee2e2", chipText: "#991b1b" };
-    }
-    return { label: "Preparing", chipBg: "#ffedd5", chipText: "#9a3412" };
-  }, [canon, raw]);
-
-  const showAccept = canon === "pending" || raw === "PLACED";
-  const showReady = canon === "preparing" || raw === "PREPARING";
+  const rawLower = raw.toLowerCase();
+  const isPending = canon === "pending" || raw === "PLACED";
+  const isPreparing = canon === "preparing" || rawLower === "preparing" || raw === "PREPARING";
+  const statusLabel = isPreparing ? "Preparing" : isPending ? "New" : "Unknown";
+  const showAccept = isPending;
+  const showReady = isPreparing;
 
   const tableLabel =
     typeof order.tableNumber === "number" && Number.isFinite(order.tableNumber)
       ? order.tableNumber
       : "—";
-  const tokenLabel =
-    typeof order.tokenNumber === "number" && order.tokenNumber > 0 ? `#${order.tokenNumber}` : "—";
 
   const lines = order.items.map((it) => `${it.qty}× ${it.name}`);
+  const timeLabel = useMemo(() => formatTicketTime(order), [order]);
+
+  const disabled = busy !== null;
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isNew && styles.cardNew]}>
       <View style={styles.topRow}>
         <Text style={styles.tableHuge}>Table {tableLabel}</Text>
-        <View style={[styles.chip, { backgroundColor: chipBg }]}>
-          <Text style={[styles.chipTxt, { color: chipText }]}>{label}</Text>
+        <View style={[styles.chip, isPending && styles.chipNew, isPreparing && styles.chipPrep]}>
+          <Text style={[styles.chipTxt, isPending && styles.chipTxtNew, isPreparing && styles.chipTxtPrep]}>
+            {statusLabel}
+          </Text>
         </View>
       </View>
-      <Text style={styles.token}>Token {tokenLabel}</Text>
+      <Text style={styles.meta}>Time {timeLabel}</Text>
       <View style={styles.divider} />
       <Text style={styles.sectionTitle}>Items</Text>
       {lines.length === 0 ? (
@@ -59,42 +67,56 @@ export function KitchenTicketCard({ order, busy, onAccept, onMarkReady }: Props)
           </Text>
         ))
       )}
-      <Text style={styles.total}>{formatMoney(order.totalAmount)}</Text>
-
       <View style={styles.actions}>
+        <Pressable
+          onPress={() => void onPrint()}
+          disabled={disabled}
+          style={({ pressed }) => [
+            styles.btn,
+            styles.btnPrint,
+            disabled && styles.btnDisabled,
+            pressed && !disabled && styles.pressed
+          ]}
+        >
+          {busy === "print" ? (
+            <ActivityIndicator color="#f8fafc" />
+          ) : (
+            <Text style={styles.btnTextPrint}>Print</Text>
+          )}
+        </Pressable>
         {showAccept ? (
           <Pressable
             onPress={() => void onAccept()}
-            disabled={busy !== null}
+            disabled={disabled}
             style={({ pressed }) => [
               styles.btn,
               styles.btnAccept,
-              busy !== null && styles.btnDisabled,
-              pressed && busy === null && styles.pressed
+              disabled && styles.btnDisabled,
+              pressed && !disabled && styles.pressed
             ]}
           >
             {busy === "accept" ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.btnText}>Accept</Text>
+              <Text style={styles.btnText}>Start Preparing</Text>
             )}
           </Pressable>
         ) : null}
         {showReady ? (
           <Pressable
             onPress={() => void onMarkReady()}
-            disabled={busy !== null}
+            disabled={disabled}
             style={({ pressed }) => [
               styles.btn,
               styles.btnReady,
-              busy !== null && styles.btnDisabled,
-              pressed && busy === null && styles.pressed
+              disabled && styles.btnDisabled,
+              pressed && !disabled && styles.pressed
             ]}
           >
             {busy === "ready" ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.btnText}>Mark ready</Text>
+              <Text style={styles.btnText}>Mark Ready</Text>
             )}
           </Pressable>
         ) : null}
@@ -118,6 +140,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3
   },
+  cardNew: {
+    borderColor: "#f59e0b",
+    shadowColor: "#f59e0b",
+    shadowOpacity: 0.3
+  },
   topRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -131,17 +158,17 @@ const styles = StyleSheet.create({
     color: "#0f172a",
     letterSpacing: -0.5
   },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999
-  },
-  chipTxt: { fontSize: 15, fontWeight: "800" },
-  token: {
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: "#e2e8f0" },
+  chipNew: { backgroundColor: "#fee2e2" },
+  chipPrep: { backgroundColor: "#ffedd5" },
+  chipTxt: { fontSize: 15, fontWeight: "800", color: "#475569" },
+  chipTxtNew: { color: "#991b1b" },
+  chipTxtPrep: { color: "#9a3412" },
+  meta: {
     marginTop: 10,
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#2563eb"
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#334155"
   },
   divider: {
     height: 1,
@@ -163,29 +190,25 @@ const styles = StyleSheet.create({
     lineHeight: 28
   },
   muted: { fontSize: 16, color: "#94a3b8" },
-  total: {
-    marginTop: 14,
-    fontSize: 28,
-    fontWeight: "900",
-    color: "#0f172a"
-  },
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 14,
+    gap: 10,
     marginTop: 22
   },
   btn: {
-    minHeight: 52,
-    minWidth: 160,
-    paddingHorizontal: 20,
+    minHeight: 48,
+    minWidth: 120,
+    paddingHorizontal: 16,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center"
   },
+  btnPrint: { backgroundColor: "#475569" },
   btnAccept: { backgroundColor: "#ea580c" },
   btnReady: { backgroundColor: "#16a34a" },
   btnDisabled: { opacity: 0.55 },
   pressed: { opacity: 0.9 },
-  btnText: { color: "#fff", fontSize: 18, fontWeight: "800" }
+  btnText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  btnTextPrint: { color: "#f8fafc", fontSize: 16, fontWeight: "800" }
 });

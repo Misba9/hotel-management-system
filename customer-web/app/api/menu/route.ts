@@ -1,6 +1,36 @@
 import { fetchMenuFromFirestoreAdmin } from "@/lib/server/menu-firestore";
+import type { Category, Product } from "@/lib/menu-data-types";
 
 export const dynamic = "force-dynamic";
+
+const PLACEHOLDER_IMAGE = "/images/hero-fruits.svg";
+
+/** Single JSON shape for `/api/menu` — always includes `category` + `isAvailable` on products. */
+function serializeMenuForClient(categories: Category[], products: Product[]) {
+  const categoriesOut = categories.map((c) => ({
+    ...c,
+    image: (c.image && c.image.trim()) || PLACEHOLDER_IMAGE,
+    isActive: c.isActive !== false
+  }));
+  const productsOut = products.map((p) => {
+    const legacy = String((p as { category?: string }).category ?? "").trim();
+    const categoryName = String(p.categoryName ?? "").trim();
+    const categoryId = String(p.categoryId ?? "").trim();
+    let category = legacy || categoryName || categoryId;
+    /** Older admin writes stored `category` === `categoryId` (doc id). Customer UI matches `category` to category name. */
+    if (categoryName && legacy && categoryId && legacy === categoryId) {
+      category = categoryName;
+    }
+    const isAvailable = (p as { isAvailable?: boolean }).isAvailable ?? p.available;
+    return {
+      ...p,
+      category,
+      isAvailable,
+      available: p.available
+    };
+  });
+  return { categories: categoriesOut, products: productsOut };
+}
 
 const CACHE_HEADERS = {
   "Cache-Control":
@@ -33,7 +63,7 @@ function toItemsPayload(products: MenuCachePayload["products"]): MenuCachePayloa
     id: p.id,
     name: p.name,
     price: p.price,
-    category: p.categoryName,
+    category: String((p as { category?: string }).category ?? p.categoryName),
     categoryId: p.categoryId,
     image: p.image,
     available: p.available
@@ -54,10 +84,11 @@ export async function GET() {
     }
 
     const { categories, products } = await fetchMenuFromFirestoreAdmin();
+    const { categories: categoriesOut, products: productsOut } = serializeMenuForClient(categories, products);
     const payload: MenuCachePayload = {
-      categories,
-      products,
-      items: toItemsPayload(products)
+      categories: categoriesOut,
+      products: productsOut,
+      items: toItemsPayload(productsOut)
     };
 
     if (MENU_CACHE_TTL_MS > 0) {

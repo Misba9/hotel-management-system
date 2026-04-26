@@ -7,12 +7,15 @@ const DEFAULT_PLACEHOLDER_IMAGE =
 
 /** Storefront catalog collections (see `backend/firestore.rules` — `categories`, `products`). */
 const CATEGORIES_COLLECTION = "categories";
+const LEGACY_CATEGORIES_COLLECTION = "menu_categories";
 const PRODUCTS_COLLECTION = "products";
 
 type FirestoreCategoryDoc = {
   name?: unknown;
   active?: unknown;
+  isActive?: unknown;
   image?: unknown;
+  imageUrl?: unknown;
   sortOrder?: unknown;
   priority?: unknown;
 };
@@ -33,8 +36,15 @@ type CategoryRow = {
  */
 /** Category id → display name (active + inactive with a `name` field). */
 export async function fetchCategoryNameLookup(): Promise<Map<string, string>> {
-  const snap = await adminDb.collection(CATEGORIES_COLLECTION).get();
+  const [snap, legacySnap] = await Promise.all([
+    adminDb.collection(CATEGORIES_COLLECTION).get(),
+    adminDb.collection(LEGACY_CATEGORIES_COLLECTION).get()
+  ]);
   const map = new Map<string, string>();
+  for (const docSnap of legacySnap.docs) {
+    const mapped = mapCategoryDoc(docSnap.id, docSnap.data() as FirestoreCategoryDoc);
+    if (mapped) map.set(mapped.id, mapped.name);
+  }
   for (const docSnap of snap.docs) {
     const mapped = mapCategoryDoc(docSnap.id, docSnap.data() as FirestoreCategoryDoc);
     if (mapped) map.set(mapped.id, mapped.name);
@@ -46,24 +56,35 @@ export async function fetchMenuFromFirestoreAdmin(): Promise<{
   categories: Category[];
   products: Product[];
 }> {
-  const [categorySnap, productSnap] = await Promise.all([
+  const [categorySnap, legacyCatSnap, productSnap] = await Promise.all([
     adminDb.collection(CATEGORIES_COLLECTION).get(),
+    adminDb.collection(LEGACY_CATEGORIES_COLLECTION).get(),
     adminDb.collection(PRODUCTS_COLLECTION).get()
   ]);
 
   if (process.env.NODE_ENV !== "production") {
     console.info("[menu-firestore] raw Firestore snapshot", {
       collectionCategories: CATEGORIES_COLLECTION,
+      legacyCategories: LEGACY_CATEGORIES_COLLECTION,
       collectionItems: PRODUCTS_COLLECTION,
       categoryDocs: categorySnap.size,
+      legacyCategoryDocs: legacyCatSnap.size,
       itemDocs: productSnap.size
     });
   }
 
   const categoryRows: CategoryRow[] = [];
-  for (const docSnap of categorySnap.docs) {
+  for (const docSnap of legacyCatSnap.docs) {
     const mapped = mapCategoryDoc(docSnap.id, docSnap.data() as FirestoreCategoryDoc);
     if (mapped) categoryRows.push(mapped);
+  }
+  for (const docSnap of categorySnap.docs) {
+    const mapped = mapCategoryDoc(docSnap.id, docSnap.data() as FirestoreCategoryDoc);
+    if (mapped) {
+      const idx = categoryRows.findIndex((c) => c.id === mapped.id);
+      if (idx >= 0) categoryRows[idx] = mapped;
+      else categoryRows.push(mapped);
+    }
   }
 
   const categoryById = new Map(categoryRows.map((c) => [c.id, c]));
@@ -93,11 +114,11 @@ export async function fetchMenuFromFirestoreAdmin(): Promise<{
 function mapCategoryDoc(id: string, data: FirestoreCategoryDoc): CategoryRow | null {
   const name = String(data.name ?? "").trim();
   if (!id || !name) return null;
-  const active = data.active !== false;
+  const active = data.isActive !== false && data.active !== false;
   const sortRaw = data.sortOrder ?? data.priority;
   const sortOrder =
     typeof sortRaw === "number" && Number.isFinite(sortRaw) ? sortRaw : Number(sortRaw) || 50;
-  const image = String(data.image ?? "").trim();
+  const image = String(data.image ?? (data as { imageUrl?: unknown }).imageUrl ?? "").trim();
   return { id, name, image, sortOrder, active };
 }
 
@@ -156,18 +177,22 @@ function mapProductDoc(
     image = resolved === MENU_IMAGE_FALLBACK ? DEFAULT_PLACEHOLDER_IMAGE : resolved;
   }
 
+  const legacyCategory = String(raw.category ?? "").trim();
+
   return {
     id,
     name,
     description: String(raw.description ?? ""),
     categoryId: effectiveCategoryId,
     categoryName,
+    ...(legacyCategory ? { category: legacyCategory } : {}),
     price,
     rating: Number.isFinite(Number(raw.rating)) ? Number(raw.rating) : 4.5,
     image,
     ingredients: Array.isArray(raw.ingredients) ? raw.ingredients.map((item) => String(item)) : [],
     sizes: sizes.length > 0 ? sizes : [{ label: "Medium", multiplier: 1 }],
     available,
+    isAvailable: available,
     featured,
     popular
   };
@@ -197,6 +222,8 @@ function buildCategoryList(categoryRows: CategoryRow[], products: Product[]): Ca
     counts.set(product.categoryId, (counts.get(product.categoryId) ?? 0) + 1);
   }
 
+  const activeById = new Map(categoryRows.map((r) => [r.id, r.active]));
+
   return fromFirestore
     .sort((a, b) => {
       if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
@@ -206,6 +233,7 @@ function buildCategoryList(categoryRows: CategoryRow[], products: Product[]): Ca
       id: c.id,
       name: c.name,
       image: c.image,
-      count: counts.get(c.id) ?? 0
+      count: counts.get(c.id) ?? 0,
+      isActive: activeById.has(c.id) ? activeById.get(c.id)! : true
     }));
 }

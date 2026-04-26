@@ -35,6 +35,11 @@ function sanitizePrivateKey(value: string | undefined): string | undefined {
   return value?.replace(/\\n/g, "\n");
 }
 
+function sanitizeBucket(value: string | undefined): string | undefined {
+  const cleaned = value?.trim().replace(/^gs:\/\//i, "").split("/")[0].trim();
+  return cleaned || undefined;
+}
+
 let cachedInitErrorMessage = "";
 
 function initializeAdminApp(): App {
@@ -50,7 +55,8 @@ function initializeAdminApp(): App {
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
         privateKey: sanitizePrivateKey(process.env.FIREBASE_PRIVATE_KEY)
-      })
+      }),
+      storageBucket: sanitizeBucket(process.env.FIREBASE_STORAGE_BUCKET ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET)
     });
   }
 

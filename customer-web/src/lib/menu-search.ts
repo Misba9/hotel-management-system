@@ -1,10 +1,18 @@
 import type { Product } from "@/lib/menu-data-types";
 
+/** Trim + lowercase — use for all menu category ↔ product `category` comparisons. */
+export function normalizeMenuCategoryKey(str: unknown): string {
+  return (str ?? "").toString().trim().toLowerCase();
+}
+
 export type MenuProductFilters = {
   /** Case-insensitive match on name (and description if no name match needed — name only per spec). */
   text: string;
-  /** When set, only this category id; omit or null for all. */
-  categoryId: string | null;
+  /**
+   * When set, only products whose Firestore/API `category` string matches this name (after normalize).
+   * Resolve `?category=<id>` to the category's `name` before passing — do not pass document ids here.
+   */
+  categoryName: string | null;
   minPrice: number | null;
   maxPrice: number | null;
   popularOnly: boolean;
@@ -12,12 +20,18 @@ export type MenuProductFilters = {
 
 export function filterMenuProducts(products: Product[], f: MenuProductFilters): Product[] {
   const t = f.text.trim().toLowerCase();
+  const want = f.categoryName != null ? normalizeMenuCategoryKey(f.categoryName) : "";
+  const filterByCategory = want.length > 0;
+
   return products.filter((p) => {
-    if (f.categoryId && p.categoryId !== f.categoryId) return false;
+    if (filterByCategory) {
+      const pc = normalizeMenuCategoryKey((p as { category?: string }).category);
+      if (pc !== want) return false;
+    }
     if (t && !p.name.toLowerCase().includes(t)) return false;
     if (f.minPrice != null && Number.isFinite(f.minPrice) && p.price < f.minPrice) return false;
     if (f.maxPrice != null && Number.isFinite(f.maxPrice) && p.price > f.maxPrice) return false;
-    if (f.popularOnly && !p.popular) return false;
+    if (f.popularOnly && p.popular !== true) return false;
     return true;
   });
 }

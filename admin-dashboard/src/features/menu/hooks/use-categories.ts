@@ -19,7 +19,7 @@ function normalizeCategory(doc: Record<string, unknown> & { id: string }): Categ
   return {
     id: doc.id,
     name: String(doc.name ?? ""),
-    imageUrl: String(doc.imageUrl ?? ""),
+    imageUrl: String(doc.imageUrl ?? doc.image ?? ""),
     isActive,
     priority: typeof doc.priority === "number" ? doc.priority : 50
   };

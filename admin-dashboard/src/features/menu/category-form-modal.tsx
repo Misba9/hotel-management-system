@@ -9,6 +9,8 @@ import { uploadImage } from "@/lib/upload-menu-image";
 import type { CategoryRow } from "@/features/menu/menu-types";
 import type { MenuToastPayload } from "@/features/menu/menu-toast";
 
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png"]);
+
 async function readApiError(res: Response): Promise<string> {
   try {
     const data = (await res.json()) as { error?: string };
@@ -68,7 +70,11 @@ export function CategoryFormModal({
   }, [file]);
 
   function pickFile(f: File | null) {
-    if (!f || !f.type.startsWith("image/")) return;
+    if (!f) return;
+    if (!ALLOWED_IMAGE_TYPES.has(f.type.toLowerCase())) {
+      onToast({ type: "error", message: "Unsupported image format. Please use JPG or PNG." });
+      return;
+    }
     setFile(f);
   }
 
@@ -221,7 +227,7 @@ export function CategoryFormModal({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                 className="hidden"
                 onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
               />
@@ -269,5 +275,5 @@ export function CategoryFormModal({
 
 /** Generate a Firestore doc id for a new category (used before Storage upload). */
 export function newCategoryDraftId(): string {
-  return doc(collection(getFirebaseDb(), "menu_categories")).id;
+  return doc(collection(getFirebaseDb(), "categories")).id;
 }

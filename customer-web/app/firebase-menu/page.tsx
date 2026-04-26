@@ -60,7 +60,8 @@ function apiProductToProduct(p: ApiProduct): Product {
     image,
     ingredients: [],
     sizes: [{ label: "Medium", multiplier: 1 }],
-    available: p.available !== false
+    available: p.available !== false,
+    isAvailable: p.available !== false
   };
 }
 

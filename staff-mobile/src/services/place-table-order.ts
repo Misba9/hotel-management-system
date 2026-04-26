@@ -53,8 +53,8 @@ export async function placeTableOrder(input: PlaceTableOrderInput): Promise<Plac
     orderType: "table",
     items,
     totalAmount,
-    status: "PLACED",
-    paymentStatus: "PENDING",
+    status: "pending",
+    paymentStatus: "unpaid",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });

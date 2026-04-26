@@ -262,6 +262,7 @@ export function MenuPageFeature() {
         submitting={modalSubmitting}
         storageTargetProductId={storageTargetProductId}
         onSubmit={handleModalSubmit}
+        onToast={showToast}
       />
 
       <MenuDeleteDialog

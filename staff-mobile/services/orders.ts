@@ -28,6 +28,8 @@ export type StaffOrderRow = ReturnType<typeof mapOrderDoc> & {
   tableNumber?: number;
   paymentStatus?: string;
   tokenNumber?: number;
+  /** First auto KOT for this ticket (kitchen marks after successful auto-print). */
+  printed?: boolean;
   /** Normalized lifecycle for filters + UI (pending | preparing | ready | served | …). */
   canonicalStatus: string;
 };
@@ -59,6 +61,7 @@ function enrichOrder(id: string, data: Record<string, unknown>): StaffOrderRow {
   const ot = data.orderType;
   const ps = data.paymentStatus;
   const tok = data.tokenNumber;
+  const printedRaw = data.printed;
   const orderType = typeof ot === "string" ? ot : undefined;
   return {
     ...base,
@@ -67,8 +70,18 @@ function enrichOrder(id: string, data: Record<string, unknown>): StaffOrderRow {
       typeof tn === "number" ? tn : typeof tn === "string" ? Number(tn) || undefined : undefined,
     paymentStatus: typeof ps === "string" ? ps : undefined,
     tokenNumber: typeof tok === "number" && Number.isFinite(tok) ? tok : undefined,
+    printed: typeof printedRaw === "boolean" ? printedRaw : undefined,
     canonicalStatus: canonicalOrderStatus(String(base.status ?? ""), orderType)
   };
+}
+
+/** After a successful auto KOT print — idempotent server-side flag (see Firestore rules). */
+export async function markKitchenTicketPrinted(orderId: string): Promise<void> {
+  const ref = doc(staffDb, ORDERS_COLLECTION, orderId);
+  await updateDoc(ref, {
+    printed: true,
+    updatedAt: serverTimestamp()
+  });
 }
 
 /**
@@ -107,12 +120,15 @@ export function subscribeRecentOrders(
   );
 }
 
-/** KDS: lifecycle `pending` / `preparing` plus legacy table `PLACED` / `PREPARING`. */
-export const KITCHEN_KDS_STATUS_IN = ["pending", "preparing", "PLACED", "PREPARING"] as const;
+/**
+ * Kitchen KDS queue statuses (Firestore `status` field literals).
+ * Core: `pending` + `preparing`. Table tickets may still use `PLACED` / `PREPARING`.
+ * No `orderBy` here — avoids composite-index requirements with `in` queries; sort client-side.
+ */
+export const KITCHEN_QUEUE_STATUS_IN = ["pending", "preparing", "PLACED", "PREPARING"] as const;
 
 /**
- * Live kitchen queue — `onSnapshot` (no pull-to-refresh required).
- * Composite: `status` ASC + `createdAt` DESC (`backend/firestore.indexes.json`).
+ * Live kitchen queue — `onSnapshot` only, production-safe (no `orderBy` + `in` combo).
  */
 export function subscribeKitchenKdsOrders(
   onNext: (orders: StaffOrderRow[]) => void,
@@ -120,17 +136,31 @@ export function subscribeKitchenKdsOrders(
 ): Unsubscribe {
   const q = query(
     collection(staffDb, ORDERS_COLLECTION),
-    where("status", "in", [...KITCHEN_KDS_STATUS_IN]),
-    orderBy("createdAt", "desc"),
-    limit(120)
+    where("status", "in", [...KITCHEN_QUEUE_STATUS_IN])
   );
-  return onSnapshot(
-    q,
-    (snap) => {
-      onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>)));
-    },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
-  );
+
+  try {
+    return onSnapshot(
+      q,
+      (snap) => {
+        onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>)));
+      },
+      (e) => {
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.log("Firestore error:", err.message);
+        if (err.message.toLowerCase().includes("index")) {
+          console.error(
+            "Kitchen query needs an index — open the link in the error in Firebase Console → Create Index → wait until Enabled."
+          );
+        }
+        onError?.(err);
+      }
+    );
+  } catch (error) {
+    console.log("Firestore error:", error);
+    onError?.(error instanceof Error ? error : new Error(String(error)));
+    return () => {};
+  }
 }
 
 /** Cashier: served (dine-in) with payment still open. */
@@ -192,10 +222,10 @@ export async function kitchenAcceptOrder(order: StaffOrderRow): Promise<void> {
   const orderType = typeof data.orderType === "string" ? data.orderType : undefined;
   const cur = String(data.status ?? "");
   if (orderType === "table") {
-    if (cur !== "PLACED") {
-      throw new Error("Accept is only available for PLACED table tickets.");
+    if (cur !== "PLACED" && cur !== "pending") {
+      throw new Error("Accept is only available for pending table tickets.");
     }
-    await updateDoc(ref, { status: "PREPARING", updatedAt: serverTimestamp() });
+    await updateDoc(ref, { status: "preparing", updatedAt: serverTimestamp() });
     return;
   }
   const canon = canonicalOrderStatus(cur, orderType);
@@ -235,10 +265,18 @@ export async function kitchenMarkOrderReady(order: StaffOrderRow): Promise<void>
     throw new Error("Mark ready is only available while the order is preparing.");
   }
   if (orderType === "table") {
-    await updateDoc(ref, { status: "READY", updatedAt: serverTimestamp() });
-  } else {
-    await updateDoc(ref, { status: "ready", updatedAt: serverTimestamp() });
+    await updateDoc(ref, {
+      status: "READY",
+      readyAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return;
   }
+  await updateDoc(ref, {
+    status: "ready",
+    readyAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
 }
 
 export async function waiterMarkServed(order: StaffOrderRow): Promise<void> {

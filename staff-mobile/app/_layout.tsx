@@ -1,8 +1,10 @@
 import "react-native-gesture-handler";
-import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
-import { useEffect } from "react";
+import NetInfo from "@react-native-community/netinfo";
+import { Stack, usePathname, useRootNavigationState, useRouter } from "expo-router";
+import { useEffect, useRef } from "react";
 
 import { installGlobalErrorHandlers } from "../src/bootstrap-global-errors";
+import { ensureStaffFirestoreOnline } from "../src/services/firebase";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -20,52 +22,66 @@ export default function RootLayout() {
   const role = useAuthStore((s) => s.role);
 
   const router = useRouter();
-  const segments = useSegments();
+  const pathname = usePathname();
   const nav = useRootNavigationState();
+  const didInitAuthRef = useRef(false);
+  const lastRedirectRef = useRef<string | null>(null);
 
   useEffect(() => {
     installGlobalErrorHandlers();
   }, []);
 
+  /** Re-enable Firestore network transport after offline / flaky RPC (WebChannel Listen errors). */
   useEffect(() => {
+    void ensureStaffFirestoreOnline();
+    const unsub = NetInfo.addEventListener((state) => {
+      if (state.isConnected) void ensureStaffFirestoreOnline();
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (didInitAuthRef.current) return;
+    didInitAuthRef.current = true;
     return init();
   }, [init]);
 
-  /** Centralized auth + role routing (Expo Router only). */
+  /** Centralized auth + role routing with loop guard. */
   useEffect(() => {
     if (!nav?.key) return;
     if (!authReady || loading) return;
-
-    const root = segments[0] as string | undefined;
+    const root = pathname.split("/")[1] || undefined;
+    const redirectTo = (target: string) => {
+      if (pathname === target) return;
+      if (lastRedirectRef.current === target) return;
+      lastRedirectRef.current = target;
+      router.replace(target as never);
+    };
 
     if (!user) {
-      if (root !== "login" && root !== "index") {
-        router.replace("/login");
-      }
+      redirectTo("/login");
       return;
     }
 
     if (!isAuthenticated || !role) {
-      if (root !== "login") {
-        router.replace("/login");
-      }
+      redirectTo("/login");
       return;
     }
 
-    if (root === "profile") {
-      return;
-    }
-
-    if (root === "login" || root === "index" || root === undefined) {
-      router.replace(roleHomeHref(role));
+    const roleHome = String(roleHomeHref(role));
+    if (root === "login" || root === "index" || root === undefined || root === "") {
+      redirectTo(roleHome);
       return;
     }
 
     const prefix = roleRoutePrefix(role);
     if (root !== prefix) {
-      router.replace(roleHomeHref(role));
+      redirectTo(roleHome);
+      return;
     }
-  }, [nav?.key, authReady, loading, user, isAuthenticated, role, segments, router]);
+
+    lastRedirectRef.current = null;
+  }, [nav?.key, authReady, loading, user, isAuthenticated, role, pathname, router]);
 
   return (
     <SafeAreaProvider>

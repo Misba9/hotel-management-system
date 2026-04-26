@@ -9,7 +9,6 @@ html {
 body {
   background: #fff8f3;
   color: #0f172a;
-  font-family: var(--font-inter), ui-sans-serif, system-ui;
   line-height: 1.6;
   transition: background-color 0.25s ease, color 0.25s ease;
 }

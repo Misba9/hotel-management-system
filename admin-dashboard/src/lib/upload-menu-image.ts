@@ -1,32 +1,60 @@
 "use client";
 
 /**
- * Menu image uploads — **Firebase Storage Web SDK only** (`uploadBytes` + `getDownloadURL`).
- * Do not use `fetch` / `axios` / manual POST to `firebasestorage.googleapis.com`.
- *
- * Uses `getStorage(getFirebaseApp())` so the bucket matches the **named** admin app and
- * `storageBucket` from config (normalized to `*.appspot.com` in `getFirebaseWebConfig`).
+ * Menu image uploads via backend API (`/api/upload`) + Firebase Admin SDK.
+ * This avoids browser→Storage CORS/preflight failures in local development.
  */
 
-import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
-import { getFirebaseApp } from "@/lib/firebase";
+import { adminApiFetch } from "@/shared/lib/admin-api";
+
+async function readUploadApiError(response: Response): Promise<string> {
+  try {
+    const data = (await response.json()) as { error?: string };
+    if (typeof data.error === "string" && data.error.trim()) return data.error;
+  } catch {
+    /* ignore malformed JSON */
+  }
+  return `Upload failed (${response.status}).`;
+}
 
 export async function uploadImage(file: File, folder = "admin-menu"): Promise<string> {
   if (!file) throw new Error("No file selected");
+  if (!["image/jpeg", "image/jpg", "image/png"].includes(file.type.toLowerCase())) {
+    throw new Error("Unsupported image format. Please upload JPG or PNG.");
+  }
 
   if (process.env.NODE_ENV === "development") {
     console.log("[uploadImage] Uploading file:", file.name, file.size, file.type);
   }
 
   const safeName = file.name.replace(/[^\w.\-]/g, "_").replace(/_+/g, "_") || "image";
-  const fileName = `${Date.now()}_${safeName}`;
   const prefix = folder.replace(/^\/+|\/+$/g, "");
 
-  const storage = getStorage(getFirebaseApp());
-  const storageRef = ref(storage, `${prefix}/${fileName}`);
+  try {
+    const renamed = new File([file], `${Date.now()}_${safeName}`, {
+      type: file.type || "image/jpeg"
+    });
+    const form = new FormData();
+    form.set("file", renamed);
+    form.set("folder", prefix);
 
-  await uploadBytes(storageRef, file, {
-    contentType: file.type?.startsWith("image/") ? file.type : "image/jpeg"
-  });
-  return getDownloadURL(storageRef);
+    const response = await adminApiFetch("/api/upload", {
+      method: "POST",
+      body: form
+    });
+    if (!response.ok) {
+      throw new Error(await readUploadApiError(response));
+    }
+
+    const data = (await response.json()) as { url?: string };
+    const url = typeof data.url === "string" ? data.url.trim() : "";
+    if (!url) {
+      throw new Error("Upload response missing URL.");
+    }
+    return url;
+  } catch (error) {
+    console.error("[uploadImage] API upload error:", error);
+    const reason = error instanceof Error ? error.message : "unknown error";
+    throw new Error(`Image upload failed: ${reason}`);
+  }
 }

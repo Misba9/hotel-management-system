@@ -4,8 +4,14 @@
  */
 declare const process: { env: Record<string, string | undefined> };
 
-import { type FirebaseApp, getApp, getApps, initializeApp } from "firebase/app";
-import { type Firestore, getFirestore } from "firebase/firestore";
+import { type FirebaseApp, getApps, initializeApp } from "firebase/app";
+import {
+  enableNetwork,
+  getFirestore,
+  initializeFirestore,
+  type Firestore,
+  type FirestoreSettings
+} from "firebase/firestore";
 import { EXPECTED_NATIVE_PROJECT_ID } from "../config/firebase-project-lock.js";
 
 function env(name: string): string | undefined {
@@ -59,16 +65,34 @@ if (firebaseConfig.projectId !== EXPECTED_NATIVE_PROJECT_ID) {
   );
 }
 
-let app: FirebaseApp;
-if (getApps().length > 0) {
-  app = getApp();
-  if (app.options.projectId !== firebaseConfig.projectId) {
-    console.error(
-      `[Firebase] Cached app project "${app.options.projectId}" !== .env "${firebaseConfig.projectId}". Run: npx expo start -c`
-    );
+/** Single default app instance (Expo fast refresh must not create duplicates). */
+const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+
+if (app.options.projectId !== firebaseConfig.projectId) {
+  console.error(
+    `[Firebase] Cached app project "${app.options.projectId}" !== .env "${firebaseConfig.projectId}". Run: npx expo start -c`
+  );
+}
+
+/**
+ * RN / Expo: WebChannel streams often fail on some networks (RPC Listen transport errors).
+ * Long polling + disabling fetch streams matches stable browser config; opt out with
+ * `EXPO_PUBLIC_FIRESTORE_LONG_POLLING=false`.
+ */
+function createStaffFirestore(): Firestore {
+  const useLongPolling = env("EXPO_PUBLIC_FIRESTORE_LONG_POLLING") !== "false";
+  if (!useLongPolling) {
+    return getFirestore(app);
   }
-} else {
-  app = initializeApp(firebaseConfig);
+  const settings: FirestoreSettings & { useFetchStreams?: boolean } = {
+    experimentalForceLongPolling: true,
+    useFetchStreams: false
+  };
+  try {
+    return initializeFirestore(app, settings as FirestoreSettings);
+  } catch {
+    return getFirestore(app);
+  }
 }
 
 if (typeof __DEV__ !== "undefined" && __DEV__) {
@@ -77,7 +101,16 @@ if (typeof __DEV__ !== "undefined" && __DEV__) {
 }
 
 export const firebaseApp = app;
-export const firestoreDb: Firestore = getFirestore(app);
+export const firestoreDb: Firestore = createStaffFirestore();
+
+/** Call after NetInfo reports online or on cold start if listeners stay empty. */
+export async function ensureStaffFirestoreOnline(): Promise<void> {
+  try {
+    await enableNetwork(firestoreDb);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function getStaffFirebaseConfig() {
   const o = app.options;

@@ -322,6 +322,7 @@ export async function createOrder(orderData) {
     tax,
     invoiceId: id,
     status: "pending",
+    paymentStatus: "unpaid",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     assignedTo: { kitchenId: at.kitchenId, deliveryId: at.deliveryId },
@@ -374,6 +375,7 @@ export async function createDineInOrder(payload) {
     invoiceId: id,
     createdByUid: payload.userId,
     status: "pending",
+    paymentStatus: "unpaid",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     assignedTo: { kitchenId: "auto", deliveryId: "" }

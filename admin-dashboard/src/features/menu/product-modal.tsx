@@ -5,6 +5,9 @@ import { ImagePlus, Loader2, X } from "lucide-react";
 import { uploadImage } from "@/lib/upload-menu-image";
 import type { CategoryRow } from "@/features/menu/menu-types";
 import type { MenuProductFormValues } from "@/features/menu/menu-types";
+import type { MenuToastPayload } from "@/features/menu/menu-toast";
+
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png"]);
 
 type Props = {
   open: boolean;
@@ -16,6 +19,7 @@ type Props = {
   storageTargetProductId: string | null;
   onClose: () => void;
   onSubmit: (values: MenuProductFormValues) => Promise<void>;
+  onToast: (t: MenuToastPayload) => void;
 };
 
 export function ProductModal({
@@ -27,7 +31,8 @@ export function ProductModal({
   submitting,
   storageTargetProductId,
   onClose,
-  onSubmit
+  onSubmit,
+  onToast
 }: Props) {
   const titleId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,7 +86,18 @@ export function ProductModal({
   }, [file]);
 
   function pickFile(f: File | null) {
-    if (!f || !f.type.startsWith("image/")) return;
+    if (!f) return;
+    if (!ALLOWED_IMAGE_TYPES.has(f.type.toLowerCase())) {
+      const message = "Unsupported image format. Please use JPG or PNG.";
+      setErrors((prev) => ({ ...prev, image: message }));
+      onToast({ type: "error", message });
+      return;
+    }
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.image;
+      return next;
+    });
     setFile(f);
   }
 
@@ -124,12 +140,14 @@ export function ProductModal({
       };
       await onSubmit(values);
     } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Upload failed. Use Firebase Storage SDK only — check Storage rules and sign-in.";
       setErrors({
-        _general:
-          err instanceof Error
-            ? err.message
-            : "Upload failed. Use Firebase Storage SDK only — check Storage rules and sign-in."
+        _general: message
       });
+      onToast({ type: "error", message });
     } finally {
       setIsUploading(false);
       setLocalSubmitting(false);
@@ -268,7 +286,7 @@ export function ProductModal({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                 className="hidden"
                 onChange={(ev) => pickFile(ev.target.files?.[0] ?? null)}
               />

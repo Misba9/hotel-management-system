@@ -1,6 +1,6 @@
 import { adminDb } from "@shared/firebase/admin";
 import { requireAdmin } from "@shared/utils/admin-api-auth";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { z } from "zod";
 const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=600" };
 
@@ -16,25 +16,40 @@ const createCategorySchema = z.object({
   isActive: z.boolean().optional()
 });
 
+const COLLECTION = "categories";
+const LEGACY = "menu_categories";
+
+function mapCategoryDoc(doc: QueryDocumentSnapshot) {
+  const d = doc.data() as Record<string, unknown>;
+  const isActive = d.isActive !== false && d.active !== false;
+  return {
+    id: doc.id,
+    name: String(d.name ?? ""),
+    imageUrl: String(d.imageUrl ?? d.image ?? ""),
+    isActive,
+    active: isActive,
+    priority: typeof d.priority === "number" ? d.priority : 50
+  };
+}
+
 export async function GET(request: Request) {
   const auth = await requireAdmin(request, {
     rateLimit: { keyPrefix: "admin_categories_get", limit: 120, windowMs: 60_000 }
   });
   if (!auth.ok) return auth.response;
   try {
-    const snap = await adminDb.collection("menu_categories").orderBy("priority", "asc").get();
-    const items = snap.docs.map((doc) => {
-      const d = doc.data() as Record<string, unknown>;
-      const isActive = d.isActive !== false && d.active !== false;
-      return {
-        id: doc.id,
-        name: String(d.name ?? ""),
-        imageUrl: String(d.imageUrl ?? ""),
-        isActive,
-        active: isActive,
-        priority: typeof d.priority === "number" ? d.priority : 50
-      };
-    });
+    const [snap, legacySnap] = await Promise.all([
+      adminDb.collection(COLLECTION).orderBy("priority", "asc").get(),
+      adminDb.collection(LEGACY).orderBy("priority", "asc").get()
+    ]);
+    const byId = new Map<string, ReturnType<typeof mapCategoryDoc>>();
+    for (const doc of legacySnap.docs) {
+      byId.set(doc.id, mapCategoryDoc(doc));
+    }
+    for (const doc of snap.docs) {
+      byId.set(doc.id, mapCategoryDoc(doc));
+    }
+    const items = [...byId.values()].sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
     return Response.json({ items }, { status: 200, headers: CACHE_HEADERS });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
@@ -51,14 +66,14 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
   try {
     const body = createCategorySchema.parse(await request.json());
-    const ref = body.id ? adminDb.collection("menu_categories").doc(body.id) : adminDb.collection("menu_categories").doc();
+    const ref = body.id ? adminDb.collection(COLLECTION).doc(body.id) : adminDb.collection(COLLECTION).doc();
     const imageUrl = body.imageUrl?.trim() ?? "";
     const activeFlag = body.isActive ?? body.active ?? true;
     await ref.set({
       id: ref.id,
       branchId: "hyderabad-main",
       name: body.name.trim(),
-      ...(imageUrl ? { imageUrl } : {}),
+      ...(imageUrl ? { imageUrl, image: imageUrl } : {}),
       priority: Number(body.priority ?? 50),
       active: activeFlag,
       isActive: activeFlag,

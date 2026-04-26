@@ -2,7 +2,7 @@
 /**
  * Frees dev server ports (macOS/Linux: `lsof`). No-op if nothing is listening.
  *
- * - `PORTS_TO_FREE` — comma-separated, e.g. `3000,3001,19006` (used from repo root `npm run dev`)
+ * - `PORTS_TO_FREE` — comma-separated, e.g. `3000,3001` (used from repo root `npm run dev`)
  * - `PORT_TO_FREE` — single port (default `3000`; used by `customer-web` `npm run free-port`)
  */
 import { execSync } from "node:child_process";
