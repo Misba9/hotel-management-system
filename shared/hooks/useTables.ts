@@ -9,6 +9,8 @@ export type TableStatus = "free" | "occupied";
 export type FloorTable = {
   id: string;
   number: number;
+  /** Human label from Firestore `name` (e.g. T1, Patio 2). */
+  displayName?: string;
   status: TableStatus;
   /** Set by POS / waiter flows when a table has an active ticket. */
   currentOrderId?: string | null;
@@ -21,7 +23,7 @@ function parseStatus(data: Record<string, unknown>): TableStatus {
     if (s === "FREE") return "free";
     const lower = s.toLowerCase();
     if (lower === "occupied") return "occupied";
-    if (lower === "free") return "free";
+    if (lower === "free" || lower === "available") return "free";
   }
   if (data.isOccupied === true) return "occupied";
   return "free";
@@ -43,7 +45,9 @@ export function parseFloorTableDoc(id: string, data: DocumentData): FloorTable {
     const fromId = parseInt(id.replace(/\D/g, ""), 10);
     number = Number.isFinite(fromId) ? fromId : 0;
   }
-  const base: FloorTable = { id, number, status: parseStatus(r) };
+  const displayName =
+    typeof r.name === "string" && r.name.trim() ? String(r.name).trim() : undefined;
+  const base: FloorTable = { id, number, status: parseStatus(r), ...(displayName ? { displayName } : {}) };
   if (typeof r.currentOrderId === "string") {
     base.currentOrderId = r.currentOrderId;
   } else if (r.currentOrderId === null) {

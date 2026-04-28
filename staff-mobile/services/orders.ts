@@ -12,6 +12,7 @@ import {
   type Unsubscribe
 } from "firebase/firestore";
 
+import { isWaiterPosDineInOrder } from "@shared/utils/waiter-pos-order";
 import type { StaffRoleId } from "../src/constants/staff-roles";
 import { assertValidTransition, type OrderLifecycleStatus } from "../src/lib/order-status-lifecycle";
 import { staffDb } from "../src/lib/firebase";
@@ -26,6 +27,8 @@ import {
 export type StaffOrderRow = ReturnType<typeof mapOrderDoc> & {
   orderType?: string;
   tableNumber?: number;
+  tableId?: string;
+  tableName?: string;
   paymentStatus?: string;
   tokenNumber?: number;
   /** First auto KOT for this ticket (kitchen marks after successful auto-print). */
@@ -51,6 +54,7 @@ export function canonicalOrderStatus(status: string, orderType?: string): string
   if (l === "placed" || l === "pending" || l === "created" || l === "confirmed") return "pending";
   if (l === "accepted" || l === "preparing") return "preparing";
   if (l === "ready") return "ready";
+  if (l === "done") return "done";
   if (l === "served" || l === "completed") return "served";
   return l || "pending";
 }
@@ -62,12 +66,16 @@ function enrichOrder(id: string, data: Record<string, unknown>): StaffOrderRow {
   const ps = data.paymentStatus;
   const tok = data.tokenNumber;
   const printedRaw = data.printed;
+  const tid = data.tableId;
+  const tname = data.tableName;
   const orderType = typeof ot === "string" ? ot : undefined;
   return {
     ...base,
     orderType,
     tableNumber:
       typeof tn === "number" ? tn : typeof tn === "string" ? Number(tn) || undefined : undefined,
+    tableId: typeof tid === "string" && tid.trim() ? tid.trim() : undefined,
+    tableName: typeof tname === "string" && tname.trim() ? tname.trim() : undefined,
     paymentStatus: typeof ps === "string" ? ps : undefined,
     tokenNumber: typeof tok === "number" && Number.isFinite(tok) ? tok : undefined,
     printed: typeof printedRaw === "boolean" ? printedRaw : undefined,
@@ -259,6 +267,8 @@ export async function kitchenMarkOrderReady(order: StaffOrderRow): Promise<void>
   if (!snap.exists()) throw new Error("Order not found");
   const data = snap.data() as Record<string, unknown>;
   const orderType = typeof data.orderType === "string" ? data.orderType : undefined;
+  const tok = data.tokenNumber;
+  const tokenNumber = typeof tok === "number" && Number.isFinite(tok) ? tok : undefined;
   const cur = String(data.status ?? "");
   const canon = canonicalOrderStatus(cur, orderType);
   if (canon !== "preparing") {
@@ -267,6 +277,14 @@ export async function kitchenMarkOrderReady(order: StaffOrderRow): Promise<void>
   if (orderType === "table") {
     await updateDoc(ref, {
       status: "READY",
+      readyAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return;
+  }
+  if (isWaiterPosDineInOrder({ orderType, tokenNumber })) {
+    await updateDoc(ref, {
+      status: "done",
       readyAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });

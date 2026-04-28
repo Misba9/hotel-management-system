@@ -17,8 +17,8 @@ export default function WaiterLayout() {
       <Stack.Screen
         name="order/[tableId]"
         options={{
-          title: "New order",
-          headerBackTitle: "Waiter"
+          title: "Take order",
+          headerShown: false
         }}
       />
     </Stack>

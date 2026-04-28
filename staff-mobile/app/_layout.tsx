@@ -10,7 +10,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { StaffNotificationBootstrap } from "../src/components/staff-notification-bootstrap";
 import { OfflineBanner } from "../src/components/ux/offline-banner";
-import { roleHomeHref, roleRoutePrefix } from "../src/lib/staff-role-home";
+import { isGlobalStaffRouteRoot, roleHomeHref, roleRoutePrefix } from "../src/lib/staff-role-home";
 import { useAuthStore } from "../store/useAuthStore";
 
 export default function RootLayout() {
@@ -75,7 +75,7 @@ export default function RootLayout() {
     }
 
     const prefix = roleRoutePrefix(role);
-    if (root !== prefix) {
+    if (root !== prefix && !isGlobalStaffRouteRoot(root)) {
       redirectTo(roleHome);
       return;
     }

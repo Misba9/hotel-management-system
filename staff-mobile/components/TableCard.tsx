@@ -13,6 +13,9 @@ export type TableCardProps = {
 
 export function TableCard({ table, onOpenOrder, onToggle, disabled }: TableCardProps) {
   const busy = table.status === "occupied";
+  const label =
+    table.displayName?.trim() ||
+    (Number.isFinite(table.number) && table.number > 0 ? `Table ${table.number}` : "Table");
   return (
     <Pressable
       onPress={onOpenOrder}
@@ -20,9 +23,11 @@ export function TableCard({ table, onOpenOrder, onToggle, disabled }: TableCardP
       style={({ pressed }) => [styles.card, onOpenOrder && pressed && styles.cardPressed]}
     >
       <View style={styles.row}>
-        <Text style={styles.title}>Table {Number.isFinite(table.number) ? table.number : "—"}</Text>
+        <Text style={styles.title}>{label}</Text>
         <View style={[styles.badge, busy ? styles.badgeBusy : styles.badgeFree]}>
-          <Text style={styles.badgeText}>{busy ? "Occupied" : "Free"}</Text>
+          <Text style={[styles.badgeText, busy ? styles.badgeTextBusy : styles.badgeTextFree]}>
+            {busy ? "Occupied" : "Available"}
+          </Text>
         </View>
       </View>
       {table.currentOrderId ? (
@@ -57,9 +62,11 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   title: { fontSize: 17, fontWeight: "800", color: "#0f172a" },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  badgeFree: { backgroundColor: "#dcfce7" },
-  badgeBusy: { backgroundColor: "#fee2e2" },
-  badgeText: { fontWeight: "700", fontSize: 12, color: "#0f172a" },
+  badgeFree: { backgroundColor: "#22c55e" },
+  badgeBusy: { backgroundColor: "#ef4444" },
+  badgeText: { fontWeight: "800", fontSize: 12 },
+  badgeTextFree: { color: "#fff" },
+  badgeTextBusy: { color: "#fff" },
   meta: { marginTop: 8, fontSize: 14, color: "#64748b" },
   btn: {
     marginTop: 12,

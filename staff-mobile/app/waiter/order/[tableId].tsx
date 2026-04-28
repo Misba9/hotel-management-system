@@ -13,9 +13,10 @@ function parseTableNumber(raw: string | undefined, fallbackId: string): number {
 
 export default function WaiterTableOrderScreen() {
   const router = useRouter();
-  const { tableId, tableNumber: tableNumberParam } = useLocalSearchParams<{
+  const { tableId, tableNumber: tableNumberParam, tableName: tableNameParam } = useLocalSearchParams<{
     tableId: string;
     tableNumber?: string;
+    tableName?: string;
   }>();
   const tableNumber = useMemo(
     () => parseTableNumber(tableNumberParam, String(tableId ?? "")),
@@ -33,12 +34,16 @@ export default function WaiterTableOrderScreen() {
     );
   }
 
+  const tableDisplayName =
+    typeof tableNameParam === "string" && tableNameParam.trim() ? tableNameParam.trim() : undefined;
+
   return (
     <RestaurantPosOrderScreen
       tableFirestoreId={String(tableId)}
       tableNumber={tableNumber}
+      tableDisplayName={tableDisplayName}
       linkTable
-      confirmHint="Creates the ticket, sends it to the kitchen (preparing), and links this table."
+      confirmHint="Sends a pending ticket to the kitchen in real time and marks this table occupied."
     />
   );
 }

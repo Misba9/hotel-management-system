@@ -49,6 +49,7 @@ import {
   managerOrderMatchesTab,
   orderAgeMinutesFromIso
 } from "@shared/utils/manager-order-operations";
+import { isWaiterPosDineInOrder } from "@shared/utils/waiter-pos-order";
 
 type OrderItem = {
   id?: string;
@@ -74,6 +75,9 @@ export type ManagerOrder = {
   orderType?: string;
   tableNumber?: number;
   tableId?: string;
+  /** Waiter POS dine-in ticket */
+  tokenNumber?: number;
+  tableName?: string;
 };
 
 const TAB_FILTERS: ManagerOrdersTab[] = ["all", "placed", "preparing", "ready", "completed"];
@@ -161,6 +165,9 @@ function docToManagerOrder(doc: QueryDocumentSnapshot): ManagerOrder {
   const orderType = typeof d.orderType === "string" ? d.orderType : "";
   const tableNumber = typeof d.tableNumber === "number" && Number.isFinite(d.tableNumber) ? d.tableNumber : undefined;
   const tableId = typeof d.tableId === "string" ? d.tableId.trim() : undefined;
+  const tokenNumber =
+    typeof d.tokenNumber === "number" && Number.isFinite(d.tokenNumber) ? d.tokenNumber : undefined;
+  const tableName = typeof d.tableName === "string" ? d.tableName.trim() : undefined;
 
   return {
     id: doc.id,
@@ -176,7 +183,9 @@ function docToManagerOrder(doc: QueryDocumentSnapshot): ManagerOrder {
     createdAt: serializeClientTimestamp(d.createdAt),
     orderType: orderType || undefined,
     tableNumber,
-    tableId: tableId || undefined
+    tableId: tableId || undefined,
+    tokenNumber,
+    tableName: tableName || undefined
   };
 }
 
@@ -254,7 +263,11 @@ function ManagerOrderCard({
   const ageMin = orderAgeMinutesFromIso(order.createdAt ?? undefined);
   const delaySev = managerOrderDelaySeverity(bucket, ageMin);
   const isTable = String(order.orderType ?? "").toLowerCase() === "table";
-  const preset = isTable ? TABLE_OVERRIDE_VALUES : DELIVERY_OVERRIDE_VALUES;
+  const isPosDineIn = isWaiterPosDineInOrder({
+    orderType: order.orderType,
+    tokenNumber: order.tokenNumber
+  });
+  const preset = isTable ? TABLE_OVERRIDE_VALUES : isPosDineIn ? (["pending", "preparing", "done", "served"] as const) : DELIVERY_OVERRIDE_VALUES;
   const cur = (order.status ?? "").trim();
   const presetList = [...preset] as string[];
   const options: { value: string; label: string }[] = presetList.map((v) => ({ value: v, label: v }));
@@ -278,13 +291,19 @@ function ManagerOrderCard({
             <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400" title={order.id}>
               {order.id.length > 22 ? `${order.id.slice(0, 12)}…${order.id.slice(-8)}` : order.id}
             </p>
-            <p className="font-semibold text-slate-900 dark:text-slate-50">{order.customerName?.trim() || "—"}</p>
+            <p className="font-semibold text-slate-900 dark:text-slate-50">
+              {isPosDineIn
+                ? order.tableName?.trim() || (order.tableNumber != null ? `Table ${order.tableNumber}` : "Dine-in")
+                : order.customerName?.trim() || "—"}
+            </p>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
               <span
                 className={`inline-flex rounded-full px-2 py-0.5 font-semibold ring-1 ring-inset ${
                   isTable
                     ? "bg-violet-50 text-violet-900 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-100 dark:ring-violet-800/50"
-                    : "bg-sky-50 text-sky-900 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-100 dark:ring-sky-800/50"
+                    : isPosDineIn
+                      ? "bg-emerald-50 text-emerald-900 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-100 dark:ring-emerald-800/50"
+                      : "bg-sky-50 text-sky-900 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-100 dark:ring-sky-800/50"
                 }`}
               >
                 {isTable ? (
@@ -292,6 +311,12 @@ function ManagerOrderCard({
                     <UtensilsCrossed className="mr-1 inline h-3 w-3" aria-hidden />
                     Table
                     {order.tableNumber != null ? ` · #${order.tableNumber}` : ""}
+                  </>
+                ) : isPosDineIn ? (
+                  <>
+                    <UtensilsCrossed className="mr-1 inline h-3 w-3" aria-hidden />
+                    POS
+                    {order.tokenNumber != null ? ` · #${order.tokenNumber}` : ""}
                   </>
                 ) : (
                   "Delivery / other"

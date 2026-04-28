@@ -1,4 +1,4 @@
-import { collection, doc, runTransaction, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 import * as Print from "expo-print";
 import { Platform } from "react-native";
 
@@ -21,6 +21,7 @@ function linesToFirestoreItems(lines: CartLine[]) {
     productId: line.productId,
     name: line.name,
     qty: line.qty,
+    price: line.unitPrice,
     unitPrice: line.unitPrice,
     id: line.productId || `line_${idx}`
   }));
@@ -55,17 +56,20 @@ export type PlacedRestaurantOrder = {
   orderId: string;
   tokenNumber: number;
   tableNumber: number;
+  tableLabel: string;
   items: CartLine[];
   total: number;
 };
 
 /**
- * Writes lifecycle order: `pending` + `paymentStatus` pending, then updates to `preparing` (kitchen queue).
+ * Writes dine-in lifecycle order: `pending` (kitchen sees it), `paymentStatus` pending.
  * Optionally marks the floor table occupied with `currentOrderId`.
  */
 export async function confirmRestaurantOrder(params: {
   tableFirestoreId: string;
   tableNumber: number;
+  /** Shown on ticket / receipt (e.g. T1). */
+  tableDisplayName?: string;
   lines: CartLine[];
   linkTable?: boolean;
 }): Promise<PlacedRestaurantOrder> {
@@ -76,10 +80,15 @@ export async function confirmRestaurantOrder(params: {
   const orderId = orderRef.id;
   const items = linesToFirestoreItems(params.lines);
   const ts = serverTimestamp();
+  const tableLabel =
+    (params.tableDisplayName ?? "").trim() ||
+    (params.tableNumber > 0 ? `Table ${params.tableNumber}` : "Walk-in");
 
   await setDoc(orderRef, {
     id: orderId,
     tableNumber: params.tableNumber,
+    tableId: params.tableFirestoreId,
+    tableName: tableLabel,
     items,
     total,
     status: "pending",
@@ -89,17 +98,10 @@ export async function confirmRestaurantOrder(params: {
     updatedAt: ts
   });
 
-  await updateDoc(orderRef, {
-    status: "preparing",
-    updatedAt: serverTimestamp()
-  });
-
   if (params.linkTable) {
     try {
-      await patchWaiterTable(params.tableFirestoreId, {
-        status: "OCCUPIED",
-        currentOrderId: orderId
-      });
+      /** Only mark occupied — supports multiple open tickets per table (do not overwrite `currentOrderId`). */
+      await patchWaiterTable(params.tableFirestoreId, { status: "OCCUPIED" });
     } catch {
       // Table rules may fail if role mismatch — order still placed.
     }
@@ -109,6 +111,7 @@ export async function confirmRestaurantOrder(params: {
     orderId,
     tokenNumber,
     tableNumber: params.tableNumber,
+    tableLabel,
     items: params.lines,
     total
   };
@@ -117,10 +120,11 @@ export async function confirmRestaurantOrder(params: {
 export function buildReceiptHtml(p: {
   tokenNumber: number;
   tableNumber: number;
+  tableLabel?: string;
   items: CartLine[];
   total: number;
   draft?: boolean;
-  /** Overrides default “Receipt” title (e.g. KDS chit). */
+  /** Overrides default receipt title (e.g. KDS chit). */
   title?: string;
 }): string {
   const rows = p.items
@@ -130,24 +134,35 @@ export function buildReceiptHtml(p: {
     )
     .join("");
   const draftNote = p.draft ? `<p style="color:#64748b;font-size:12px">Draft — not saved</p>` : "";
-  const heading =
-    p.title ?? (p.draft ? "Receipt (draft)" : "Receipt");
+  const heading = p.title ?? (p.draft ? "Receipt (draft)" : "NAUSHEEN JUICE CENTER");
   const tokenLabel =
     typeof p.tokenNumber === "number" && p.tokenNumber > 0 ? `#${p.tokenNumber}` : "—";
+  const tableLine =
+    (p.tableLabel ?? "").trim() ||
+    (p.tableNumber > 0 ? `Table ${p.tableNumber}` : "—");
+  const now = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
-    body { font-family: system-ui, sans-serif; padding: 16px; color: #0f172a; }
-    h1 { font-size: 18px; margin: 0 0 8px; }
+    body { font-family: system-ui, sans-serif; padding: 20px; color: #0f172a; max-width: 360px; margin: 0 auto; }
+    .rule { border: none; border-top: 2px solid #0f172a; margin: 12px 0; }
+    h1 { font-size: 16px; margin: 0 0 4px; text-align: center; letter-spacing: 0.04em; }
+    .meta { font-size: 14px; line-height: 1.6; margin: 8px 0; }
     table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     th, td { border-bottom: 1px solid #e2e8f0; padding: 8px 4px; font-size: 14px; }
     th { text-align: left; font-size: 12px; color: #64748b; }
-    .total { margin-top: 16px; font-size: 18px; font-weight: 800; }
+    .total { margin-top: 16px; font-size: 18px; font-weight: 800; text-align: center; }
   </style></head><body>
+    <hr class="rule"/>
     <h1>${escapeHtml(heading)}</h1>
+    <hr class="rule"/>
     ${draftNote}
-    <p><strong>Token</strong> ${tokenLabel}</p>
-    <p><strong>Table</strong> ${p.tableNumber}</p>
-    <table><thead><tr><th>Item</th><th>Qty</th><th>Each</th><th>Line</th></tr></thead><tbody>${rows}</tbody></table>
-    <p class="total">Total ₹${p.total.toFixed(0)}</p>
+    <div class="meta"><strong>Table</strong> ${escapeHtml(tableLine)}</div>
+    <div class="meta"><strong>Time</strong> ${escapeHtml(now)}</div>
+    <div class="meta"><strong>Token</strong> ${escapeHtml(String(tokenLabel))}</div>
+    <p style="font-weight:800;margin-top:16px;margin-bottom:4px">Items</p>
+    <table><thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Each</th><th style="text-align:right">Line</th></tr></thead><tbody>${rows}</tbody></table>
+    <hr class="rule"/>
+    <p class="total">Total: ₹${p.total.toFixed(0)}</p>
+    <hr class="rule"/>
   </body></html>`;
 }
 
@@ -180,6 +195,7 @@ async function printHtmlDocument(html: string): Promise<void> {
 export async function printRestaurantReceipt(p: {
   tokenNumber: number;
   tableNumber: number;
+  tableLabel?: string;
   items: CartLine[];
   total: number;
   draft?: boolean;
@@ -313,6 +329,7 @@ export async function printKitchenTicketForStaffOrder(row: {
   await printRestaurantReceipt({
     tokenNumber,
     tableNumber,
+    tableLabel: typeof row.tableNumber === "number" ? `Table ${row.tableNumber}` : undefined,
     items: lines,
     total,
     draft: false,

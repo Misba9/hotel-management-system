@@ -36,9 +36,11 @@ export function KitchenTicketCard({
   const showReady = isPreparing;
 
   const tableLabel =
-    typeof order.tableNumber === "number" && Number.isFinite(order.tableNumber)
-      ? order.tableNumber
-      : "—";
+    typeof order.tableName === "string" && order.tableName.trim()
+      ? order.tableName.trim()
+      : typeof order.tableNumber === "number" && Number.isFinite(order.tableNumber)
+        ? `Table ${order.tableNumber}`
+        : "—";
 
   const lines = order.items.map((it) => `${it.qty}× ${it.name}`);
   const timeLabel = useMemo(() => formatTicketTime(order), [order]);
@@ -48,7 +50,7 @@ export function KitchenTicketCard({
   return (
     <View style={[styles.card, isNew && styles.cardNew]}>
       <View style={styles.topRow}>
-        <Text style={styles.tableHuge}>Table {tableLabel}</Text>
+        <Text style={styles.tableHuge}>{tableLabel}</Text>
         <View style={[styles.chip, isPending && styles.chipNew, isPreparing && styles.chipPrep]}>
           <Text style={[styles.chipTxt, isPending && styles.chipTxtNew, isPreparing && styles.chipTxtPrep]}>
             {statusLabel}
@@ -98,7 +100,7 @@ export function KitchenTicketCard({
             {busy === "accept" ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.btnText}>Start Preparing</Text>
+              <Text style={styles.btnText}>Accept</Text>
             )}
           </Pressable>
         ) : null}
@@ -116,7 +118,7 @@ export function KitchenTicketCard({
             {busy === "ready" ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.btnText}>Mark Ready</Text>
+              <Text style={styles.btnText}>Done</Text>
             )}
           </Pressable>
         ) : null}

@@ -29,6 +29,14 @@ export function roleHomeHref(role: StaffRoleId | null): Href {
   }
 }
 
+/** Top-level routes any signed-in role may open (outside their role prefix). */
+export const GLOBAL_STAFF_ROUTE_ROOTS = ["profile"] as const;
+
+export function isGlobalStaffRouteRoot(segment: string | undefined): boolean {
+  if (!segment) return false;
+  return (GLOBAL_STAFF_ROUTE_ROOTS as readonly string[]).includes(segment);
+}
+
 /** Top segment for the signed-in role shell (matches first URL segment). */
 export function roleRoutePrefix(role: StaffRoleId): string {
   switch (role) {

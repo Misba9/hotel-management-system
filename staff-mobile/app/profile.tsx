@@ -52,12 +52,6 @@ export default function ProfileScreen() {
     return unsubscribe;
   }, [authUser]);
 
-  useEffect(() => {
-    if (profileResult?.ok && profileResult.profile.role === "kitchen") {
-      router.replace("/kitchen/orders");
-    }
-  }, [profileResult, router]);
-
   const role = profileResult?.ok ? profileResult.profile.role : null;
   const profile = profileResult?.ok ? profileResult.profile : null;
   const phoneNumber = profile?.phoneNumber?.trim() || authUser?.phoneNumber || "Not available";

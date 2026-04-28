@@ -18,6 +18,7 @@ import { playNewOrderChime } from "@/lib/new-order-chime";
 import { useAuth } from "@/context/AuthContext";
 import { adminApiFetch } from "@/shared/lib/admin-api";
 import { withRetry } from "@shared/utils/retry";
+import { isWaiterPosDineInOrder } from "@shared/utils/waiter-pos-order";
 
 type OrderItem = {
   id?: string;
@@ -55,6 +56,11 @@ export type Order = {
   /** Full structured address copied at order time (preferred for ops). */
   deliveryAddress?: OrderDeliverySnapshot;
   createdAt?: string | null;
+  orderType?: string;
+  tokenNumber?: number;
+  tableNumber?: number;
+  tableName?: string;
+  tableId?: string;
 };
 
 /** Next lifecycle step only (admin PATCH enforces {@link assertValidTransition} on server). */
@@ -75,7 +81,7 @@ const TAB_LABEL: Record<TabFilter, string> = {
   all: "All",
   pending: "Pending",
   preparing: "Preparing",
-  delivered: "Delivered"
+  delivered: "Completed"
 };
 
 type BadgeKey =
@@ -86,6 +92,8 @@ type BadgeKey =
   | "ready"
   | "out_for_delivery"
   | "delivered"
+  | "done"
+  | "served"
   | "cancelled"
   | "other";
 
@@ -97,6 +105,8 @@ const BADGE: Record<BadgeKey, { label: string; className: string }> = {
   ready: { label: "Ready", className: "bg-violet-50 text-violet-900 ring-violet-200" },
   out_for_delivery: { label: "Out for delivery", className: "bg-cyan-50 text-cyan-900 ring-cyan-200" },
   delivered: { label: "Delivered", className: "bg-emerald-50 text-emerald-900 ring-emerald-200" },
+  done: { label: "Done", className: "bg-emerald-50 text-emerald-950 ring-emerald-200" },
+  served: { label: "Served", className: "bg-teal-50 text-teal-900 ring-teal-200" },
   cancelled: { label: "Cancelled", className: "bg-slate-100 text-slate-700 ring-slate-200" },
   other: { label: "Other", className: "bg-slate-100 text-slate-800 ring-slate-200" }
 };
@@ -110,6 +120,8 @@ function toBadgeKey(raw: string | undefined): BadgeKey {
   if (s === "ready") return "ready";
   if (s === "out_for_delivery" || s === "picked_up") return "out_for_delivery";
   if (s === "delivered" || s === "completed") return "delivered";
+  if (s === "done") return "done";
+  if (s === "served") return "served";
   if (s === "cancelled" || s === "canceled") return "cancelled";
   return "other";
 }
@@ -192,6 +204,12 @@ function docToOrder(doc: QueryDocumentSnapshot): Order {
     typeof d.paymentStatus === "string" ? d.paymentStatus.toLowerCase().trim() : "";
   const paymentMethod =
     typeof d.paymentMethod === "string" ? d.paymentMethod.toLowerCase().trim() : "";
+  const orderType = typeof d.orderType === "string" ? d.orderType : undefined;
+  const tokenNumber =
+    typeof d.tokenNumber === "number" && Number.isFinite(d.tokenNumber) ? d.tokenNumber : undefined;
+  const tableNumber = typeof d.tableNumber === "number" && Number.isFinite(d.tableNumber) ? d.tableNumber : undefined;
+  const tableName = typeof d.tableName === "string" ? d.tableName.trim() : undefined;
+  const tableId = typeof d.tableId === "string" ? d.tableId.trim() : undefined;
 
   return {
     id: doc.id,
@@ -205,7 +223,12 @@ function docToOrder(doc: QueryDocumentSnapshot): Order {
     paymentMethod: paymentMethod || undefined,
     address: address || undefined,
     deliveryAddress,
-    createdAt: serializeClientTimestamp(d.createdAt)
+    createdAt: serializeClientTimestamp(d.createdAt),
+    orderType,
+    tokenNumber,
+    tableNumber,
+    tableName: tableName || undefined,
+    tableId: tableId || undefined
   };
 }
 
@@ -348,14 +371,18 @@ function buildOrdersQuery(db: ReturnType<typeof getFirebaseDb>, cursor?: QueryDo
 
 function orderMatchesTab(order: Order, tab: TabFilter): boolean {
   const s = (order.status ?? "").toLowerCase().trim();
+  const pos = isWaiterPosDineInOrder({ orderType: order.orderType, tokenNumber: order.tokenNumber });
   switch (tab) {
     case "all":
       return true;
     case "pending":
+      if (pos) return s === "pending";
       return s === "pending" || s === "accepted" || s === "created" || s === "confirmed";
     case "preparing":
+      if (pos) return s === "preparing";
       return ["preparing", "ready", "out_for_delivery", "picked_up"].includes(s);
     case "delivered":
+      if (pos) return s === "done" || s === "served" || s === "ready";
       return s === "delivered" || s === "completed";
     default:
       return true;
@@ -389,7 +416,7 @@ function statusActionButtons(status: string | undefined): {
 
 function isFinalStatus(status: string | undefined): boolean {
   const s = (status ?? "").toLowerCase();
-  return ["delivered", "rejected", "cancelled", "canceled"].includes(s);
+  return ["delivered", "rejected", "cancelled", "canceled", "done", "served", "completed"].includes(s);
 }
 
 function btnClass(enabled: boolean, variant: "primary" | "danger"): string {
@@ -500,6 +527,10 @@ function OrderCard({
   const amt = order.totalAmount ?? order.total ?? 0;
   const lines = formatItemsSummary(order.items ?? []);
   const dt = formatDateTime(order.createdAt ?? undefined);
+  const pos = isWaiterPosDineInOrder({ orderType: order.orderType, tokenNumber: order.tokenNumber });
+  const posTitle =
+    order.tableName?.trim() ||
+    (order.tableNumber != null ? `Table ${order.tableNumber}` : "Dine-in POS");
 
   return (
     <article
@@ -515,8 +546,14 @@ function OrderCard({
             <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400" title={order.id}>
               {order.id.length > 22 ? `${order.id.slice(0, 12)}…${order.id.slice(-8)}` : order.id}
             </p>
-            <p className="font-semibold text-slate-900 dark:text-slate-50">{order.customerName?.trim() || "—"}</p>
-            <CustomerContact order={order} />
+            <p className="font-semibold text-slate-900 dark:text-slate-50">{pos ? posTitle : order.customerName?.trim() || "—"}</p>
+            {pos ? (
+              <p className="mt-0.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+                POS · Token #{order.tokenNumber ?? "—"}
+              </p>
+            ) : (
+              <CustomerContact order={order} />
+            )}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
             <StatusBadge status={order.status ?? ""} />
@@ -526,7 +563,7 @@ function OrderCard({
       </div>
 
       <div className="flex flex-1 flex-col space-y-3 px-4 py-3">
-        {order.address?.trim() || order.deliveryAddress ? (
+        {!pos && (order.address?.trim() || order.deliveryAddress) ? (
           <div>
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Address</p>
             <OrderAddressDetail order={order} />
@@ -564,17 +601,25 @@ function OrderCard({
         </div>
 
         <div className="border-t border-slate-100 pt-2 dark:border-slate-800">
-          <OrderStatusActions order={order} busy={busy} onSetStatus={onSetStatus} />
+          {pos ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              POS: status is updated from the kitchen display and cashier.
+            </p>
+          ) : (
+            <OrderStatusActions order={order} busy={busy} onSetStatus={onSetStatus} />
+          )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => onRefund(order.id)}
-          className="w-full rounded-xl border border-red-200 bg-red-50/80 px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
-          disabled={busy || isFinalStatus(order.status)}
-        >
-          Refund
-        </button>
+        {!pos ? (
+          <button
+            type="button"
+            onClick={() => onRefund(order.id)}
+            className="w-full rounded-xl border border-red-200 bg-red-50/80 px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
+            disabled={busy || isFinalStatus(order.status)}
+          >
+            Refund
+          </button>
+        ) : null}
         {busy ? (
           <div className="flex items-center justify-center gap-2 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin text-orange-500" aria-hidden />

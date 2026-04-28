@@ -3,6 +3,7 @@ import { collection, onSnapshot, type Unsubscribe } from "firebase/firestore";
 import { staffDb } from "../src/lib/firebase";
 
 export const PRODUCTS_COLLECTION = "products";
+export const CATEGORIES_COLLECTION = "categories";
 
 export type MenuProduct = {
   id: string;
@@ -13,23 +14,36 @@ export type MenuProduct = {
   availability: boolean;
 };
 
-function mapProductDoc(id: string, data: Record<string, unknown>): MenuProduct | null {
+function mapProductDoc(
+  id: string,
+  data: Record<string, unknown>,
+  categoryNameById: Map<string, string>
+): MenuProduct | null {
   const name = typeof data.name === "string" ? data.name : "";
   if (!name.trim()) return null;
   const price = typeof data.price === "number" && Number.isFinite(data.price) ? data.price : Number(data.price) || 0;
-  const categoryRaw =
-    typeof data.category === "string" && data.category.trim()
-      ? data.category.trim()
-      : typeof data.categoryId === "string" && data.categoryId.trim()
-        ? data.categoryId.trim()
-        : "Other";
-  const image = typeof data.image === "string" ? data.image : "";
-  const availability = typeof data.availability === "boolean" ? data.availability : true;
+  const categoryId =
+    typeof data.categoryId === "string" && data.categoryId.trim() ? data.categoryId.trim() : "";
+  const categoryFromField =
+    typeof data.category === "string" && data.category.trim() ? data.category.trim() : "";
+  const fromMap = categoryId ? categoryNameById.get(categoryId)?.trim() : "";
+  let category = "Other";
+  if (fromMap) category = fromMap;
+  else if (categoryFromField) category = categoryFromField;
+  else if (categoryId) category = categoryId;
+  const image =
+    typeof data.image === "string"
+      ? data.image
+      : typeof data.imageUrl === "string"
+        ? data.imageUrl
+        : "";
+  const availability =
+    data.available !== false && data.availability !== false && data.isAvailable !== false;
   return {
     id: typeof data.id === "string" && data.id ? data.id : id,
     name: name.trim(),
     price: Math.max(0, price),
-    category: categoryRaw,
+    category: category || "Other",
     image,
     availability
   };
@@ -66,21 +80,57 @@ export function flattenProductsForList(grouped: Record<string, MenuProduct[]>): 
   return rows;
 }
 
+/**
+ * Real-time `categories` + `products` — category names resolved for waiter menu (not raw IDs).
+ */
 export function subscribeMenuProducts(
   onNext: (products: MenuProduct[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  return onSnapshot(
-    collection(staffDb, PRODUCTS_COLLECTION),
+  let categoryNameById = new Map<string, string>();
+  let productDocs: Array<{ id: string; data: Record<string, unknown> }> = [];
+  let catReady = false;
+  let prodReady = false;
+
+  const emit = () => {
+    if (!catReady || !prodReady) return;
+    const list: MenuProduct[] = [];
+    for (const { id, data } of productDocs) {
+      const row = mapProductDoc(id, data, categoryNameById);
+      if (row) list.push(row);
+    }
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    onNext(list);
+  };
+
+  const unsubCat = onSnapshot(
+    collection(staffDb, CATEGORIES_COLLECTION),
     (snap) => {
-      const list: MenuProduct[] = [];
+      const m = new Map<string, string>();
       for (const d of snap.docs) {
-        const row = mapProductDoc(d.id, d.data() as Record<string, unknown>);
-        if (row) list.push(row);
+        const data = d.data() as Record<string, unknown>;
+        const n = typeof data.name === "string" ? data.name.trim() : "";
+        m.set(d.id, n || "Category");
       }
-      list.sort((a, b) => a.name.localeCompare(b.name));
-      onNext(list);
+      categoryNameById = m;
+      catReady = true;
+      emit();
     },
     (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
   );
+
+  const unsubProd = onSnapshot(
+    collection(staffDb, PRODUCTS_COLLECTION),
+    (snap) => {
+      productDocs = snap.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
+      prodReady = true;
+      emit();
+    },
+    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+  );
+
+  return () => {
+    unsubCat();
+    unsubProd();
+  };
 }

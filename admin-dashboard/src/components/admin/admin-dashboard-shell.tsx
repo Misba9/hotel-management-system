@@ -8,6 +8,7 @@ import {
   BarChart3,
   Bell,
   LayoutDashboard,
+  LayoutGrid,
   Loader2,
   LogOut,
   Menu,
@@ -45,6 +46,12 @@ const nav: NavItem[] = [
   },
   { href: "/admin/menu", label: "Menu", icon: Menu, match: (p: string) => p.startsWith("/admin/menu") },
   {
+    href: "/admin/tables",
+    label: "Tables",
+    icon: LayoutGrid,
+    match: (p: string) => p.startsWith("/admin/tables")
+  },
+  {
     href: "/admin/customers",
     label: "Customers",
     icon: Users,
@@ -69,6 +76,7 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/admin/orders")) return "Orders";
   if (pathname.startsWith("/admin/operations")) return "Live operations";
   if (pathname.startsWith("/admin/menu")) return "Menu";
+  if (pathname.startsWith("/admin/tables")) return "Tables";
   if (pathname.startsWith("/admin/customers")) return "Customers";
   if (pathname.startsWith("/admin/analytics")) return "Analytics";
   if (pathname.startsWith("/admin/staff")) return "Staff";

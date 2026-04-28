@@ -2,6 +2,7 @@ import {
   RestaurantOrderStatus,
   normalizeRestaurantOrderStatusForTransition
 } from "./restaurant-order-status";
+import { isWaiterPosDineInOrder } from "./waiter-pos-order";
 
 /**
  * Manager / admin “kitchen board” tabs: all orders, filtered in-memory after a timeline query.
@@ -35,6 +36,15 @@ export function getManagerOrderVisualBucket(order: {
     if (canon === RestaurantOrderStatus.READY) return "ready";
     if (canon === RestaurantOrderStatus.COMPLETED) return "completed";
     if (canon === RestaurantOrderStatus.SERVED) return "served";
+    return "other";
+  }
+
+  if (isWaiterPosDineInOrder(order)) {
+    const sl = String(order.status ?? "").toLowerCase().trim();
+    if (sl === "pending") return "placed";
+    if (sl === "preparing") return "preparing";
+    if (sl === "ready") return "ready";
+    if (sl === "done" || sl === "served" || sl === "completed") return "completed";
     return "other";
   }
 

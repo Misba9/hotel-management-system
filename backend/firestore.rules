@@ -339,37 +339,54 @@ service cloud.firestore {
             "tokenNumber",
             "createdAt"
           ]) &&
-        data.status in ["pending", "preparing", "ready", "served"] &&
+        data.status in ["pending", "preparing", "ready", "served", "done"] &&
         data.paymentStatus in ["pending", "paid"] &&
         !data.keys().hasAny(["userId", "branchId", "orderType", "assignedTo"]);
     }
 
     function validRestaurantLifecycleOrderCreate(orderId) {
-      return request.resource.data.keys().hasOnly([
-            "id",
-            "tableNumber",
-            "items",
-            "total",
-            "status",
-            "paymentStatus",
-            "tokenNumber",
-            "createdAt",
-            "updatedAt"
-          ]) &&
-        request.resource.data.id == orderId &&
-        request.resource.data.tableNumber is int &&
-        request.resource.data.tableNumber >= 0 &&
-        request.resource.data.items is list &&
-        request.resource.data.items.size() > 0 &&
-        request.resource.data.items.size() <= 200 &&
-        request.resource.data.total is number &&
-        request.resource.data.total >= 0 &&
-        request.resource.data.status == "pending" &&
-        request.resource.data.paymentStatus == "pending" &&
-        request.resource.data.tokenNumber is int &&
-        request.resource.data.tokenNumber >= 0 &&
-        request.resource.data.createdAt == request.time &&
-        request.resource.data.updatedAt == request.time;
+      let d = request.resource.data;
+      let keysBase = [
+        "id",
+        "tableNumber",
+        "items",
+        "total",
+        "status",
+        "paymentStatus",
+        "tokenNumber",
+        "createdAt",
+        "updatedAt"
+      ];
+      let keysWithTable = [
+        "id",
+        "tableNumber",
+        "tableId",
+        "tableName",
+        "items",
+        "total",
+        "status",
+        "paymentStatus",
+        "tokenNumber",
+        "createdAt",
+        "updatedAt"
+      ];
+      return (d.keys().hasOnly(keysBase) || d.keys().hasOnly(keysWithTable)) &&
+        (!d.keys().hasAny(["tableId"]) ||
+          (d.tableId is string && d.tableName is string && d.tableId.size() <= 200 && d.tableName.size() <= 200)) &&
+        d.id == orderId &&
+        d.tableNumber is int &&
+        d.tableNumber >= 0 &&
+        d.items is list &&
+        d.items.size() > 0 &&
+        d.items.size() <= 200 &&
+        d.total is number &&
+        d.total >= 0 &&
+        d.status == "pending" &&
+        d.paymentStatus == "pending" &&
+        d.tokenNumber is int &&
+        d.tokenNumber >= 0 &&
+        d.createdAt == request.time &&
+        d.updatedAt == request.time;
     }
 
     function restaurantLifecycleKitchenUpdateOk() {
@@ -378,15 +395,18 @@ service cloud.firestore {
         isRestaurantLifecycleOrderDoc(resource.data) &&
         request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "updatedAt"]) &&
         request.resource.data.updatedAt == request.time &&
-        request.resource.data.status in ["pending", "preparing", "ready", "served"] &&
+        request.resource.data.status in ["pending", "preparing", "ready", "served", "done"] &&
         request.resource.data.paymentStatus == resource.data.paymentStatus &&
         request.resource.data.tokenNumber == resource.data.tokenNumber &&
         request.resource.data.tableNumber == resource.data.tableNumber &&
         request.resource.data.items == resource.data.items &&
         request.resource.data.total == resource.data.total &&
+        (!resource.data.keys().hasAny(["tableId"]) || request.resource.data.tableId == resource.data.tableId) &&
+        (!resource.data.keys().hasAny(["tableName"]) || request.resource.data.tableName == resource.data.tableName) &&
         (
           (resource.data.status == "pending" && request.resource.data.status == "preparing") ||
-          (resource.data.status == "preparing" && request.resource.data.status == "ready")
+          (resource.data.status == "preparing" && request.resource.data.status == "ready") ||
+          (resource.data.status == "preparing" && request.resource.data.status == "done")
         );
     }
 
@@ -396,12 +416,14 @@ service cloud.firestore {
         isRestaurantLifecycleOrderDoc(resource.data) &&
         request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "updatedAt"]) &&
         request.resource.data.updatedAt == request.time &&
-        request.resource.data.status in ["pending", "preparing", "ready", "served"] &&
+        request.resource.data.status in ["pending", "preparing", "ready", "served", "done"] &&
         request.resource.data.paymentStatus == resource.data.paymentStatus &&
         request.resource.data.tokenNumber == resource.data.tokenNumber &&
         request.resource.data.tableNumber == resource.data.tableNumber &&
         request.resource.data.items == resource.data.items &&
         request.resource.data.total == resource.data.total &&
+        (!resource.data.keys().hasAny(["tableId"]) || request.resource.data.tableId == resource.data.tableId) &&
+        (!resource.data.keys().hasAny(["tableName"]) || request.resource.data.tableName == resource.data.tableName) &&
         resource.data.status == "ready" &&
         request.resource.data.status == "served";
     }
@@ -413,12 +435,14 @@ service cloud.firestore {
         isRestaurantLifecycleOrderDoc(resource.data) &&
         request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "updatedAt"]) &&
         request.resource.data.updatedAt == request.time &&
-        request.resource.data.status in ["pending", "preparing", "ready", "served"] &&
+        request.resource.data.status in ["pending", "preparing", "ready", "served", "done"] &&
         request.resource.data.paymentStatus == resource.data.paymentStatus &&
         request.resource.data.tokenNumber == resource.data.tokenNumber &&
         request.resource.data.tableNumber == resource.data.tableNumber &&
         request.resource.data.items == resource.data.items &&
         request.resource.data.total == resource.data.total &&
+        (!resource.data.keys().hasAny(["tableId"]) || request.resource.data.tableId == resource.data.tableId) &&
+        (!resource.data.keys().hasAny(["tableName"]) || request.resource.data.tableName == resource.data.tableName) &&
         resource.data.status == "pending" &&
         request.resource.data.status == "preparing";
     }
@@ -427,16 +451,20 @@ service cloud.firestore {
       return hasRole("cashier") &&
         staffUserActive() &&
         isRestaurantLifecycleOrderDoc(resource.data) &&
-        resource.data.status == "served" &&
         resource.data.paymentStatus == "pending" &&
         request.resource.data.paymentStatus == "paid" &&
-        request.resource.data.status == "served" &&
+        (
+          (resource.data.status == "served" && request.resource.data.status == "served") ||
+          (resource.data.status == "done" && request.resource.data.status == "done")
+        ) &&
         request.resource.data.diff(resource.data).changedKeys().hasOnly(["paymentStatus", "updatedAt"]) &&
         request.resource.data.updatedAt == request.time &&
         request.resource.data.tokenNumber == resource.data.tokenNumber &&
         request.resource.data.tableNumber == resource.data.tableNumber &&
         request.resource.data.items == resource.data.items &&
-        request.resource.data.total == resource.data.total;
+        request.resource.data.total == resource.data.total &&
+        (!resource.data.keys().hasAny(["tableId"]) || request.resource.data.tableId == resource.data.tableId) &&
+        (!resource.data.keys().hasAny(["tableName"]) || request.resource.data.tableName == resource.data.tableName);
     }
 
     function validStaffUserCreate(uid) {
@@ -1024,7 +1052,7 @@ service cloud.firestore {
       allow update: if (staffUserActive() && hasAnyRole(["manager", "admin"])) ||
         (staffUserActive() && hasRole("waiter") &&
           request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "currentOrderId"]) &&
-          request.resource.data.status in ["OCCUPIED", "FREE", "free", "occupied"] &&
+          request.resource.data.status in ["OCCUPIED", "FREE", "free", "occupied", "available", "AVAILABLE"] &&
           (
             !request.resource.data.keys().hasAny(["currentOrderId"]) ||
             request.resource.data.currentOrderId == null ||
@@ -1032,7 +1060,7 @@ service cloud.firestore {
           )) ||
         (staffUserActive() && hasRole("cashier") &&
           request.resource.data.diff(resource.data).changedKeys().hasOnly(["status"]) &&
-          request.resource.data.status in ["FREE", "free"]);
+          request.resource.data.status in ["FREE", "free", "available", "AVAILABLE"]);
     }
 
     match /adminAlerts/{docId} {
