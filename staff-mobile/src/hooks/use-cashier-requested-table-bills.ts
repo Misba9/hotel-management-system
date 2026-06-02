@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Timestamp } from "firebase/firestore";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { staffDb } from "../lib/firebase";
 import { ORDERS_COLLECTION } from "../services/orders.js";
 
@@ -17,8 +17,16 @@ function readCreatedAtMs(data: Record<string, unknown>): number {
   return 0;
 }
 
+function isMissingIndexError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const maybeErr = err as { code?: unknown; message?: unknown };
+  const code = typeof maybeErr.code === "string" ? maybeErr.code : "";
+  const message = typeof maybeErr.message === "string" ? maybeErr.message.toLowerCase() : "";
+  return code === "failed-precondition" && message.includes("requires an index");
+}
+
 /**
- * Realtime list of `orderType == "table"` orders with `paymentStatus == "REQUESTED"` (waiter asked for bill).
+ * Realtime list of served table orders that are pending payment.
  */
 export function useCashierRequestedTableBills(enabled: boolean) {
   const [bills, setBills] = useState<RequestedTableBill[]>([]);
@@ -36,7 +44,12 @@ export function useCashierRequestedTableBills(enabled: boolean) {
     setLoading(true);
     setError(null);
 
-    const q = query(collection(staffDb, ORDERS_COLLECTION), where("paymentStatus", "==", "REQUESTED"));
+    const q = query(
+      collection(staffDb, ORDERS_COLLECTION),
+      where("status", "==", "served"),
+      where("paymentStatus", "==", "pending"),
+      orderBy("createdAt", "desc")
+    );
 
     const unsub = onSnapshot(
       q,
@@ -60,6 +73,11 @@ export function useCashierRequestedTableBills(enabled: boolean) {
       },
       (err) => {
         setBills([]);
+        if (isMissingIndexError(err)) {
+          setLoading(true);
+          setError(null);
+          return;
+        }
         setLoading(false);
         setError(err instanceof Error ? err.message : "Could not load bill requests.");
       }

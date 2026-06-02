@@ -41,18 +41,15 @@ export function getManagerOrderVisualBucket(order: {
 
   if (isWaiterPosDineInOrder(order)) {
     const sl = String(order.status ?? "").toLowerCase().trim();
-    if (sl === "pending") return "placed";
+    if (sl === "pending") return "preparing";
     if (sl === "preparing") return "preparing";
-    if (sl === "ready") return "ready";
-    if (sl === "done" || sl === "served" || sl === "completed") return "completed";
+    if (sl === "ready" || sl === "done" || sl === "served" || sl === "completed") return "completed";
     return "other";
   }
 
   const sl = String(order.status ?? "").toLowerCase().trim();
-  if (sl === "pending" || sl === "created" || sl === "confirmed") return "placed";
-  if (sl === "accepted" || sl === "preparing") return "preparing";
-  if (sl === "ready" || sl === "out_for_delivery" || sl === "picked_up") return "ready";
-  if (sl === "delivered" || sl === "completed") return "completed";
+  if (sl === "pending" || sl === "created" || sl === "confirmed" || sl === "accepted" || sl === "preparing") return "preparing";
+  if (sl === "ready" || sl === "out_for_delivery" || sl === "picked_up" || sl === "done" || sl === "delivered" || sl === "completed") return "completed";
   return "other";
 }
 

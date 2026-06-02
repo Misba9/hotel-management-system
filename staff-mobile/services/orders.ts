@@ -16,7 +16,6 @@ import { isWaiterPosDineInOrder } from "@shared/utils/waiter-pos-order";
 import type { StaffRoleId } from "../src/constants/staff-roles";
 import { assertValidTransition, type OrderLifecycleStatus } from "../src/lib/order-status-lifecycle";
 import { staffDb } from "../src/lib/firebase";
-import { confirmTableOrderPayment } from "../src/services/confirm-table-order-payment";
 import {
   mapOrderDoc,
   MANAGER_ORDERS_LIMIT,
@@ -41,22 +40,22 @@ export { updateOrderStatus, ORDERS_COLLECTION, MANAGER_ORDERS_LIMIT };
 
 /** Map raw Firestore `status` + optional `orderType` to a canonical lowercase bucket. */
 export function canonicalOrderStatus(status: string, orderType?: string): string {
-  const raw = String(status ?? "pending");
+  const raw = String(status ?? "preparing");
   const u = raw.toUpperCase();
-  const isTable = orderType === "table";
+  const isTable = orderType === "dine_in" || orderType === "table";
   if (isTable) {
-    if (u === "PLACED") return "pending";
+    if (u === "PLACED") return "preparing";
     if (u === "PREPARING") return "preparing";
     if (u === "READY") return "ready";
     if (u === "SERVED" || u === "COMPLETED") return "served";
   }
   const l = raw.toLowerCase();
-  if (l === "placed" || l === "pending" || l === "created" || l === "confirmed") return "pending";
+  if (l === "placed" || l === "pending" || l === "created" || l === "confirmed") return "preparing";
   if (l === "accepted" || l === "preparing") return "preparing";
   if (l === "ready") return "ready";
   if (l === "done") return "done";
   if (l === "served" || l === "completed") return "served";
-  return l || "pending";
+  return l || "preparing";
 }
 
 function enrichOrder(id: string, data: Record<string, unknown>): StaffOrderRow {
@@ -102,6 +101,21 @@ export function subscribeAllOrders(
 ): Unsubscribe {
   return onSnapshot(
     collection(staffDb, ORDERS_COLLECTION),
+    (snap) => {
+      onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>)));
+    },
+    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+  );
+}
+
+/** Waiter-only live orders (`orderType == "dine_in"`). */
+export function subscribeWaiterOrders(
+  onNext: (orders: StaffOrderRow[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  const q = query(collection(staffDb, ORDERS_COLLECTION), where("orderType", "==", "dine_in"));
+  return onSnapshot(
+    q,
     (snap) => {
       onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>)));
     },
@@ -171,94 +185,18 @@ export function subscribeKitchenKdsOrders(
   }
 }
 
-/** Cashier: served (dine-in) with payment still open. */
-export const CASHIER_BILLING_STATUS_IN = ["served", "SERVED"] as const;
-export const CASHIER_BILLING_PAYMENT_IN = ["pending", "PENDING"] as const;
-
-/**
- * Live billing queue — `onSnapshot` (no refresh).
- * Composite: `status` + `paymentStatus` + `createdAt` (`backend/firestore.indexes.json`).
- */
-export function subscribeCashierBillingQueue(
-  onNext: (orders: StaffOrderRow[]) => void,
-  onError?: (err: Error) => void
-): Unsubscribe {
-  const q = query(
-    collection(staffDb, ORDERS_COLLECTION),
-    where("status", "in", [...CASHIER_BILLING_STATUS_IN]),
-    where("paymentStatus", "in", [...CASHIER_BILLING_PAYMENT_IN]),
-    orderBy("createdAt", "desc"),
-    limit(80)
-  );
-  return onSnapshot(
-    q,
-    (snap) => {
-      const rows = snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>));
-      const filtered = rows.filter(
-        (o) =>
-          o.canonicalStatus === "served" &&
-          ["pending", "PENDING"].includes(String(o.paymentStatus ?? "").trim())
-      );
-      onNext(filtered);
-    },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
-  );
-}
-
-/** Table tickets: {@link confirmTableOrderPayment}. Lifecycle: `paymentStatus` → `paid` (rules). */
-export async function markCashierOrderPaid(orderId: string): Promise<void> {
+/** Cashier payment accept action (default method: cash). */
+export async function markCashierOrderPaid(orderId: string, paymentMethod = "cash"): Promise<void> {
   const ref = doc(staffDb, ORDERS_COLLECTION, orderId);
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error("Order not found");
-  const data = snap.data() as Record<string, unknown>;
-  if (String(data.orderType ?? "") === "table") {
-    await confirmTableOrderPayment(orderId);
-    return;
-  }
   await updateDoc(ref, {
     paymentStatus: "paid",
+    status: "completed",
+    paidAt: serverTimestamp(),
+    paymentMethod,
     updatedAt: serverTimestamp()
   });
-}
-
-/** Kitchen: `pending` → `preparing` (lifecycle) or `PLACED` → `PREPARING` (table tickets). */
-export async function kitchenAcceptOrder(order: StaffOrderRow): Promise<void> {
-  const ref = doc(staffDb, ORDERS_COLLECTION, order.id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error("Order not found");
-  const data = snap.data() as Record<string, unknown>;
-  const orderType = typeof data.orderType === "string" ? data.orderType : undefined;
-  const cur = String(data.status ?? "");
-  if (orderType === "table") {
-    if (cur !== "PLACED" && cur !== "pending") {
-      throw new Error("Accept is only available for pending table tickets.");
-    }
-    await updateDoc(ref, { status: "preparing", updatedAt: serverTimestamp() });
-    return;
-  }
-  const canon = canonicalOrderStatus(cur, orderType);
-  if (canon !== "pending") {
-    throw new Error("Accept is only available for pending orders.");
-  }
-  await updateDoc(ref, { status: "preparing", updatedAt: serverTimestamp() });
-}
-
-export async function waiterAcceptOrder(order: StaffOrderRow): Promise<void> {
-  const ref = doc(staffDb, ORDERS_COLLECTION, order.id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error("Order not found");
-  const data = snap.data() as Record<string, unknown>;
-  const orderType = typeof data.orderType === "string" ? data.orderType : undefined;
-  const cur = String(data.status ?? "");
-  const canon = canonicalOrderStatus(cur, orderType);
-  if (canon !== "pending") {
-    throw new Error("Accept is only available for pending orders.");
-  }
-  if (orderType === "table") {
-    await updateDoc(ref, { status: "PREPARING", updatedAt: serverTimestamp() });
-  } else {
-    await updateDoc(ref, { status: "preparing", updatedAt: serverTimestamp() });
-  }
 }
 
 export async function kitchenMarkOrderReady(order: StaffOrderRow): Promise<void> {
@@ -274,7 +212,7 @@ export async function kitchenMarkOrderReady(order: StaffOrderRow): Promise<void>
   if (canon !== "preparing") {
     throw new Error("Mark ready is only available while the order is preparing.");
   }
-  if (orderType === "table") {
+  if (orderType === "dine_in" || orderType === "table") {
     await updateDoc(ref, {
       status: "READY",
       readyAt: serverTimestamp(),
@@ -284,15 +222,15 @@ export async function kitchenMarkOrderReady(order: StaffOrderRow): Promise<void>
   }
   if (isWaiterPosDineInOrder({ orderType, tokenNumber })) {
     await updateDoc(ref, {
-      status: "done",
-      readyAt: serverTimestamp(),
+      status: "served",
+      servedAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
     return;
   }
   await updateDoc(ref, {
-    status: "ready",
-    readyAt: serverTimestamp(),
+    status: "served",
+    servedAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
 }
@@ -308,11 +246,7 @@ export async function waiterMarkServed(order: StaffOrderRow): Promise<void> {
   if (canon !== "ready") {
     throw new Error("Served is only available when the order is ready.");
   }
-  if (orderType === "table") {
-    await updateDoc(ref, { status: "SERVED", updatedAt: serverTimestamp() });
-  } else {
-    await updateDoc(ref, { status: "served", updatedAt: serverTimestamp() });
-  }
+  await updateDoc(ref, { status: "served", updatedAt: serverTimestamp() });
 }
 
 export async function generateBillForOrder(orderId: string): Promise<void> {
@@ -339,21 +273,16 @@ export async function markSimpleOrderPaid(orderId: string): Promise<void> {
  */
 export async function applyTableTicketAction(
   orderId: string,
-  action: "accept" | "ready" | "served"
+  action: "ready" | "served"
 ): Promise<void> {
   const ref = doc(staffDb, ORDERS_COLLECTION, orderId);
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error("Order not found");
   const data = snap.data() as Record<string, unknown>;
-  if (data.orderType !== "table") {
+  if (data.orderType !== "table" && data.orderType !== "dine_in") {
     throw new Error("This action applies to table orders only.");
   }
   const status = String(data.status ?? "");
-  if (action === "accept") {
-    if (status !== "PLACED") throw new Error("Accept is only valid when status is PLACED.");
-    await updateDoc(ref, { status: "PREPARING", updatedAt: serverTimestamp() });
-    return;
-  }
   if (action === "ready") {
     if (status !== "PREPARING") throw new Error("Ready is only valid when status is PREPARING.");
     await updateDoc(ref, { status: "READY", updatedAt: serverTimestamp() });
@@ -361,7 +290,7 @@ export async function applyTableTicketAction(
   }
   if (action === "served") {
     if (status !== "READY") throw new Error("Served is only valid when status is READY.");
-    await updateDoc(ref, { status: "SERVED", updatedAt: serverTimestamp() });
+    await updateDoc(ref, { status: "served", updatedAt: serverTimestamp() });
   }
 }
 
@@ -380,19 +309,15 @@ export async function advanceOrderLifecycle(orderId: string, target: OrderLifecy
  */
 export async function applyOrderRowAction(
   order: StaffOrderRow,
-  action: "accept" | "ready" | "served",
+  action: "ready" | "served",
   role: StaffRoleId
 ): Promise<void> {
   const isPrivileged = role === "admin" || role === "manager";
 
-  if (order.orderType === "table") {
+  if (order.orderType === "table" || order.orderType === "dine_in") {
     const st = String(order.status ?? "");
     if (action === "served" && (role === "waiter" || isPrivileged) && st === "READY") {
       await applyTableTicketAction(order.id, "served");
-      return;
-    }
-    if (action === "accept" && (role === "kitchen" || isPrivileged) && st === "PLACED") {
-      await applyTableTicketAction(order.id, "accept");
       return;
     }
     if (action === "ready" && (role === "kitchen" || isPrivileged) && st === "PREPARING") {
@@ -402,21 +327,12 @@ export async function applyOrderRowAction(
     throw new Error("Invalid table transition for this role.");
   }
 
-  const cur = String(order.status ?? "pending").toLowerCase();
+  const cur = String(order.status ?? "preparing").toLowerCase();
 
   if (role === "kitchen" || isPrivileged) {
-    if (action === "accept") {
-      if (cur === "pending" || cur === "created" || cur === "confirmed") {
-        await advanceOrderLifecycle(order.id, "accepted");
-        return;
-      }
-      if (cur === "accepted") {
-        await advanceOrderLifecycle(order.id, "preparing");
-        return;
-      }
-    }
     if (action === "ready" && cur === "preparing") {
-      await advanceOrderLifecycle(order.id, "ready");
+      const ref = doc(staffDb, ORDERS_COLLECTION, order.id);
+      await updateDoc(ref, { status: "done", updatedAt: serverTimestamp() });
       return;
     }
   }

@@ -6,17 +6,13 @@ import {
   applyOrderRowAction,
   kitchenMarkOrderReady,
   type StaffOrderRow,
-  waiterAcceptOrder,
   waiterMarkServed
 } from "../services/orders";
 
-export type OrderCardAction = "accept" | "ready" | "served";
+export type OrderCardAction = "ready" | "served";
 
 function statusTheme(canonical: string, raw: string) {
   const c = canonical.toLowerCase();
-  if (c === "pending") {
-    return { chip: "#fee2e2", chipText: "#991b1b", label: "Pending" };
-  }
   if (c === "preparing") {
     return { chip: "#ffedd5", chipText: "#9a3412", label: "Preparing" };
   }
@@ -58,7 +54,7 @@ export function OrderCard({
   onUpdated,
   restaurantFlow = false
 }: OrderCardProps) {
-  const canon = order.canonicalStatus ?? "pending";
+  const canon = order.canonicalStatus ?? "preparing";
   const theme = useMemo(
     () => statusTheme(canon, String(order.status ?? "")),
     [canon, order.status]
@@ -68,7 +64,6 @@ export function OrderCard({
     if (restaurantFlow) {
       if (role === "waiter") {
         const out: OrderCardAction[] = [];
-        if (canon === "pending") out.push("accept");
         if (canon === "ready") out.push("served");
         return out;
       }
@@ -78,20 +73,17 @@ export function OrderCard({
     }
 
     const st = String(order.status ?? "");
-    const isTable = order.orderType === "table";
+    const isTable = order.orderType === "table" || order.orderType === "dine_in";
     const isPrivileged = role === "admin" || role === "manager";
 
     if (isTable) {
-      if (st === "PLACED" && (role === "kitchen" || isPrivileged)) return ["accept"];
       if (st === "PREPARING" && (role === "kitchen" || isPrivileged)) return ["ready"];
-      if (st === "READY" && (role === "waiter" || isPrivileged)) return ["served"];
+      if ((st === "READY" || st === "done") && (role === "waiter" || isPrivileged)) return ["served"];
       return [];
     }
 
     const cur = st.toLowerCase();
     if (role === "kitchen" || isPrivileged) {
-      if (cur === "pending" || cur === "created" || cur === "confirmed") return ["accept"];
-      if (cur === "accepted") return ["accept"];
       if (cur === "preparing") return ["ready"];
     }
     if (role === "waiter" || isPrivileged) {
@@ -110,7 +102,6 @@ export function OrderCard({
     onBusy(action);
     try {
       if (role === "waiter") {
-        if (action === "accept") await waiterAcceptOrder(order);
         if (action === "served") await waiterMarkServed(order);
       } else if (role === "kitchen" && action === "ready") {
         await kitchenMarkOrderReady(order);
@@ -157,7 +148,7 @@ export function OrderCard({
       {actions.length > 0 ? (
         <View style={styles.actions}>
           {actions.map((a) => {
-            const label = a === "accept" ? "Accept" : a === "ready" ? "Mark ready" : "Served";
+            const label = a === "ready" ? "Done" : "Served";
             const busy = busyAction === a;
             return (
               <Pressable
@@ -166,7 +157,6 @@ export function OrderCard({
                 disabled={busyAction !== null}
                 style={({ pressed }) => [
                   styles.btn,
-                  a === "accept" && styles.btnAccept,
                   a === "ready" && styles.btnReady,
                   a === "served" && styles.btnServed,
                   (pressed || busy) && styles.btnPressed
@@ -212,7 +202,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
-  btnAccept: { backgroundColor: "#ea580c" },
   btnReady: { backgroundColor: "#16a34a" },
   btnServed: { backgroundColor: "#64748b" },
   btnPressed: { opacity: 0.85 },

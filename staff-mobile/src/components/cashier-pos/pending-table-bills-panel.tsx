@@ -26,7 +26,14 @@ export function PendingTableBillsPanel({ enabled = true }: Props) {
   }, []);
 
   if (!enabled) return null;
-  if (loading && bills.length === 0) return null;
+  if (loading && bills.length === 0) {
+    return (
+      <View style={styles.wrap} accessibilityLabel="Table bills loading">
+        <Text style={styles.title}>Bills to collect</Text>
+        <Text style={styles.sub}>Loading bills...</Text>
+      </View>
+    );
+  }
   if (error && bills.length === 0) return null;
   if (bills.length === 0) return null;
 

@@ -15,7 +15,6 @@ export type StorefrontOrderBody = {
   phone: string;
   items: Array<{ id: string; name?: string; price?: number; quantity: number }>;
   couponCode?: string;
-  orderType?: "delivery" | "pickup" | "dine_in";
   address: string;
   deliveryAddress?: SerializedDeliveryAddress;
 };
@@ -27,19 +26,19 @@ export type ComputedCheckout = {
   taxAmount: number;
   deliveryFee: number;
   totalAmount: number;
-  orderType: "delivery" | "pickup" | "dine_in";
+  orderType: "online";
 };
 
 export async function computeStorefrontOrderTotal(
   body: StorefrontOrderBody
 ): Promise<{ ok: true; data: ComputedCheckout } | { ok: false; error: string; status: number }> {
-  const orderType = body.orderType ?? "delivery";
+  const orderType = "online";
   const pricing = await resolveServerPricing(body.items, body.couponCode);
   if ("error" in pricing) {
     return { ok: false, error: pricing.error, status: pricing.status };
   }
   const { items, subtotal, discount, taxAmount } = pricing;
-  const deliveryFee = orderType === "pickup" || orderType === "dine_in" ? 0 : 40;
+  const deliveryFee = 40;
   const totalAmount = Math.round((Math.max(subtotal - discount, 0) + taxAmount + deliveryFee) * 100) / 100;
   return {
     ok: true,
@@ -174,7 +173,8 @@ export async function persistStorefrontOrder(args: {
     assignedTo: { ...DEFAULT_ORDER_ASSIGNED_TO },
     address: args.body.address.trim(),
     ...(args.body.deliveryAddress ? { deliveryAddress: args.body.deliveryAddress } : {}),
-    status: "pending",
+    status: "preparing",
+    orderType: "online",
     createdAt: now,
     paymentMethod: args.paymentMethod,
     paymentStatus: args.paymentStatus,
@@ -221,7 +221,7 @@ export async function persistStorefrontOrder(args: {
 
   const createdAtIso = new Date().toISOString();
   await setOrderFeed(orderRef.id, {
-    status: "pending",
+      status: "preparing",
     updatedAt: createdAtIso,
     createdAt: createdAtIso,
     orderType,

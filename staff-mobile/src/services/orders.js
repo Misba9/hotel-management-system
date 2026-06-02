@@ -37,8 +37,8 @@ export const KITCHEN_ORDER_STATUS_IN = ["pending", "accepted", "preparing", "cre
 /** Restaurant table tickets shown on the kitchen KDS (merged: new tickets `PLACED`, in-progress `PREPARING`). */
 export const RESTAURANT_KITCHEN_QUEUE_STATUS_IN = ["PLACED", "PREPARING"];
 
-/** Delivery realtime — handoff + active runs (not `delivered`; saves reads). */
-export const DELIVERY_ORDER_STATUS_IN = ["ready", "out_for_delivery"];
+/** Delivery realtime — online orders ready for handoff only. */
+export const DELIVERY_ORDER_STATUS_IN = ["ready"];
 
 const KITCHEN_ORDER_STATUS_SET = new Set(KITCHEN_ORDER_STATUS_IN.map((s) => s.toLowerCase()));
 
@@ -111,7 +111,8 @@ export function getRecentOrdersFallbackQuery() {
 export function getDeliveryOrdersQuery() {
   return query(
     collection(db, ORDERS_COLLECTION),
-    where("status", "in", DELIVERY_ORDER_STATUS_IN),
+    where("orderType", "==", "online"),
+    where("status", "==", "ready"),
     orderBy("createdAt", "desc"),
     limit(200)
   );
@@ -147,6 +148,7 @@ const DEFAULT_BRANCH_ID = "hyderabad-main";
  *   assignedTo: AssignedTo;
  *   customer: CustomerInfo;
  *   createdByUid?: string;
+ *   orderType?: string;
  *   deliveryLocation: { lat: number; lng: number };
  *   riderLocation?: { lat: number; lng: number };
  * }} StaffOrder
@@ -262,6 +264,7 @@ export function mapOrderDoc(id, data) {
       phone: typeof cust.phone === "string" ? cust.phone : ""
     },
     createdByUid: typeof data.createdByUid === "string" ? data.createdByUid : undefined,
+    orderType: typeof data.orderType === "string" ? data.orderType : undefined,
     deliveryLocation: (() => {
       const dl = data.deliveryLocation;
       if (dl && typeof dl === "object" && typeof dl.lat === "number" && typeof dl.lng === "number") {
@@ -285,7 +288,7 @@ export function mapOrderDoc(id, data) {
 
 /**
  * Cashier POS — creates unified order (`userId` = cashier).
- * @param {{ items: OrderLineItem[]; totalAmount: number; customer?: Partial<CustomerInfo>; assignedTo?: AssignedTo; deliveryLocation?: { lat: number; lng: number } }} orderData
+ * @param {{ items: OrderLineItem[]; totalAmount: number; customer?: Partial<CustomerInfo>; assignedTo?: AssignedTo; deliveryLocation?: { lat: number; lng: number }; orderType?: string; type?: string }} orderData
  * @returns {Promise<{ orderId: string; invoice: { orderId: string; items: unknown[]; subtotal: number; tax: number; total: number } }>}
  */
 export async function createOrder(orderData) {
@@ -310,6 +313,12 @@ export async function createOrder(orderData) {
   const at = orderData.assignedTo
     ? normalizeAssignedToMap(orderData.assignedTo)
     : { kitchenId: "auto", deliveryId: "" };
+  const normalizedOrderType =
+    typeof orderData.orderType === "string" && orderData.orderType.trim()
+      ? orderData.orderType.trim().toLowerCase()
+      : "walk_in";
+  const normalizedType =
+    typeof orderData.type === "string" && orderData.type.trim() ? orderData.type.trim() : normalizedOrderType;
 
   const batch = writeBatch(db);
   batch.set(ref, {
@@ -321,8 +330,10 @@ export async function createOrder(orderData) {
     subtotal,
     tax,
     invoiceId: id,
-    status: "pending",
-    paymentStatus: "unpaid",
+    status: "preparing",
+    paymentStatus: "pending",
+    orderType: normalizedOrderType,
+    type: normalizedType,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     assignedTo: { kitchenId: at.kitchenId, deliveryId: at.deliveryId },
@@ -374,8 +385,9 @@ export async function createDineInOrder(payload) {
     tax,
     invoiceId: id,
     createdByUid: payload.userId,
-    status: "pending",
-    paymentStatus: "unpaid",
+    status: "preparing",
+    paymentStatus: "pending",
+    orderType: "dine_in",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     assignedTo: { kitchenId: "auto", deliveryId: "" }
@@ -583,7 +595,8 @@ export function subscribeKitchenOrders(callback, onError) {
 }
 
 /**
- * Delivery — `ready` + `out_for_delivery` only; client hides other riders’ active runs except your own.
+ * Delivery — online orders only (`orderType == online`) and `ready`.
+ * Client still hides other riders’ active runs except your own.
  * @param {string} deliveryUid
  * @param {(orders: StaffOrder[]) => void} callback
  * @param {(err: import('firebase/firestore').FirestoreError) => void} [onError]
@@ -593,13 +606,10 @@ export function subscribeDeliveryOrders(deliveryUid, callback, onError) {
 
   const applyDeliveryFilter = (all) => {
     const filtered = all.filter((o) => {
+      const type = String(o.orderType ?? "").toLowerCase();
+      if (type !== "online") return false;
       const s = String(o.status ?? "").toLowerCase();
-      if (s === "ready") return true;
-      if (s === "out_for_delivery") {
-        const dAssign = o.assignedTo?.deliveryId ?? o.assignedTo?.delivery ?? "";
-        return dAssign === deliveryUid;
-      }
-      return false;
+      return s === "ready";
     });
     callback(filtered);
   };
@@ -628,7 +638,11 @@ export function subscribeDeliveryOrders(deliveryUid, callback, onError) {
         (snap) => {
           const all = snap.docs
             .map((d) => mapOrderDoc(d.id, d.data()))
-            .filter((o) => DELIVERY_STATUS_SET.has(String(o.status ?? "").toLowerCase()));
+            .filter(
+              (o) =>
+                DELIVERY_STATUS_SET.has(String(o.status ?? "").toLowerCase()) &&
+                String(o.orderType ?? "").toLowerCase() === "online"
+            );
           applyDeliveryFilter(all);
         },
         (err2) => {

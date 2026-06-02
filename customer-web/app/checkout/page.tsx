@@ -201,7 +201,7 @@ export default function CheckoutPage() {
       address: formatDeliveryAddressForOrder(selectedAddress),
       deliveryAddress,
       couponCode: couponCode || undefined,
-      orderType: "delivery" as const
+      orderType: "online" as const
     };
   }
 

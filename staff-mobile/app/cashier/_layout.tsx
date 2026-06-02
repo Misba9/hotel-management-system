@@ -1,7 +1,60 @@
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
+import React, { useCallback } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { signOut } from "firebase/auth";
 
-import { ProfileNavButton } from "../../components/ProfileNavButton";
+import { staffAuth as auth } from "../../src/lib/firebase";
 import { useRoleShellGuard } from "../../src/hooks/use-role-shell-guard";
+
+function CashierHeaderActions() {
+  const router = useRouter();
+  const user = auth?.currentUser;
+
+  const handleProfile = useCallback(() => {
+    try {
+      if (!router) return;
+      router.push("/profile");
+    } catch (e) {
+      console.log("Navigation error", e);
+    }
+  }, [router]);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      if (!auth) return;
+      await signOut(auth);
+      if (router) router.replace("/login");
+    } catch (error) {
+      console.log("Logout error:", error);
+      Alert.alert("Could not logout", error instanceof Error ? error.message : "Try again.");
+    }
+  }, [router]);
+
+  if (!auth) {
+    return null;
+  }
+  if (!router) {
+    return (
+      <View>
+        <Text>Cashier</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.actions}>
+      <Text style={styles.userText} numberOfLines={1}>
+        {user?.email ?? "Guest"}
+      </Text>
+      <Pressable onPress={handleProfile} style={styles.profileBtn} hitSlop={10}>
+        <Text style={styles.profileText}>Profile</Text>
+      </Pressable>
+      <Pressable onPress={() => void handleLogout()} style={styles.logoutBtn} hitSlop={10}>
+        <Text style={styles.logoutText}>Logout</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export default function CashierLayout() {
   useRoleShellGuard(["cashier"]);
@@ -10,11 +63,24 @@ export default function CashierLayout() {
     <Tabs
       screenOptions={{
         headerTitleAlign: "center",
-        headerRight: () => <ProfileNavButton />
+        headerStyle: { backgroundColor: "#ffffff" },
+        headerShadowVisible: false,
+        headerTitle: "Cashier Panel",
+        sceneStyle: { backgroundColor: "#ffffff" },
+        headerRight: () => <CashierHeaderActions />
       }}
     >
       <Tabs.Screen name="billing" options={{ title: "Billing" }} />
-      <Tabs.Screen name="walk-in" options={{ title: "Walk-in" }} />
+      <Tabs.Screen name="walk-in" options={{ title: "New Order" }} />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  actions: { flexDirection: "row", alignItems: "center", gap: 2, maxWidth: 280 },
+  userText: { fontSize: 12, color: "#6b7280", marginRight: 4, maxWidth: 120 },
+  profileBtn: { paddingHorizontal: 10, paddingVertical: 6 },
+  profileText: { fontSize: 15, fontWeight: "700", color: "#2563eb" },
+  logoutBtn: { paddingHorizontal: 10, paddingVertical: 6 },
+  logoutText: { fontSize: 15, fontWeight: "700", color: "#dc2626" }
+});

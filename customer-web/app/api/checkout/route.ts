@@ -13,7 +13,6 @@ export const dynamic = "force-dynamic";
 type CheckoutPayload = {
   userId?: string;
   branchId?: string;
-  orderType?: "delivery" | "pickup" | "dine_in";
   paymentMethod?: "upi" | "card" | "cod";
   address?: string;
   customerName?: string;
@@ -30,7 +29,6 @@ type CheckoutPayload = {
 const checkoutSchema = z.object({
   userId: z.string().optional(),
   branchId: z.string().optional(),
-  orderType: z.enum(["delivery", "pickup", "dine_in"]).optional(),
   paymentMethod: z.enum(["upi", "card", "cod"]).optional(),
   address: z.string().max(300).optional(),
   customerName: z.string().max(120).optional(),
@@ -66,7 +64,7 @@ export async function POST(request: Request) {
     }
 
     const { items, subtotal, discount, taxPercent, taxAmount } = pricing;
-    const deliveryFee = body.orderType === "delivery" || !body.orderType ? 40 : 0;
+    const deliveryFee = 40;
     const total = Math.max(subtotal - discount, 0) + taxAmount + deliveryFee;
     const orderId = crypto.randomUUID();
     const trackingId = crypto.randomUUID();
@@ -75,7 +73,7 @@ export async function POST(request: Request) {
     const requestUser = await resolveRequestUser(request);
     const userId = requestUser.userId;
     const branchId = body.branchId ?? "hyderabad-main";
-    const orderType = body.orderType ?? "delivery";
+    const orderType = "online";
 
     const orderRef = adminDb.collection("orders").doc(orderId);
     const paymentRef = adminDb.collection("payments").doc(paymentId);
@@ -105,9 +103,9 @@ export async function POST(request: Request) {
       trackingId,
       userId,
       branchId,
-      orderType,
+      orderType: "online",
       paymentMethod,
-      status: "pending",
+      status: "preparing",
       statusBucket: "active",
       subtotal,
       discount,
@@ -174,7 +172,7 @@ export async function POST(request: Request) {
     batch.set(invoiceRef, invoicePayload);
     await batch.commit();
     await setOrderFeed(orderId, {
-      status: "pending",
+      status: "preparing",
       updatedAt: createdAt,
       createdAt,
       orderType,

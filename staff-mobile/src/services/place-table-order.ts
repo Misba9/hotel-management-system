@@ -15,6 +15,7 @@ export type PlaceTableOrderInput = {
   uid: string;
   tableId: string;
   tableNumber: number;
+  tableName?: string;
   lines: TableOrderLineInput[];
   totalAmount: number;
 };
@@ -25,7 +26,7 @@ export type PlaceTableOrderResult = { orderId: string };
  * Atomically creates `orders/{orderId}` (table service shape) and sets `tables/{tableId}.status` to OCCUPIED.
  */
 export async function placeTableOrder(input: PlaceTableOrderInput): Promise<PlaceTableOrderResult> {
-  const { uid, tableId, tableNumber, lines, totalAmount } = input;
+  const { uid, tableId, tableNumber, tableName, lines, totalAmount } = input;
   if (!uid) throw new Error("Not signed in.");
   if (!tableId?.trim()) throw new Error("Missing table.");
   if (!Number.isFinite(tableNumber)) throw new Error("Invalid table number.");
@@ -49,12 +50,14 @@ export async function placeTableOrder(input: PlaceTableOrderInput): Promise<Plac
     userId: uid,
     createdByUid: uid,
     tableId,
+    tableName: tableName?.trim() || `Table ${tableNumber}`,
     tableNumber,
-    orderType: "table",
+    orderType: "dine_in",
     items,
+    total: totalAmount,
     totalAmount,
-    status: "pending",
-    paymentStatus: "unpaid",
+    status: "preparing",
+    paymentStatus: "pending",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });

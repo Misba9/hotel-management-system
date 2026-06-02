@@ -5,9 +5,8 @@ import type { StaffOrderRow } from "../services/orders";
 
 type Props = {
   order: StaffOrderRow;
-  busy: "accept" | "ready" | "print" | null;
+  busy: "ready" | "print" | null;
   onPrint: () => void;
-  onAccept: () => void;
   onMarkReady: () => void;
   isNew?: boolean;
 };
@@ -22,18 +21,21 @@ export function KitchenTicketCard({
   order,
   busy,
   onPrint,
-  onAccept,
   onMarkReady,
   isNew = false
 }: Props) {
-  const canon = order.canonicalStatus ?? "pending";
+  const canon = order.canonicalStatus ?? "preparing";
   const raw = String(order.status ?? "");
   const rawLower = raw.toLowerCase();
   const isPending = canon === "pending" || raw === "PLACED";
   const isPreparing = canon === "preparing" || rawLower === "preparing" || raw === "PREPARING";
-  const statusLabel = isPreparing ? "Preparing" : isPending ? "New" : "Unknown";
-  const showAccept = isPending;
+  const statusLabel = isPreparing ? "Preparing" : isPending ? "Preparing" : "Unknown";
   const showReady = isPreparing;
+  const normalizedOrderType = String(order.orderType ?? "").toLowerCase().trim();
+  const sourceLabel =
+    normalizedOrderType === "dine_in" || normalizedOrderType === "table"
+      ? "🟢 Dine In"
+      : "🔵 Online";
 
   const tableLabel =
     typeof order.tableName === "string" && order.tableName.trim()
@@ -58,6 +60,9 @@ export function KitchenTicketCard({
         </View>
       </View>
       <Text style={styles.meta}>Time {timeLabel}</Text>
+      <View style={styles.sourceBadge}>
+        <Text style={styles.sourceBadgeText}>{sourceLabel}</Text>
+      </View>
       <View style={styles.divider} />
       <Text style={styles.sectionTitle}>Items</Text>
       {lines.length === 0 ? (
@@ -86,24 +91,6 @@ export function KitchenTicketCard({
             <Text style={styles.btnTextPrint}>Print</Text>
           )}
         </Pressable>
-        {showAccept ? (
-          <Pressable
-            onPress={() => void onAccept()}
-            disabled={disabled}
-            style={({ pressed }) => [
-              styles.btn,
-              styles.btnAccept,
-              disabled && styles.btnDisabled,
-              pressed && !disabled && styles.pressed
-            ]}
-          >
-            {busy === "accept" ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.btnText}>Accept</Text>
-            )}
-          </Pressable>
-        ) : null}
         {showReady ? (
           <Pressable
             onPress={() => void onMarkReady()}
@@ -172,6 +159,19 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#334155"
   },
+  sourceBadge: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    backgroundColor: "#eef2ff",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5
+  },
+  sourceBadgeText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#3730a3"
+  },
   divider: {
     height: 1,
     backgroundColor: "#e2e8f0",
@@ -207,7 +207,6 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   btnPrint: { backgroundColor: "#475569" },
-  btnAccept: { backgroundColor: "#ea580c" },
   btnReady: { backgroundColor: "#16a34a" },
   btnDisabled: { opacity: 0.55 },
   pressed: { opacity: 0.9 },

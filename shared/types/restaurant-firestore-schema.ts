@@ -44,7 +44,8 @@ export interface RestaurantProductDoc {
   updatedAt?: Timestamp | null;
 }
 
-export type RestaurantOrderStatus = "pending" | "preparing" | "ready" | "served";
+export type RestaurantOrderType = "dine_in" | "online";
+export type RestaurantOrderStatus = "preparing" | "ready" | "done";
 export type RestaurantPaymentStatus = "pending" | "paid";
 
 export interface RestaurantOrderLineItem {
@@ -61,14 +62,14 @@ export interface RestaurantOrderLineItem {
  */
 export interface RestaurantLifecycleOrderDoc {
   id: string;
-  tableNumber: number;
+  tableId?: string;
+  tableName: string;
   items: RestaurantOrderLineItem[];
   total: number;
+  orderType: RestaurantOrderType;
   status: RestaurantOrderStatus;
   paymentStatus: RestaurantPaymentStatus;
-  tokenNumber: number;
   createdAt: Timestamp;
-  updatedAt?: Timestamp | null;
 }
 
 export type DeliveryRunStatus = "assigned" | "picked" | "delivered";

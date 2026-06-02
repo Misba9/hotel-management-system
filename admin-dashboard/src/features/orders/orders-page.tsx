@@ -61,17 +61,15 @@ export type Order = {
   tableNumber?: number;
   tableName?: string;
   tableId?: string;
+  orderType?: string;
 };
 
 /** Next lifecycle step only (admin PATCH enforces {@link assertValidTransition} on server). */
 export type AdminOrderStatusAction =
-  | "accepted"
   | "preparing"
-  | "ready"
-  | "out_for_delivery"
-  | "delivered";
+  | "done";
 
-const TAB_FILTERS = ["all", "pending", "preparing", "delivered"] as const;
+const TAB_FILTERS = ["all", "preparing", "delivered"] as const;
 type TabFilter = (typeof TAB_FILTERS)[number];
 
 /** Bounded realtime window per tab; use “Load more” for additional pages. */
@@ -79,9 +77,17 @@ const ORDERS_PAGE_LIMIT = 40;
 
 const TAB_LABEL: Record<TabFilter, string> = {
   all: "All",
-  pending: "Pending",
   preparing: "Preparing",
   delivered: "Completed"
+};
+
+const TYPE_FILTERS = ["all", "dine_in", "online"] as const;
+type TypeFilter = (typeof TYPE_FILTERS)[number];
+
+const TYPE_LABEL: Record<TypeFilter, string> = {
+  all: "All Orders",
+  dine_in: "Dine In",
+  online: "Online"
 };
 
 type BadgeKey =
@@ -113,7 +119,7 @@ const BADGE: Record<BadgeKey, { label: string; className: string }> = {
 
 function toBadgeKey(raw: string | undefined): BadgeKey {
   const s = (raw ?? "").toLowerCase().trim();
-  if (s === "pending" || s === "created" || s === "confirmed") return "pending";
+  if (s === "pending" || s === "created" || s === "confirmed" || s === "preparing") return "preparing";
   if (s === "accepted") return "accepted";
   if (s === "rejected") return "rejected";
   if (s === "preparing") return "preparing";
@@ -204,7 +210,7 @@ function docToOrder(doc: QueryDocumentSnapshot): Order {
     typeof d.paymentStatus === "string" ? d.paymentStatus.toLowerCase().trim() : "";
   const paymentMethod =
     typeof d.paymentMethod === "string" ? d.paymentMethod.toLowerCase().trim() : "";
-  const orderType = typeof d.orderType === "string" ? d.orderType : undefined;
+  const orderType = typeof d.orderType === "string" ? d.orderType.trim().toLowerCase() : undefined;
   const tokenNumber =
     typeof d.tokenNumber === "number" && Number.isFinite(d.tokenNumber) ? d.tokenNumber : undefined;
   const tableNumber = typeof d.tableNumber === "number" && Number.isFinite(d.tableNumber) ? d.tableNumber : undefined;
@@ -224,7 +230,7 @@ function docToOrder(doc: QueryDocumentSnapshot): Order {
     address: address || undefined,
     deliveryAddress,
     createdAt: serializeClientTimestamp(d.createdAt),
-    orderType,
+    orderType: orderType || undefined,
     tokenNumber,
     tableNumber,
     tableName: tableName || undefined,
@@ -274,6 +280,25 @@ function StatusBadge({ status }: { status: string }) {
       {b.label}
     </span>
   );
+}
+
+function OrderTypeBadge({ orderType }: { orderType: string | undefined }) {
+  const t = String(orderType ?? "").toLowerCase().trim();
+  if (t === "dine_in" || t === "table" || !t) {
+    return (
+      <span className="inline-flex max-w-full truncate rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-900 ring-1 ring-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-100 dark:ring-emerald-800/60">
+        Dine In
+      </span>
+    );
+  }
+  if (t === "online") {
+    return (
+      <span className="inline-flex max-w-full truncate rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-900 ring-1 ring-sky-200/80 dark:bg-sky-950/40 dark:text-sky-100 dark:ring-sky-800/60">
+        Online
+      </span>
+    );
+  }
+  return null;
 }
 
 function PaymentStatusBadge({ order }: { order: Order }) {
@@ -375,18 +400,22 @@ function orderMatchesTab(order: Order, tab: TabFilter): boolean {
   switch (tab) {
     case "all":
       return true;
-    case "pending":
-      if (pos) return s === "pending";
-      return s === "pending" || s === "accepted" || s === "created" || s === "confirmed";
     case "preparing":
-      if (pos) return s === "preparing";
-      return ["preparing", "ready", "out_for_delivery", "picked_up"].includes(s);
+      if (pos) return s === "preparing" || s === "pending";
+      return ["preparing", "pending", "accepted", "created", "confirmed"].includes(s);
     case "delivered":
-      if (pos) return s === "done" || s === "served" || s === "ready";
-      return s === "delivered" || s === "completed";
+      if (pos) return s === "done" || s === "served" || s === "ready" || s === "completed";
+      return s === "done" || s === "delivered" || s === "completed";
     default:
       return true;
   }
+}
+
+function orderMatchesType(order: Order, orderType: TypeFilter): boolean {
+  if (orderType === "all") return true;
+  const normalized = String(order.orderType ?? "").toLowerCase().trim();
+  if (orderType === "dine_in") return normalized === "dine_in" || normalized === "table" || normalized === "";
+  return normalized === "online";
 }
 
 function statusActionButtons(status: string | undefined): {
@@ -397,18 +426,12 @@ function statusActionButtons(status: string | undefined): {
 }[] {
   const s = (status ?? "pending").toLowerCase();
   switch (s) {
+    case "preparing":
     case "pending":
+    case "accepted":
     case "created":
     case "confirmed":
-      return [{ key: "accept", label: "Accept", next: "accepted", variant: "primary" }];
-    case "accepted":
-      return [{ key: "prep", label: "Preparing", next: "preparing", variant: "primary" }];
-    case "preparing":
-      return [{ key: "ready", label: "Ready", next: "ready", variant: "primary" }];
-    case "ready":
-      return [{ key: "out", label: "Out for delivery", next: "out_for_delivery", variant: "primary" }];
-    case "out_for_delivery":
-      return [{ key: "done", label: "Delivered", next: "delivered", variant: "primary" }];
+      return [{ key: "done", label: "Done", next: "done", variant: "primary" }];
     default:
       return [];
   }
@@ -557,6 +580,7 @@ function OrderCard({
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
             <StatusBadge status={order.status ?? ""} />
+            <OrderTypeBadge orderType={order.orderType} />
             <PaymentStatusBadge order={order} />
           </div>
         </div>
@@ -634,6 +658,7 @@ function OrderCard({
 export function OrdersPageFeature() {
   const { user, authClaimsResolved } = useAuth();
   const [tab, setTab] = useState<TabFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [windowOrders, setWindowOrders] = useState<Order[]>([]);
   const [extraOrders, setExtraOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -650,10 +675,14 @@ export function OrdersPageFeature() {
   const extraCursorRef = useRef<QueryDocumentSnapshot | null>(null);
 
   const displayOrders = useMemo(() => {
-    const filteredWindow = windowOrders.filter((o) => orderMatchesTab(o, tab));
-    const filteredExtra = extraOrders.filter((o) => orderMatchesTab(o, tab));
+    const filteredWindow = windowOrders.filter(
+      (o) => orderMatchesTab(o, tab) && orderMatchesType(o, typeFilter)
+    );
+    const filteredExtra = extraOrders.filter(
+      (o) => orderMatchesTab(o, tab) && orderMatchesType(o, typeFilter)
+    );
     return mergeAdminOrderPages(filteredWindow, filteredExtra);
-  }, [windowOrders, extraOrders, tab]);
+  }, [windowOrders, extraOrders, tab, typeFilter]);
 
   useEffect(() => {
     if (pulseIds.size === 0) return;
@@ -749,7 +778,7 @@ export function OrdersPageFeature() {
 
   async function patchOrder(
     id: string,
-    payload: { status?: AdminOrderStatusAction; refund?: boolean; refundReason?: string }
+    payload: { overrideStatus?: AdminOrderStatusAction; refund?: boolean; refundReason?: string }
   ) {
     setUpdatingId(id);
     setError(null);
@@ -771,7 +800,7 @@ export function OrdersPageFeature() {
   }
 
   function applyStatusUpdate(id: string, next: AdminOrderStatusAction) {
-    void patchOrder(id, { status: next });
+    void patchOrder(id, { overrideStatus: next });
   }
 
   async function loadMoreOrders() {
@@ -820,8 +849,8 @@ export function OrdersPageFeature() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Filter</span>
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Status</span>
           <div
             className="inline-flex flex-wrap rounded-xl border border-slate-200 bg-slate-50/80 p-1 dark:border-slate-700 dark:bg-slate-900/80"
             role="tablist"
@@ -841,6 +870,29 @@ export function OrdersPageFeature() {
                 }`}
               >
                 {TAB_LABEL[key]}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Source</span>
+          <div
+            className="inline-flex flex-wrap rounded-xl border border-slate-200 bg-slate-50/80 p-1 dark:border-slate-700 dark:bg-slate-900/80"
+            role="tablist"
+            aria-label="Order type filter"
+          >
+            {TYPE_FILTERS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={typeFilter === key}
+                onClick={() => setTypeFilter(key)}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  typeFilter === key
+                    ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50"
+                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                }`}
+              >
+                {TYPE_LABEL[key]}
               </button>
             ))}
           </div>

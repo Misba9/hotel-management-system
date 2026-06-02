@@ -66,6 +66,8 @@
     "deploy:rules": "npm run firebase:deploy:rules",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "set-admin-role": "ts-node --project scripts/tsconfig.json scripts/set-admin-role.ts",
+    "backfill:order-source": "ts-node --project scripts/tsconfig.json scripts/backfill-order-source.ts",
+    "backfill:order-type": "ts-node --project scripts/tsconfig.json scripts/backfill-order-source.ts",
     "seed:dummy-orders": "node scripts/seed-dummy-orders.mjs"
   }
 }

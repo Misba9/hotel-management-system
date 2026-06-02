@@ -6,7 +6,7 @@ import { ORDERS_COLLECTION } from "./orders.js";
 
 /**
  * Waiter marks a table ticket served after kitchen marks READY (see Firestore rules).
- * Atomically sets the order to SERVED and frees the floor row (`FREE`, `currentOrderId` null).
+ * Atomically sets the order to served and frees the floor row (`FREE`, `currentOrderId` null).
  */
 export async function markTableOrderServed(orderId: string): Promise<void> {
   const id = orderId?.trim();
@@ -25,7 +25,7 @@ export async function markTableOrderServed(orderId: string): Promise<void> {
 
   const batch = writeBatch(staffDb);
   batch.update(orderRef, {
-    status: "SERVED",
+    status: "served",
     updatedAt: serverTimestamp()
   });
   batch.update(doc(staffDb, TABLES_COLLECTION, tableId), {

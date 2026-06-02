@@ -16,7 +16,7 @@ export type CreatePaymentOrderBody = {
   phone: string;
   items: Array<{ id: string; name?: string; price?: number; quantity: number }>;
   couponCode?: string;
-  orderType?: "delivery" | "pickup" | "dine_in";
+  orderType?: "online";
   address: string;
   deliveryAddress?: SerializedDeliveryAddress;
   /** Optional client total in INR — server recomputes from DB; used only to detect drift. */

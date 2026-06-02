@@ -62,7 +62,7 @@ export type PlacedRestaurantOrder = {
 };
 
 /**
- * Writes dine-in lifecycle order: `pending` (kitchen sees it), `paymentStatus` pending.
+ * Writes dine-in lifecycle order: `preparing` (kitchen sees it), `paymentStatus` pending.
  * Optionally marks the floor table occupied with `currentOrderId`.
  */
 export async function confirmRestaurantOrder(params: {
@@ -89,9 +89,10 @@ export async function confirmRestaurantOrder(params: {
     tableNumber: params.tableNumber,
     tableId: params.tableFirestoreId,
     tableName: tableLabel,
+    orderType: "dine_in",
     items,
     total,
-    status: "pending",
+    status: "preparing",
     paymentStatus: "pending",
     tokenNumber,
     createdAt: ts,

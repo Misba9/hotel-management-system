@@ -6,6 +6,8 @@ export function isWaiterPosDineInOrder(order: {
   orderType?: string;
   tokenNumber?: number;
 }): boolean {
-  if (order.orderType) return false;
+  const ot = String(order.orderType ?? "").toLowerCase().trim();
+  if (ot === "dine_in" || ot === "table") return true;
+  if (ot && ot !== "dine-in") return false;
   return typeof order.tokenNumber === "number" && Number.isFinite(order.tokenNumber);
 }

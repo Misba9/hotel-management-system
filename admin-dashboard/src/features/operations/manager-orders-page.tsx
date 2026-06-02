@@ -15,7 +15,7 @@
  *    query(..., orderBy("createdAt", "desc"), startAfter(cursor), limit(40))
  *    → getDocs(...)
  *
- * Tab filters (PLACED / PREPARING / READY / COMPLETED) are applied in memory via
+ * Tab filters (PREPARING / COMPLETED) are applied in memory via
  * {@link managerOrderMatchesTab} from `@shared/utils/manager-order-operations`
  * so we avoid composite indexes on (status, createdAt).
  *
@@ -80,14 +80,22 @@ export type ManagerOrder = {
   tableName?: string;
 };
 
-const TAB_FILTERS: ManagerOrdersTab[] = ["all", "placed", "preparing", "ready", "completed"];
+type ManagerOrderTypeFilter = "all" | "dine_in" | "online";
+
+const TAB_FILTERS: ManagerOrdersTab[] = ["all", "preparing", "completed"];
 
 const TAB_LABEL: Record<ManagerOrdersTab, string> = {
   all: "All",
-  placed: "Placed",
   preparing: "Preparing",
-  ready: "Ready",
   completed: "Completed"
+};
+
+const TYPE_FILTERS: ManagerOrderTypeFilter[] = ["all", "dine_in", "online"];
+
+const TYPE_LABEL: Record<ManagerOrderTypeFilter, string> = {
+  all: "All Orders",
+  dine_in: "Dine In",
+  online: "Online"
 };
 
 const ORDERS_PAGE_LIMIT = 40;
@@ -102,13 +110,8 @@ const TABLE_OVERRIDE_VALUES = [
 ] as const;
 
 const DELIVERY_OVERRIDE_VALUES = [
-  "pending",
-  "accepted",
   "preparing",
-  "ready",
-  "out_for_delivery",
-  "delivered",
-  "completed",
+  "done",
   "cancelled",
   "rejected"
 ] as const;
@@ -226,6 +229,13 @@ function formatDateTime(iso: string | null | undefined): { date: string; time: s
   };
 }
 
+function managerOrderMatchesType(order: ManagerOrder, typeFilter: ManagerOrderTypeFilter): boolean {
+  if (typeFilter === "all") return true;
+  const normalized = String(order.orderType ?? "").toLowerCase().trim();
+  if (typeFilter === "dine_in") return normalized === "dine_in" || normalized === "table" || normalized === "";
+  return normalized === "online";
+}
+
 function isTerminalForActions(order: ManagerOrder): boolean {
   const b = getManagerOrderVisualBucket(order);
   return b === "cancelled" || b === "completed";
@@ -262,12 +272,13 @@ function ManagerOrderCard({
   const bucket = getManagerOrderVisualBucket(order);
   const ageMin = orderAgeMinutesFromIso(order.createdAt ?? undefined);
   const delaySev = managerOrderDelaySeverity(bucket, ageMin);
-  const isTable = String(order.orderType ?? "").toLowerCase() === "table";
+  const normalizedType = String(order.orderType ?? "").toLowerCase();
+  const isTable = normalizedType === "table" || normalizedType === "dine_in";
   const isPosDineIn = isWaiterPosDineInOrder({
     orderType: order.orderType,
     tokenNumber: order.tokenNumber
   });
-  const preset = isTable ? TABLE_OVERRIDE_VALUES : isPosDineIn ? (["pending", "preparing", "done", "served"] as const) : DELIVERY_OVERRIDE_VALUES;
+  const preset = isTable ? TABLE_OVERRIDE_VALUES : isPosDineIn ? (["preparing", "done", "served"] as const) : DELIVERY_OVERRIDE_VALUES;
   const cur = (order.status ?? "").trim();
   const presetList = [...preset] as string[];
   const options: { value: string; label: string }[] = presetList.map((v) => ({ value: v, label: v }));
@@ -442,6 +453,7 @@ function GridSkeleton() {
 export function ManagerOrdersPageFeature() {
   const { user, authClaimsResolved } = useAuth();
   const [tab, setTab] = useState<ManagerOrdersTab>("all");
+  const [typeFilter, setTypeFilter] = useState<ManagerOrderTypeFilter>("all");
   const [windowOrders, setWindowOrders] = useState<ManagerOrder[]>([]);
   const [extraOrders, setExtraOrders] = useState<ManagerOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -458,10 +470,14 @@ export function ManagerOrdersPageFeature() {
   const extraCursorRef = useRef<QueryDocumentSnapshot | null>(null);
 
   const displayOrders = useMemo(() => {
-    const filteredWindow = windowOrders.filter((o) => managerOrderMatchesTab(o, tab));
-    const filteredExtra = extraOrders.filter((o) => managerOrderMatchesTab(o, tab));
+    const filteredWindow = windowOrders.filter(
+      (o) => managerOrderMatchesTab(o, tab) && managerOrderMatchesType(o, typeFilter)
+    );
+    const filteredExtra = extraOrders.filter(
+      (o) => managerOrderMatchesTab(o, tab) && managerOrderMatchesType(o, typeFilter)
+    );
     return mergeOrderPages(filteredWindow, filteredExtra);
-  }, [windowOrders, extraOrders, tab]);
+  }, [windowOrders, extraOrders, tab, typeFilter]);
 
   useEffect(() => {
     if (pulseIds.size === 0) return;
@@ -577,7 +593,8 @@ export function ManagerOrdersPageFeature() {
 
   function confirmCancel(o: ManagerOrder) {
     if (!window.confirm("Cancel this order? Status will be set to cancelled.")) return;
-    const isTable = o.orderType?.toLowerCase() === "table";
+    const normalizedType = o.orderType?.toLowerCase();
+    const isTable = normalizedType === "table" || normalizedType === "dine_in";
     void patchOverride(o.id, isTable ? "CANCELLED" : "cancelled");
   }
 
@@ -619,14 +636,14 @@ export function ManagerOrdersPageFeature() {
             ) : null}
           </div>
           <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
-            All orders, newest first. Filters match dine-in and delivery shapes (placed → preparing → ready → completed).
+            All orders, newest first. Filters match dine-in and delivery shapes (preparing → done).
             SLA chips use order age from <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">createdAt</code>.
             Overrides and cancel use the admin API (<code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">overrideStatus</code>).
           </p>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Filter</span>
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Status</span>
           <div
             className="inline-flex flex-wrap rounded-xl border border-slate-200 bg-slate-50/80 p-1 dark:border-slate-700 dark:bg-slate-900/80"
             role="tablist"
@@ -646,6 +663,29 @@ export function ManagerOrdersPageFeature() {
                 }`}
               >
                 {TAB_LABEL[key]}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Type</span>
+          <div
+            className="inline-flex flex-wrap rounded-xl border border-slate-200 bg-slate-50/80 p-1 dark:border-slate-700 dark:bg-slate-900/80"
+            role="tablist"
+            aria-label="Order type filter"
+          >
+            {TYPE_FILTERS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={typeFilter === key}
+                onClick={() => setTypeFilter(key)}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  typeFilter === key
+                    ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50"
+                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                }`}
+              >
+                {TYPE_LABEL[key]}
               </button>
             ))}
           </div>

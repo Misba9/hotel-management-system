@@ -35,7 +35,7 @@ const bodySchema = z.object({
     )
     .min(1),
   couponCode: z.string().max(40).optional(),
-  orderType: z.enum(["delivery", "pickup", "dine_in"]).optional(),
+  orderType: z.enum(["online"]).optional(),
   address: z.string().min(5).max(500),
   deliveryAddress: deliveryAddressSchema,
   /** Optional hint from client (INR). Never trusted for charging — only used to detect drift vs server. */
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       phone: body.phone,
       items: body.items,
       couponCode: body.couponCode,
-      orderType: body.orderType,
+      orderType: "online",
       address: body.address,
       ...(body.deliveryAddress ? { deliveryAddress: body.deliveryAddress } : {})
     });

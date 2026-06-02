@@ -22,6 +22,7 @@ const OVERRIDE_STATUSES = [
   "pending",
   "accepted",
   "preparing",
+  "done",
   "ready",
   "out_for_delivery",
   "delivered",
@@ -36,7 +37,7 @@ const OVERRIDE_STATUS_SET = new Set<string>(OVERRIDE_STATUSES);
 function applyStatusBucketForOverride(updates: Record<string, unknown>, statusRaw: string): void {
   const u = statusRaw.toUpperCase();
   const l = statusRaw.toLowerCase();
-  if (u === "COMPLETED" || l === "delivered" || l === "completed") {
+  if (u === "COMPLETED" || l === "done" || l === "delivered" || l === "completed") {
     updates.statusBucket = "completed";
   }
   if (

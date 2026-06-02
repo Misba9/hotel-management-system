@@ -4,7 +4,6 @@ import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from "reac
 import { KitchenTicketCard } from "../KitchenTicketCard";
 import { printKitchenKot } from "../../services/kitchen-kot-print";
 import {
-  kitchenAcceptOrder,
   kitchenMarkOrderReady,
   markKitchenTicketPrinted,
   subscribeKitchenKdsOrders,
@@ -21,7 +20,7 @@ export function KitchenView() {
   const [orders, setOrders] = useState<StaffOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [busy, setBusy] = useState<{ id: string; action: "accept" | "ready" | "print" } | null>(null);
+  const [busy, setBusy] = useState<{ id: string; action: "ready" | "print" } | null>(null);
   const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set());
 
   const prevIdsRef = useRef<Set<string>>(new Set());
@@ -121,7 +120,7 @@ export function KitchenView() {
     const run = async () => {
       for (const o of orders) {
         if (!queue.has(o.id)) continue;
-        if (o.canonicalStatus !== "pending" || o.printed === true) {
+        if (o.canonicalStatus !== "preparing" || o.printed === true) {
           queue.delete(o.id);
           continue;
         }
@@ -150,17 +149,6 @@ export function KitchenView() {
       await printKitchenKot(order, { source: "manual" });
     } catch {
       Alert.alert("Print failed", "Could not print this ticket. Try again.");
-    } finally {
-      setBusy(null);
-    }
-  }, []);
-
-  const runAccept = useCallback(async (order: StaffOrderRow) => {
-    setBusy({ id: order.id, action: "accept" });
-    try {
-      await kitchenAcceptOrder(order);
-    } catch {
-      Alert.alert("Action failed", "Could not start this ticket. Please try again.");
     } finally {
       setBusy(null);
     }
@@ -201,7 +189,6 @@ export function KitchenView() {
             order={item}
             busy={busy?.id === item.id ? busy.action : null}
             onPrint={() => void runPrint(item)}
-            onAccept={() => void runAccept(item)}
             onMarkReady={() => void runReady(item)}
             isNew={newOrderIds.has(item.id)}
           />

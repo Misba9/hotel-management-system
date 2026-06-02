@@ -5,7 +5,7 @@ import type { StaffOrderRow } from "../services/orders";
 
 function statusStyle(status: string): { bg: string; fg: string; label: string } {
   const s = status.toLowerCase();
-  if (s === "pending") return { bg: "#fef3c7", fg: "#92400e", label: "Pending" };
+  if (s === "pending") return { bg: "#ffedd5", fg: "#9a3412", label: "Preparing" };
   if (s === "preparing") return { bg: "#ffedd5", fg: "#9a3412", label: "Preparing" };
   if (s === "ready" || s === "done") return { bg: "#dcfce7", fg: "#166534", label: s === "done" ? "Done" : "Ready" };
   return { bg: "#e2e8f0", fg: "#334155", label: status || "—" };

@@ -28,4 +28,5 @@ function initStaffAuth() {
 
 export const staffAuth = initStaffAuth();
 export const staffDb = firestoreDb;
+export const db = firestoreDb;
 export const staffFunctions = getFunctions(firebaseApp);
