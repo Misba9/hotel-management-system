@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection } from "firebase/firestore";
 import { staffDb } from "../lib/firebase";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 
 /** Firestore collection for waiter table-order menu (distinct from `menu_items` if you use both). */
 export const MENU_COLLECTION = "menu" as const;
@@ -54,7 +55,8 @@ export function useMenuCollection(enabled = true): UseMenuCollectionResult {
     setError(null);
 
     const col = collection(staffDb, MENU_COLLECTION);
-    const unsub = onSnapshot(
+    const unsub = subscribeFirestoreQuery(
+      "useMenuCollection",
       col,
       (snap) => {
         const list: MenuDocumentItem[] = [];

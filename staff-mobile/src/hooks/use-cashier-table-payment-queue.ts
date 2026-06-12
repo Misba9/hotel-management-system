@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Timestamp } from "firebase/firestore";
-import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
+import { collection, limit, query, where } from "firebase/firestore";
 import { staffDb } from "../lib/firebase";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 import { ORDERS_COLLECTION } from "../services/orders.js";
 
 const SNAPSHOT_LIMIT = 200;
@@ -114,7 +115,8 @@ export function useCashierTablePaymentQueue(enabled = true): UseCashierTablePaym
       limit(SNAPSHOT_LIMIT)
     );
 
-    const unsubReq = onSnapshot(
+    const unsubReq = subscribeFirestoreQuery(
+      "useCashierTablePaymentQueue:requested",
       qReq,
       (snap) => {
         const list: CashierQueueOrder[] = [];
@@ -131,7 +133,8 @@ export function useCashierTablePaymentQueue(enabled = true): UseCashierTablePaym
       onErr
     );
 
-    const unsubSrv = onSnapshot(
+    const unsubSrv = subscribeFirestoreQuery(
+      "useCashierTablePaymentQueue:served",
       qSrv,
       (snap) => {
         const list: CashierQueueOrder[] = [];

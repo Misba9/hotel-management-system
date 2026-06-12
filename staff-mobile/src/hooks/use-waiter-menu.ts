@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection } from "firebase/firestore";
 import { staffDb } from "../lib/firebase";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 import { MENU_COLLECTION, type MenuDocumentItem } from "./use-menu-collection";
 
 const MENU_ITEMS_COLLECTION = "menu_items" as const;
@@ -85,7 +86,8 @@ export function useWaiterMenu(enabled = true): UseWaiterMenuResult {
       setLoading(false);
     };
 
-    const unsubMenu = onSnapshot(
+    const unsubMenu = subscribeFirestoreQuery(
+      "useWaiterMenu:menu",
       collection(staffDb, MENU_COLLECTION),
       (snap) => {
         const m = new Map<string, MenuDocumentItem>();
@@ -106,7 +108,8 @@ export function useWaiterMenu(enabled = true): UseWaiterMenuResult {
       }
     );
 
-    const unsubItems = onSnapshot(
+    const unsubItems = subscribeFirestoreQuery(
+      "useWaiterMenu:menu_items",
       collection(staffDb, MENU_ITEMS_COLLECTION),
       (snap) => {
         const m = new Map<string, MenuDocumentItem>();

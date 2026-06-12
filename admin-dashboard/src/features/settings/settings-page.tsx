@@ -1,0 +1,163 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Building2, Key, Printer, Shield, Palette } from "lucide-react";
+import { adminApiFetch } from "@/shared/lib/admin-api";
+import { PageShell } from "@/components/admin/page-shell";
+import { GlassCard } from "@/components/ui/glass-card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+type SettingsPayload = {
+  businessHours: string;
+  deliveryRadiusKm: number;
+  taxPercent: number;
+  discountPercent: number;
+};
+
+export function SettingsPageFeature() {
+  const [settings, setSettings] = useState<SettingsPayload>({
+    businessHours: "09:00 - 23:00",
+    deliveryRadiusKm: 20,
+    taxPercent: 5,
+    discountPercent: 10
+  });
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await adminApiFetch("/api/settings");
+        if (res.ok) {
+          const data = (await res.json()) as { settings?: SettingsPayload };
+          if (data.settings) setSettings(data.settings);
+        }
+      } catch {
+        setError("Failed to load settings.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    void load();
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    setStatusMessage(null);
+    setError(null);
+    try {
+      const res = await adminApiFetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings)
+      });
+      if (!res.ok) {
+        setError("Failed to save settings.");
+        return;
+      }
+      setStatusMessage("Settings saved successfully.");
+    } catch {
+      setError("Failed to save settings.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const settingSections = [
+    { id: "restaurant", icon: Building2, label: "Restaurant" },
+    { id: "branches", icon: Building2, label: "Branches" },
+    { id: "taxes", icon: Shield, label: "Taxes" },
+    { id: "printers", icon: Printer, label: "Printers" },
+    { id: "payments", icon: Shield, label: "Payments" },
+    { id: "roles", icon: Shield, label: "Roles" },
+    { id: "api", icon: Key, label: "API Keys" },
+    { id: "theme", icon: Palette, label: "Theme" },
+    { id: "security", icon: Shield, label: "Security" }
+  ];
+
+  return (
+    <PageShell badge="Settings" title="Platform Settings" description="Restaurant · branches · taxes · security · audit">
+      {statusMessage ? (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">{statusMessage}</div>
+      ) : null}
+      {error ? <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">{error}</div> : null}
+
+      <Tabs defaultValue="restaurant">
+        <TabsList className="flex-wrap">
+          {settingSections.map(({ id, label }) => (
+            <TabsTrigger key={id} value={id}>
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="restaurant">
+          <GlassCard hover>
+            <h3 className="mb-4 font-semibold text-white">Business Settings</h3>
+            {loading ? (
+              <p className="text-sm text-white/40">Loading…</p>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium text-white/50">Business Hours</span>
+                  <Input
+                    value={settings.businessHours}
+                    onChange={(e) => setSettings((p) => ({ ...p, businessHours: e.target.value }))}
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium text-white/50">Delivery Radius (km)</span>
+                  <Input
+                    type="number"
+                    value={settings.deliveryRadiusKm}
+                    onChange={(e) => setSettings((p) => ({ ...p, deliveryRadiusKm: Number(e.target.value) }))}
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium text-white/50">Tax (%)</span>
+                  <Input
+                    type="number"
+                    value={settings.taxPercent}
+                    onChange={(e) => setSettings((p) => ({ ...p, taxPercent: Number(e.target.value) }))}
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium text-white/50">Default Discount (%)</span>
+                  <Input
+                    type="number"
+                    value={settings.discountPercent}
+                    onChange={(e) => setSettings((p) => ({ ...p, discountPercent: Number(e.target.value) }))}
+                  />
+                </label>
+              </div>
+            )}
+            <Button className="mt-6" onClick={() => void save()} disabled={saving || loading}>
+              {saving ? "Saving…" : "Save Settings"}
+            </Button>
+          </GlassCard>
+        </TabsContent>
+
+        {settingSections
+          .filter((s) => s.id !== "restaurant")
+          .map(({ id, label, icon: Icon }) => (
+            <TabsContent key={id} value={id}>
+              <GlassCard>
+                <div className="flex flex-col items-center py-12 text-center">
+                  <Icon className="mb-3 h-8 w-8 text-brand-primary/60" />
+                  <p className="text-sm text-white/50">{label} configuration — extend with your backend modules.</p>
+                  <Button variant="secondary" className="mt-4">
+                    Configure {label}
+                  </Button>
+                </div>
+              </GlassCard>
+            </TabsContent>
+          ))}
+      </Tabs>
+    </PageShell>
+  );
+}

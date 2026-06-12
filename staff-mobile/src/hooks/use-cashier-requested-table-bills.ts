@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Timestamp } from "firebase/firestore";
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { collection, orderBy, query, where } from "firebase/firestore";
 import { staffDb } from "../lib/firebase";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 import { ORDERS_COLLECTION } from "../services/orders.js";
 
 export type RequestedTableBill = {
@@ -46,12 +47,13 @@ export function useCashierRequestedTableBills(enabled: boolean) {
 
     const q = query(
       collection(staffDb, ORDERS_COLLECTION),
-      where("status", "==", "served"),
       where("paymentStatus", "==", "pending"),
+      where("status", "in", ["served", "SERVED"]),
       orderBy("createdAt", "desc")
     );
 
-    const unsub = onSnapshot(
+    const unsub = subscribeFirestoreQuery(
+      "useCashierRequestedTableBills",
       q,
       (snap) => {
         const raw: Array<RequestedTableBill & { _ms: number }> = [];

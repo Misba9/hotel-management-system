@@ -5,7 +5,6 @@ import {
   getDoc,
   getDocs,
   limit,
-  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -16,6 +15,8 @@ import {
 } from "firebase/firestore";
 
 import { staffAuth, staffDb } from "../src/lib/firebase";
+import { subscribeFirestoreDocument, subscribeFirestoreQuery } from "../src/lib/firestore-listener";
+import { assertValidOrderId, requireDeliveryId, requireFirestoreId } from "../src/lib/firestore-path";
 import { ORDERS_COLLECTION } from "../src/services/orders.js";
 
 export const DELIVERIES_COLLECTION = "deliveries";
@@ -63,7 +64,7 @@ export function subscribeAssignedDeliveries(
   onNext: (rows: DeliveryRow[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  const uid = staffAuth.currentUser?.uid;
+  const uid = requireFirestoreId(staffAuth.currentUser?.uid, "userId");
   if (!uid) {
     onNext([]);
     return () => {};
@@ -74,12 +75,13 @@ export function subscribeAssignedDeliveries(
     orderBy("updatedAt", "desc"),
     limit(80)
   );
-  return onSnapshot(
+  return subscribeFirestoreQuery(
+    "subscribeAssignedDeliveries",
     q,
     (snap) => {
       onNext(snap.docs.map((d) => mapDeliveryDoc(d.id, d.data() as Record<string, unknown>)));
     },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+    onError
   );
 }
 
@@ -92,7 +94,9 @@ export function subscribeMyDeliveries(
 }
 
 export async function getDeliveryDoc(deliveryId: string): Promise<DeliveryRow | null> {
-  const snap = await getDoc(doc(staffDb, DELIVERIES_COLLECTION, deliveryId));
+  const id = requireDeliveryId(deliveryId);
+  if (!id) return null;
+  const snap = await getDoc(doc(staffDb, DELIVERIES_COLLECTION, id));
   if (!snap.exists()) return null;
   return mapDeliveryDoc(snap.id, snap.data() as Record<string, unknown>);
 }
@@ -128,7 +132,8 @@ export type OrderDeliveryDetail = {
 };
 
 export async function fetchOrderDetailForDelivery(orderId: string): Promise<OrderDeliveryDetail | null> {
-  const snap = await getDoc(doc(staffDb, ORDERS_COLLECTION, orderId));
+  const id = assertValidOrderId(orderId);
+  const snap = await getDoc(doc(staffDb, ORDERS_COLLECTION, id));
   if (!snap.exists()) return null;
   const data = snap.data() as Record<string, unknown>;
   const cust = data.customer && typeof data.customer === "object" ? (data.customer as Record<string, unknown>) : {};
@@ -194,12 +199,16 @@ export async function fetchOrderByTokenNumber(tokenNumber: number): Promise<Orde
 }
 
 export async function markDeliveryPicked(deliveryId: string): Promise<void> {
-  const ref = doc(staffDb, DELIVERIES_COLLECTION, deliveryId);
+  const id = requireDeliveryId(deliveryId);
+  if (!id) throw new Error("Missing delivery id.");
+  const ref = doc(staffDb, DELIVERIES_COLLECTION, id);
   await updateDoc(ref, { status: "picked", updatedAt: serverTimestamp() });
 }
 
 export async function markDeliveryDelivered(deliveryId: string): Promise<void> {
-  const ref = doc(staffDb, DELIVERIES_COLLECTION, deliveryId);
+  const id = requireDeliveryId(deliveryId);
+  if (!id) throw new Error("Missing delivery id.");
+  const ref = doc(staffDb, DELIVERIES_COLLECTION, id);
   await updateDoc(ref, { status: "delivered", updatedAt: serverTimestamp() });
 }
 
@@ -214,7 +223,8 @@ export async function publishRiderLocation(params: {
   riderName?: string;
   riderMobile?: string;
 }): Promise<void> {
-  const ref = doc(staffDb, DELIVERY_LOCATIONS, params.orderId);
+  const orderId = assertValidOrderId(params.orderId);
+  const ref = doc(staffDb, DELIVERY_LOCATIONS, orderId);
   await setDoc(
     ref,
     {
@@ -235,9 +245,12 @@ export function subscribeDeliveryMessages(
   onNext: (messages: DeliveryMessage[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  const col = collection(staffDb, DELIVERIES_COLLECTION, deliveryId, "messages");
+  const id = requireDeliveryId(deliveryId);
+  if (!id) return () => {};
+  const col = collection(staffDb, DELIVERIES_COLLECTION, id, "messages");
   const q = query(col, orderBy("createdAt", "asc"), limit(100));
-  return onSnapshot(
+  return subscribeFirestoreQuery(
+    "subscribeDeliveryMessages",
     q,
     (snap) => {
       const list: DeliveryMessage[] = snap.docs.map((d) => {
@@ -251,7 +264,7 @@ export function subscribeDeliveryMessages(
       });
       onNext(list);
     },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+    onError
   );
 }
 
@@ -260,26 +273,30 @@ export function subscribeDeliveryDoc(
   onNext: (row: DeliveryRow | null) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  const ref = doc(staffDb, DELIVERIES_COLLECTION, deliveryId);
-  return onSnapshot(
-    ref,
-    (snap) => {
-      if (!snap.exists()) {
-        onNext(null);
-        return;
-      }
-      onNext(mapDeliveryDoc(snap.id, snap.data() as Record<string, unknown>));
-    },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
-  );
+  const id = requireDeliveryId(deliveryId);
+  if (!id) {
+    onNext(null);
+    return () => {};
+  }
+  const ref = doc(staffDb, DELIVERIES_COLLECTION, id);
+  const unsub = subscribeFirestoreDocument("subscribeDeliveryDoc", ref, (snap) => {
+    if (!snap.exists()) {
+      onNext(null);
+      return;
+    }
+    onNext(mapDeliveryDoc(snap.id, snap.data() as Record<string, unknown>));
+  }, onError);
+  return unsub ?? (() => {});
 }
 
 export async function sendDeliveryMessage(deliveryId: string, body: string): Promise<void> {
-  const uid = staffAuth.currentUser?.uid;
+  const uid = requireFirestoreId(staffAuth.currentUser?.uid, "userId");
   if (!uid) throw new Error("Not signed in");
+  const id = requireDeliveryId(deliveryId);
+  if (!id) throw new Error("Missing delivery id.");
   const trimmed = body.trim();
   if (!trimmed) return;
-  const col = collection(staffDb, DELIVERIES_COLLECTION, deliveryId, "messages");
+  const col = collection(staffDb, DELIVERIES_COLLECTION, id, "messages");
   await addDoc(col, {
     authorUid: uid,
     body: trimmed.slice(0, 2000),

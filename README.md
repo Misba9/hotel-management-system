@@ -191,3 +191,14 @@ firebase deploy --config backend/firebase.json --project nausheen-fruits --only 
 - Staff mobile: `npm run dev:mobile`
 - All web + Expo web: `npm run dev` (see terminal banner for ports)
 - Typecheck all packages: `npm run typecheck`
+
+
+
+
+
+
+
+
+
+
+waiter@gmail.com

@@ -1,5 +1,5 @@
-import { OrdersPageFeature } from "@/features/orders/orders-page";
+import { OrdersHubFeature } from "@/features/orders/orders-hub";
 
 export default function AdminOrdersPage() {
-  return <OrdersPageFeature />;
+  return <OrdersHubFeature />;
 }

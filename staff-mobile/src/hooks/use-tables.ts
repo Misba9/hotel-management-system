@@ -1,18 +1,70 @@
+import { useCallback, useEffect, useState } from "react";
+import { collection } from "firebase/firestore";
 import {
   TABLES_COLLECTION,
-  useTables as useTablesShared,
+  parseFloorTableDoc,
   type FloorTable,
-  type TableStatus,
-  type UseTablesResult
+  type TableStatus
 } from "@shared/hooks/useTables";
 import { staffDb } from "../lib/firebase";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 
-export type { FloorTable, TableStatus, UseTablesResult };
-export { TABLES_COLLECTION, parseFloorTableDoc } from "@shared/hooks/useTables";
+export type { FloorTable, TableStatus };
+export { TABLES_COLLECTION, parseFloorTableDoc };
+
+export type UseTablesResult = {
+  tables: FloorTable[];
+  loading: boolean;
+  error: Error | null;
+  refresh: () => void;
+};
 
 /**
- * Real-time listener for `tables` — delegates to shared {@link useTablesShared} with staff Firestore.
+ * Real-time listener for `tables` — uses staff-mobile Firestore only (avoids shared SDK mismatch on web).
  */
 export function useTables(enabled = true): UseTablesResult {
-  return useTablesShared(staffDb, { enabled });
+  const [tables, setTables] = useState<FloorTable[]>([]);
+  const [loading, setLoading] = useState(enabled);
+  const [error, setError] = useState<Error | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+
+  useEffect(() => {
+    if (!enabled) {
+      setTables([]);
+      setLoading(false);
+      setError(null);
+      return undefined;
+    }
+    if (!staffDb) {
+      setTables([]);
+      setLoading(false);
+      setError(new Error("Firestore is not initialized."));
+      return undefined;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const unsub = subscribeFirestoreQuery(
+      "useTables",
+      collection(staffDb, TABLES_COLLECTION),
+      (snap) => {
+        const rows = snap.docs.map((d) => parseFloorTableDoc(d.id, d.data()));
+        rows.sort((a, b) => a.number - b.number || a.id.localeCompare(b.id));
+        setTables(rows);
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        setTables([]);
+        setLoading(false);
+        setError(err instanceof Error ? err : new Error(String(err)));
+      }
+    );
+
+    return () => unsub();
+  }, [enabled, nonce]);
+
+  return { tables, loading, error, refresh };
 }

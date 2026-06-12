@@ -63,24 +63,24 @@ export default function CashierLayout() {
     <Tabs
       screenOptions={{
         headerTitleAlign: "center",
-        headerStyle: { backgroundColor: "#ffffff" },
+        headerStyle: { backgroundColor: "#0f1419" },
         headerShadowVisible: false,
-        headerTitle: "Cashier Panel",
-        sceneStyle: { backgroundColor: "#ffffff" },
+        headerTitle: "Cashier POS",
+        headerTintColor: "#f1f5f9",
         headerRight: () => <CashierHeaderActions />
       }}
     >
-      <Tabs.Screen name="billing" options={{ title: "Billing" }} />
-      <Tabs.Screen name="walk-in" options={{ title: "New Order" }} />
+      <Tabs.Screen name="billing" options={{ title: "POS", headerShown: false }} />
+      <Tabs.Screen name="walk-in" options={{ href: null, title: "New Order" }} />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
   actions: { flexDirection: "row", alignItems: "center", gap: 2, maxWidth: 280 },
-  userText: { fontSize: 12, color: "#6b7280", marginRight: 4, maxWidth: 120 },
+  userText: { fontSize: 12, color: "#94a3b8", marginRight: 4, maxWidth: 120 },
   profileBtn: { paddingHorizontal: 10, paddingVertical: 6 },
-  profileText: { fontSize: 15, fontWeight: "700", color: "#2563eb" },
+  profileText: { fontSize: 15, fontWeight: "700", color: "#3b82f6" },
   logoutBtn: { paddingHorizontal: 10, paddingVertical: 6 },
-  logoutText: { fontSize: 15, fontWeight: "700", color: "#dc2626" }
+  logoutText: { fontSize: 15, fontWeight: "700", color: "#ef4444" }
 });

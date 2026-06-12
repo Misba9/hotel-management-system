@@ -1,5 +1,7 @@
 {
   "projects": {
     "default": "nausheen-fruits-new"
-  }
+  },
+  "targets": {},
+  "etags": {}
 }

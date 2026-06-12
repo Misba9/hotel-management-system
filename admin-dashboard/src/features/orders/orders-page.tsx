@@ -61,7 +61,6 @@ export type Order = {
   tableNumber?: number;
   tableName?: string;
   tableId?: string;
-  orderType?: string;
 };
 
 /** Next lifecycle step only (admin PATCH enforces {@link assertValidTransition} on server). */

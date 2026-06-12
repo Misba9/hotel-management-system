@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Timestamp } from "firebase/firestore";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, query, where } from "firebase/firestore";
 import { staffDb } from "../lib/firebase";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 import { ORDERS_COLLECTION } from "../services/orders.js";
 
 export type TableActiveOrderLine = {
@@ -84,7 +85,8 @@ export function useTableActiveOrders(tableNumber: number, enabled: boolean): Use
 
     const q = query(collection(staffDb, ORDERS_COLLECTION), where("tableNumber", "==", tableNumber));
 
-    const unsub = onSnapshot(
+    const unsub = subscribeFirestoreQuery(
+      "useTableActiveOrders",
       q,
       (snap) => {
         const list: TableActiveOrder[] = [];

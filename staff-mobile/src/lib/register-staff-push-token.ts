@@ -3,15 +3,21 @@ import * as Notifications from "expo-notifications";
 import { arrayUnion, doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { staffDb } from "./firebase";
 import { logError, logWarn } from "./error-logging";
+import { assertValidUid } from "./firestore-path";
+import { logFirestoreOperationError } from "./firestore-listener";
 
 /**
  * Registers the native device push token (FCM on Android) under `users/{uid}` so Cloud Functions can target staff.
  * Same shape as web FCM bootstrap (`fcmToken`, `fcmTokens`).
  */
 export async function registerStaffPushToken(uid: string | undefined): Promise<void> {
-  if (Platform.OS === "web" || !uid?.trim()) return;
+  if (Platform.OS === "web" || !uid?.trim()) {
+    if (uid !== undefined && !String(uid).trim()) console.error("Missing userId");
+    return;
+  }
 
   try {
+    const userId = assertValidUid(uid);
     const { status: existing } = await Notifications.getPermissionsAsync();
     let finalStatus = existing;
     if (existing !== "granted") {
@@ -31,7 +37,7 @@ export async function registerStaffPushToken(uid: string | undefined): Promise<v
     }
 
     await setDoc(
-      doc(staffDb, "users", uid),
+      doc(staffDb, "users", userId),
       {
         fcmToken: token,
         fcmTokens: arrayUnion(token),
@@ -40,6 +46,7 @@ export async function registerStaffPushToken(uid: string | undefined): Promise<v
       { merge: true }
     );
   } catch (e) {
+    logFirestoreOperationError("registerStaffPushToken", e);
     logError("registerStaffPushToken", e);
   }
 }

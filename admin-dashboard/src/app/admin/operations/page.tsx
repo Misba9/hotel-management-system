@@ -1,5 +1,5 @@
-import { ManagerOrdersPageFeature } from "@/features/operations/manager-orders-page";
+import { OperationsCommandCenter } from "@/features/operations/operations-command-center";
 
 export default function AdminOperationsPage() {
-  return <ManagerOrdersPageFeature />;
+  return <OperationsCommandCenter />;
 }

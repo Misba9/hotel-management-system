@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { FirebaseError } from "firebase/app";
 import { onSnapshot, type DocumentData, type Firestore, type Query } from "firebase/firestore";
 
 export type UseFirestoreQuerySnapshotOptions = {
@@ -54,6 +55,11 @@ export function useFirestoreQuerySnapshot<T>(
         setError(null);
       },
       (err) => {
+        if (err instanceof FirebaseError) {
+          console.error("Firestore Listener Error:", "useFirestoreQuerySnapshot", err.code, err.message, err);
+        } else {
+          console.error("Firestore Listener Error:", "useFirestoreQuerySnapshot", err);
+        }
         setItems([]);
         setLoading(false);
         setError(err instanceof Error ? err : new Error(String(err)));

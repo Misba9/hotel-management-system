@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import type { Timestamp } from "firebase/firestore";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc } from "firebase/firestore";
 import { staffDb } from "../lib/firebase";
+import { subscribeFirestoreDocument } from "../lib/firestore-listener";
+import { requireFirestoreId } from "../lib/firestore-path";
 import { ORDERS_COLLECTION } from "../services/orders.js";
 import { toTableOrderDisplayStatus, type TableActiveOrderLine } from "./use-table-active-orders";
 
@@ -50,7 +52,7 @@ export function useTableOrderLive(orderId: string | null | undefined, enabled: b
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const id = orderId?.trim();
+    const id = requireFirestoreId(orderId, "orderId");
     if (!enabled || !id) {
       setOrder(null);
       setLoading(false);
@@ -62,9 +64,8 @@ export function useTableOrderLive(orderId: string | null | undefined, enabled: b
     setError(null);
 
     const ref = doc(staffDb, ORDERS_COLLECTION, id);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
+    const unsub =
+      subscribeFirestoreDocument("useTableOrderLive", ref, (snap) => {
         if (!snap.exists()) {
           setOrder(null);
           setLoading(false);
@@ -94,7 +95,7 @@ export function useTableOrderLive(orderId: string | null | undefined, enabled: b
         setLoading(false);
         setError(err instanceof Error ? err.message : "Could not load order.");
       }
-    );
+    ) ?? (() => {});
 
     return () => unsub();
   }, [orderId, enabled]);

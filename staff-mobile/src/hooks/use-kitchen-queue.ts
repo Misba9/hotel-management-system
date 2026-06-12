@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Timestamp } from "firebase/firestore";
-import { onSnapshot } from "firebase/firestore";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 import {
   getRecentOrdersFallbackQuery,
   getRestaurantKitchenPlacedOrdersQuery,
@@ -134,7 +134,8 @@ export function useKitchenQueue(enabled = true): UseKitchenQueueResult {
       fallbackStarted = true;
       unsubPlaced();
       unsubPreparing();
-      unsubFallback = onSnapshot(
+      unsubFallback = subscribeFirestoreQuery(
+        "useKitchenQueue:fallback",
         getRecentOrdersFallbackQuery(),
         (snap) => {
           applyDocs(snap.docs);
@@ -164,7 +165,8 @@ export function useKitchenQueue(enabled = true): UseKitchenQueueResult {
       startFallback();
     };
 
-    unsubPlaced = onSnapshot(
+    unsubPlaced = subscribeFirestoreQuery(
+      "useKitchenQueue:placed",
       getRestaurantKitchenPlacedOrdersQuery(),
       (snap) => {
         placedById.clear();
@@ -176,7 +178,8 @@ export function useKitchenQueue(enabled = true): UseKitchenQueueResult {
       onPrimaryError
     );
 
-    unsubPreparing = onSnapshot(
+    unsubPreparing = subscribeFirestoreQuery(
+      "useKitchenQueue:preparing",
       getRestaurantKitchenPreparingOrdersQuery(),
       (snap) => {
         preparingById.clear();

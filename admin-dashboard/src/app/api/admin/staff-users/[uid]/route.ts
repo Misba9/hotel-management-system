@@ -16,11 +16,17 @@ const patchBody = z
   .object({
     role: staffManagementRoleSchema.optional(),
     isActive: z.boolean().optional(),
-    name: z.string().min(2).max(120).optional()
+    name: z.string().min(2).max(120).optional(),
+    newPassword: z.string().min(6).max(128).optional()
   })
-  .refine((v) => v.role !== undefined || v.isActive !== undefined || v.name !== undefined, {
-    message: "Nothing to update."
-  });
+  .refine(
+    (v) =>
+      v.role !== undefined ||
+      v.isActive !== undefined ||
+      v.name !== undefined ||
+      v.newPassword !== undefined,
+    { message: "Nothing to update." }
+  );
 
 export async function PATCH(request: Request, context: { params: { uid: string } }) {
   const auth = await requireAdmin(request, {
@@ -97,7 +103,13 @@ export async function PATCH(request: Request, context: { params: { uid: string }
       updates.pendingApproval = false;
     }
 
-    await ref.set(updates, { merge: true });
+    if (body.newPassword !== undefined) {
+      await adminAuth.updateUser(uid, { password: body.newPassword });
+    }
+
+    if (Object.keys(updates).length > 1) {
+      await ref.set(updates, { merge: true });
+    }
 
     return Response.json({ success: true }, { status: 200, headers: NO_STORE });
   } catch (error) {

@@ -86,7 +86,9 @@ const TAB_FILTERS: ManagerOrdersTab[] = ["all", "preparing", "completed"];
 
 const TAB_LABEL: Record<ManagerOrdersTab, string> = {
   all: "All",
+  placed: "Placed",
   preparing: "Preparing",
+  ready: "Ready",
   completed: "Completed"
 };
 

@@ -3,7 +3,6 @@ import {
   doc,
   getDoc,
   limit,
-  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -16,6 +15,8 @@ import { isWaiterPosDineInOrder } from "@shared/utils/waiter-pos-order";
 import type { StaffRoleId } from "../src/constants/staff-roles";
 import { assertValidTransition, type OrderLifecycleStatus } from "../src/lib/order-status-lifecycle";
 import { staffDb } from "../src/lib/firebase";
+import { subscribeFirestoreQuery } from "../src/lib/firestore-listener";
+import { assertValidOrderId } from "../src/lib/firestore-path";
 import {
   mapOrderDoc,
   MANAGER_ORDERS_LIMIT,
@@ -84,7 +85,7 @@ function enrichOrder(id: string, data: Record<string, unknown>): StaffOrderRow {
 
 /** After a successful auto KOT print — idempotent server-side flag (see Firestore rules). */
 export async function markKitchenTicketPrinted(orderId: string): Promise<void> {
-  const ref = doc(staffDb, ORDERS_COLLECTION, orderId);
+  const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(orderId));
   await updateDoc(ref, {
     printed: true,
     updatedAt: serverTimestamp()
@@ -99,12 +100,13 @@ export function subscribeAllOrders(
   onNext: (orders: StaffOrderRow[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  return onSnapshot(
+  return subscribeFirestoreQuery(
+    "subscribeAllOrders",
     collection(staffDb, ORDERS_COLLECTION),
     (snap) => {
       onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>)));
     },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+    onError
   );
 }
 
@@ -114,12 +116,13 @@ export function subscribeWaiterOrders(
   onError?: (err: Error) => void
 ): Unsubscribe {
   const q = query(collection(staffDb, ORDERS_COLLECTION), where("orderType", "==", "dine_in"));
-  return onSnapshot(
+  return subscribeFirestoreQuery(
+    "subscribeWaiterOrders",
     q,
     (snap) => {
       onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>)));
     },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+    onError
   );
 }
 
@@ -133,12 +136,13 @@ export function subscribeRecentOrders(
     orderBy("createdAt", "desc"),
     limit(MANAGER_ORDERS_LIMIT)
   );
-  return onSnapshot(
+  return subscribeFirestoreQuery(
+    "subscribeRecentOrders",
     q,
     (snap) => {
       onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>)));
     },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+    onError
   );
 }
 
@@ -162,24 +166,15 @@ export function subscribeKitchenKdsOrders(
   );
 
   try {
-    return onSnapshot(
+    return subscribeFirestoreQuery(
+      "subscribeKitchenKdsOrders",
       q,
       (snap) => {
         onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>)));
       },
-      (e) => {
-        const err = e instanceof Error ? e : new Error(String(e));
-        console.log("Firestore error:", err.message);
-        if (err.message.toLowerCase().includes("index")) {
-          console.error(
-            "Kitchen query needs an index — open the link in the error in Firebase Console → Create Index → wait until Enabled."
-          );
-        }
-        onError?.(err);
-      }
+      onError
     );
   } catch (error) {
-    console.log("Firestore error:", error);
     onError?.(error instanceof Error ? error : new Error(String(error)));
     return () => {};
   }
@@ -187,7 +182,7 @@ export function subscribeKitchenKdsOrders(
 
 /** Cashier payment accept action (default method: cash). */
 export async function markCashierOrderPaid(orderId: string, paymentMethod = "cash"): Promise<void> {
-  const ref = doc(staffDb, ORDERS_COLLECTION, orderId);
+  const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(orderId));
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error("Order not found");
   await updateDoc(ref, {
@@ -200,7 +195,7 @@ export async function markCashierOrderPaid(orderId: string, paymentMethod = "cas
 }
 
 export async function kitchenMarkOrderReady(order: StaffOrderRow): Promise<void> {
-  const ref = doc(staffDb, ORDERS_COLLECTION, order.id);
+  const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(order.id));
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error("Order not found");
   const data = snap.data() as Record<string, unknown>;
@@ -236,7 +231,7 @@ export async function kitchenMarkOrderReady(order: StaffOrderRow): Promise<void>
 }
 
 export async function waiterMarkServed(order: StaffOrderRow): Promise<void> {
-  const ref = doc(staffDb, ORDERS_COLLECTION, order.id);
+  const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(order.id));
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error("Order not found");
   const data = snap.data() as Record<string, unknown>;
@@ -250,7 +245,7 @@ export async function waiterMarkServed(order: StaffOrderRow): Promise<void> {
 }
 
 export async function generateBillForOrder(orderId: string): Promise<void> {
-  const ref = doc(staffDb, ORDERS_COLLECTION, orderId);
+  const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(orderId));
   await updateDoc(ref, {
     paymentStatus: "REQUESTED",
     updatedAt: serverTimestamp()
@@ -259,7 +254,7 @@ export async function generateBillForOrder(orderId: string): Promise<void> {
 
 /** Walk-in / simple orders after service — marks paid without the table payment cloud fn. */
 export async function markSimpleOrderPaid(orderId: string): Promise<void> {
-  const ref = doc(staffDb, ORDERS_COLLECTION, orderId);
+  const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(orderId));
   await updateDoc(ref, {
     paymentStatus: "PAID",
     status: "completed",
@@ -275,7 +270,7 @@ export async function applyTableTicketAction(
   orderId: string,
   action: "ready" | "served"
 ): Promise<void> {
-  const ref = doc(staffDb, ORDERS_COLLECTION, orderId);
+  const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(orderId));
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error("Order not found");
   const data = snap.data() as Record<string, unknown>;
@@ -296,7 +291,7 @@ export async function applyTableTicketAction(
 
 /** Advance one step on the shared SaaS lifecycle (`pending` → `accepted` → …). */
 export async function advanceOrderLifecycle(orderId: string, target: OrderLifecycleStatus): Promise<void> {
-  const ref = doc(staffDb, ORDERS_COLLECTION, orderId);
+  const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(orderId));
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error("Order not found");
   const current = snap.data()?.status;
@@ -331,7 +326,7 @@ export async function applyOrderRowAction(
 
   if (role === "kitchen" || isPrivileged) {
     if (action === "ready" && cur === "preparing") {
-      const ref = doc(staffDb, ORDERS_COLLECTION, order.id);
+      const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(order.id));
       await updateDoc(ref, { status: "done", updatedAt: serverTimestamp() });
       return;
     }

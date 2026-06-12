@@ -4,7 +4,7 @@
  */
 declare const process: { env: Record<string, string | undefined> };
 
-import { type FirebaseApp, getApps, initializeApp } from "firebase/app";
+import { type FirebaseApp, getApp, getApps, initializeApp } from "firebase/app";
 import {
   enableNetwork,
   getFirestore,
@@ -66,42 +66,47 @@ if (firebaseConfig.projectId !== EXPECTED_NATIVE_PROJECT_ID) {
 }
 
 /** Single default app instance (Expo fast refresh must not create duplicates). */
-const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+export const firebaseApp: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-if (app.options.projectId !== firebaseConfig.projectId) {
+if (firebaseApp.options.projectId !== firebaseConfig.projectId) {
   console.error(
-    `[Firebase] Cached app project "${app.options.projectId}" !== .env "${firebaseConfig.projectId}". Run: npx expo start -c`
+    `[Firebase] Cached app project "${firebaseApp.options.projectId}" !== .env "${firebaseConfig.projectId}". Run: npx expo start -c`
   );
 }
 
+const FIRESTORE_SETTINGS: FirestoreSettings & { useFetchStreams?: boolean } = {
+  experimentalForceLongPolling: true,
+  useFetchStreams: false
+};
+
+let firestoreSingleton: Firestore | null = null;
+
 /**
- * RN / Expo: WebChannel streams often fail on some networks (RPC Listen transport errors).
- * Long polling + disabling fetch streams matches stable browser config; opt out with
- * `EXPO_PUBLIC_FIRESTORE_LONG_POLLING=false`.
+ * One Firestore instance per app. Re-calling `initializeFirestore` after HMR throws; `getFirestore(app)` returns the same instance.
  */
-function createStaffFirestore(): Firestore {
+function getStaffFirestoreInstance(): Firestore {
+  if (firestoreSingleton) return firestoreSingleton;
+
   const useLongPolling = env("EXPO_PUBLIC_FIRESTORE_LONG_POLLING") !== "false";
   if (!useLongPolling) {
-    return getFirestore(app);
+    firestoreSingleton = getFirestore(firebaseApp);
+    return firestoreSingleton;
   }
-  const settings: FirestoreSettings & { useFetchStreams?: boolean } = {
-    experimentalForceLongPolling: true,
-    useFetchStreams: false
-  };
+
   try {
-    return initializeFirestore(app, settings as FirestoreSettings);
+    firestoreSingleton = initializeFirestore(firebaseApp, FIRESTORE_SETTINGS as FirestoreSettings);
   } catch {
-    return getFirestore(app);
+    firestoreSingleton = getFirestore(firebaseApp);
   }
+  return firestoreSingleton;
 }
 
 if (typeof __DEV__ !== "undefined" && __DEV__) {
   // eslint-disable-next-line no-console
-  console.log("[Firebase] projectId:", app.options.projectId);
+  console.log("[Firebase] projectId:", firebaseApp.options.projectId);
 }
 
-export const firebaseApp = app;
-export const firestoreDb: Firestore = createStaffFirestore();
+export const firestoreDb: Firestore = getStaffFirestoreInstance();
 
 /** Call after NetInfo reports online or on cold start if listeners stay empty. */
 export async function ensureStaffFirestoreOnline(): Promise<void> {
@@ -113,7 +118,7 @@ export async function ensureStaffFirestoreOnline(): Promise<void> {
 }
 
 export function getStaffFirebaseConfig() {
-  const o = app.options;
+  const o = firebaseApp.options;
   return {
     apiKey: o.apiKey,
     authDomain: o.authDomain,

@@ -1,8 +1,10 @@
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
 
 import type { StaffRoleId } from "../src/constants/staff-roles";
 import { staffDb } from "../src/lib/firebase";
+import { subscribeFirestoreDocument } from "../src/lib/firestore-listener";
+import { assertValidUid } from "../src/lib/firestore-path";
 import { STAFF_USERS_COLLECTION } from "../src/navigation/staff-role-routes";
 import { resolveStaffSession, type StaffProfile } from "../src/services/staffUsers";
 
@@ -32,8 +34,13 @@ function mapFirestoreError(error: unknown): string {
  * One-shot read after Firebase Auth sign-in (matches login flow spec: `getDoc` by UID).
  */
 export async function fetchStaffProfileAfterAuth(user: User): Promise<StaffProfileLoadResult> {
+  if (!user?.uid?.trim()) {
+    console.error("Missing userId");
+    return { ok: false, reason: "Not signed in." };
+  }
   try {
-    const ref = doc(staffDb, STAFF_USERS_COLLECTION, user.uid);
+    const uid = assertValidUid(user.uid);
+    const ref = doc(staffDb, STAFF_USERS_COLLECTION, uid);
     const docSnap = await getDoc(ref);
     if (!docSnap.exists()) {
       return {
@@ -42,7 +49,7 @@ export async function fetchStaffProfileAfterAuth(user: User): Promise<StaffProfi
       };
     }
     const data = docSnap.data() as Record<string, unknown>;
-    const { gate, profile } = resolveStaffSession(user.uid, user.email, data, true);
+    const { gate, profile } = resolveStaffSession(uid, user.email, data, true);
 
     if (gate === "active" && profile) {
       return { ok: true, profile };
@@ -67,10 +74,14 @@ export function subscribeStaffProfile(
   onChange: (result: StaffProfileLoadResult) => void,
   onError?: (message: string) => void
 ): () => void {
-  const ref = doc(staffDb, STAFF_USERS_COLLECTION, user.uid);
-  return onSnapshot(
-    ref,
-    (snap) => {
+  if (!user?.uid?.trim()) {
+    console.error("Missing userId");
+    onChange({ ok: false, reason: "Not signed in." });
+    return () => {};
+  }
+  const uid = assertValidUid(user.uid);
+  const ref = doc(staffDb, STAFF_USERS_COLLECTION, uid);
+  const unsub = subscribeFirestoreDocument("subscribeStaffProfile", ref, (snap) => {
       if (!snap.exists()) {
         onChange({
           ok: false,
@@ -102,4 +113,5 @@ export function subscribeStaffProfile(
       onError?.(mapFirestoreError(error));
     }
   );
+  return unsub ?? (() => {});
 }

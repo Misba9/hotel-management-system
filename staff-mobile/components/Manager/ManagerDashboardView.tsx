@@ -195,7 +195,15 @@ export function ManagerDashboardView() {
   const [assignBusy, setAssignBusy] = useState(false);
   const [assignErr, setAssignErr] = useState<string | null>(null);
 
+  const authReady = useAuthStore((s) => s.authReady);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
   useEffect(() => {
+    if (!authReady || !isAuthenticated) {
+      setOrders([]);
+      setLoading(authReady);
+      return undefined;
+    }
     setLoading(true);
     const unsub = subscribeRecentOrders(
       (next) => {
@@ -209,9 +217,13 @@ export function ManagerDashboardView() {
       }
     );
     return unsub;
-  }, []);
+  }, [authReady, isAuthenticated]);
 
   useEffect(() => {
+    if (!authReady || !isAuthenticated) {
+      setStaff([]);
+      return undefined;
+    }
     const unsub = subscribeStaffDirectory(
       (rows) => {
         setStaff(rows);
@@ -222,7 +234,7 @@ export function ManagerDashboardView() {
       }
     );
     return unsub;
-  }, []);
+  }, [authReady, isAuthenticated]);
 
   const metrics = useMemo(() => {
     let pending = 0;

@@ -1,9 +1,11 @@
 import { create } from "zustand";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
 import type { StaffRoleId } from "../src/constants/staff-roles";
 import { staffAuth, staffDb } from "../src/lib/firebase";
+import { subscribeFirestoreDocument } from "../src/lib/firestore-listener";
+import { assertValidUid } from "../src/lib/firestore-path";
 import { STAFF_USERS_COLLECTION } from "../src/navigation/staff-role-routes";
 import { login as firebaseEmailLogin, logout as firebaseLogout } from "../src/services/auth.js";
 import {
@@ -163,17 +165,23 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({ loading: false, authReady: true });
       }
 
-      const staffRef = doc(staffDb, STAFF_USERS_COLLECTION, user.uid);
-      unsubRole = onSnapshot(staffRef, (snap) => {
-        if (!snap.exists()) return;
-        const data = snap.data() as Record<string, unknown>;
-        const { gate, profile } = resolveStaffSession(user.uid, user.email, data, true);
-        if (gate === "active" && profile) {
-          set({ role: profile.role, profile, isAuthenticated: true });
-        } else {
-          set({ role: null, profile: null, isAuthenticated: false });
-        }
-      });
+      if (!user.uid?.trim()) {
+        console.error("Missing userId");
+        return;
+      }
+      const uid = assertValidUid(user.uid);
+      const staffRef = doc(staffDb, STAFF_USERS_COLLECTION, uid);
+      unsubRole =
+        subscribeFirestoreDocument("useAuthStore.staff_users", staffRef, (snap) => {
+          if (!snap.exists()) return;
+          const data = snap.data() as Record<string, unknown>;
+          const { gate, profile } = resolveStaffSession(uid, user.email, data, true);
+          if (gate === "active" && profile) {
+            set({ role: profile.role, profile, isAuthenticated: true });
+          } else {
+            set({ role: null, profile: null, isAuthenticated: false });
+          }
+        }) ?? undefined;
     });
 
     return () => {

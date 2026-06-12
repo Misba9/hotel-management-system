@@ -1,7 +1,9 @@
-import { collection, doc, onSnapshot, updateDoc, type Unsubscribe } from "firebase/firestore";
+import { collection, doc, updateDoc, type Unsubscribe } from "firebase/firestore";
 
 import { staffDb } from "../src/lib/firebase";
-import { TABLES_COLLECTION, parseFloorTableDoc, type FloorTable } from "../src/hooks/use-tables";
+import { subscribeFirestoreQuery } from "../src/lib/firestore-listener";
+import { assertValidTableId } from "../src/lib/firestore-path";
+import { TABLES_COLLECTION, parseFloorTableDoc, type FloorTable } from "@shared/hooks/useTables";
 
 export type { FloorTable };
 
@@ -9,7 +11,8 @@ export function subscribeAllTables(
   onNext: (tables: FloorTable[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  return onSnapshot(
+  return subscribeFirestoreQuery(
+    "subscribeAllTables",
     collection(staffDb, TABLES_COLLECTION),
     (snap) => {
       const rows = snap.docs.map((d) => parseFloorTableDoc(d.id, d.data()));
@@ -21,7 +24,7 @@ export function subscribeAllTables(
       );
       onNext(rows);
     },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+    onError
   );
 }
 
@@ -29,7 +32,7 @@ export async function patchWaiterTable(
   tableId: string,
   patch: { status: "FREE" | "OCCUPIED" | "available" | "occupied"; currentOrderId?: string | null }
 ): Promise<void> {
-  const ref = doc(staffDb, TABLES_COLLECTION, tableId);
+  const ref = doc(staffDb, TABLES_COLLECTION, assertValidTableId(tableId));
   const occupied = patch.status === "OCCUPIED" || patch.status === "occupied";
   const status = occupied ? "occupied" : "available";
   /** Waiter rule allows only `status` + `currentOrderId` — do not add other fields. */

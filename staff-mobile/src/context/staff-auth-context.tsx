@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc } from "firebase/firestore";
 import { staffAuth } from "../lib/firebase";
 import { staffDb } from "../lib/firebase";
 import type { StaffFeature } from "../lib/rbac";
@@ -21,6 +21,8 @@ import {
   USERS_COLLECTION
 } from "../services/staffUsers";
 import { STAFF_USERS_COLLECTION } from "../navigation/staff-role-routes";
+import { subscribeFirestoreDocument } from "../lib/firestore-listener";
+import { assertValidUid } from "../lib/firestore-path";
 import { logError, logWarn } from "../lib/error-logging";
 
 export type { StaffProfile };
@@ -101,7 +103,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!user?.uid) return;
-    const uid = user.uid;
+    const uid = assertValidUid(user.uid);
     const staffRef = doc(staffDb, STAFF_USERS_COLLECTION, uid);
     let cancelled = false;
 
@@ -110,9 +112,8 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     setStaffSnapReady(false);
     ensureInFlightRef.current = null;
 
-    const unsub = onSnapshot(
-      staffRef,
-      (snap) => {
+    const unsub =
+      subscribeFirestoreDocument("StaffAuth.staff_users", staffRef, (snap) => {
         if (cancelled) return;
         setStaffSnapReady(true);
 
@@ -160,7 +161,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
         setStaffGate("sync_error");
         prevGateRef.current = "sync_error";
       }
-    );
+    ) ?? (() => {});
 
     return () => {
       cancelled = true;
@@ -174,7 +175,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
    */
   useEffect(() => {
     if (!user?.uid) return;
-    const uid = user.uid;
+    const uid = assertValidUid(user.uid);
     const usersRef = doc(staffDb, USERS_COLLECTION, uid);
     let cancelled = false;
 
@@ -182,9 +183,8 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
     setUsersSnapReady(false);
     setUsersListenError(false);
 
-    const unsub = onSnapshot(
-      usersRef,
-      (snap) => {
+    const unsub =
+      subscribeFirestoreDocument("StaffAuth.users", usersRef, (snap) => {
         if (cancelled) return;
         setUsersSnapReady(true);
         setUsersListenError(false);
@@ -197,7 +197,7 @@ export function StaffAuthProvider({ children }: { children: React.ReactNode }) {
         setUsersDoc(null);
         setUsersSnapReady(true);
       }
-    );
+    ) ?? (() => {});
 
     return () => {
       cancelled = true;

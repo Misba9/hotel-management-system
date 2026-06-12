@@ -1,5 +1,5 @@
-import { AnalyticsPageFeature } from "@/features/analytics/analytics-page";
+import { redirect } from "next/navigation";
 
-export default function AdminAnalyticsPage() {
-  return <AnalyticsPageFeature />;
+export default function AdminAnalyticsRedirectPage() {
+  redirect("/admin/reports");
 }

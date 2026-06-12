@@ -7,6 +7,7 @@ import {
 } from "@shared/utils/staff-access-control";
 import type { StaffRoleId } from "../constants/staff-roles";
 import { staffDb } from "../lib/firebase";
+import { assertValidUid } from "../lib/firestore-path";
 import { STAFF_USERS_COLLECTION } from "../navigation/staff-role-routes";
 
 export type StaffProfile = {
@@ -26,7 +27,8 @@ export function isPendingRole(data: Record<string, unknown>): boolean {
 }
 
 export async function getStaffUser(uid: string): Promise<Record<string, unknown> | null> {
-  const ref = doc(staffDb, STAFF_USERS_COLLECTION, uid);
+  const id = assertValidUid(uid);
+  const ref = doc(staffDb, STAFF_USERS_COLLECTION, id);
   const snap = await getDoc(ref);
   return snap.exists() ? (snap.data() as Record<string, unknown>) : null;
 }
@@ -54,7 +56,8 @@ export async function getStaffProfile(uid: string): Promise<{
  * Schema: uid, email, role, isActive, createdAt
  */
 export async function ensureStaffProfileDocument(uid: string, email: string | null): Promise<void> {
-  const ref = doc(staffDb, STAFF_USERS_COLLECTION, uid);
+  const id = assertValidUid(uid);
+  const ref = doc(staffDb, STAFF_USERS_COLLECTION, id);
 
   let snap = await getDoc(ref);
 

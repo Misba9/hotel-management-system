@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
+import { collection, limit, query, where } from "firebase/firestore";
 import { staffDb } from "../lib/firebase";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 import { ORDERS_COLLECTION } from "../services/orders.js";
 import { toTableOrderDisplayStatus } from "./use-table-active-orders";
 
@@ -67,7 +68,8 @@ export function useWaiterFloorOrders(enabled = true): UseWaiterFloorOrdersResult
       limit(SNAPSHOT_LIMIT)
     );
 
-    const unsub = onSnapshot(
+    const unsub = subscribeFirestoreQuery(
+      "useWaiterFloorOrders",
       q,
       (snap) => {
         const bucket = new Map<number, string[]>();

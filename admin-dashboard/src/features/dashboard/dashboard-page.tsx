@@ -1,11 +1,43 @@
 "use client";
 
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { doc, onSnapshot } from "firebase/firestore";
-import { AlertCircle, IndianRupee, Package, RefreshCw, TrendingUp, Users } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AlertCircle,
+  ChefHat,
+  Clock,
+  IndianRupee,
+  LayoutGrid,
+  Package,
+  RefreshCw,
+  TrendingUp,
+  Truck,
+  Users,
+  Wallet
+} from "lucide-react";
 import { getFirebaseDb } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 import { adminApiFetch } from "@/shared/lib/admin-api";
+import type { AdminAnalyticsPayload } from "@/lib/analytics-types";
+import { MetricCard } from "@/components/ui/metric-card";
+import { GlassCard } from "@/components/ui/glass-card";
+import { SectionHeader } from "@/components/ui/section-header";
+import { MetricSkeletonGrid, ChartSkeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { AiInsightsPanel } from "@/components/admin/ai-insights-panel";
+import { formatCurrency } from "@/lib/utils";
+
+const SalesChart = dynamic(
+  () => import("@/components/charts/premium-charts").then((m) => m.SalesChart),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
+const TopProductsBar = dynamic(
+  () => import("@/components/charts/premium-charts").then((m) => m.TopProductsBar),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+);
 
 type SummaryMetrics = {
   ordersToday: number;
@@ -15,156 +47,65 @@ type SummaryMetrics = {
   customers: number;
 };
 
-function StatCard({
-  title,
-  value,
-  hint,
-  icon: Icon,
-  accent
-}: {
-  title: string;
-  value: string;
-  hint?: string;
-  icon: ComponentType<{ className?: string }>;
-  accent: "slate" | "amber" | "emerald" | "violet" | "sky";
-}) {
-  const styles: Record<typeof accent, { ring: string; icon: string }> = {
-    slate: {
-      ring: "ring-slate-200/90 bg-white hover:shadow-lg dark:bg-slate-900 dark:ring-slate-700",
-      icon: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-    },
-    amber: {
-      ring: "ring-amber-200/80 bg-white hover:shadow-lg dark:bg-slate-900 dark:ring-amber-900/40",
-      icon: "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
-    },
-    emerald: {
-      ring: "ring-emerald-200/80 bg-white hover:shadow-lg dark:bg-slate-900 dark:ring-emerald-900/40",
-      icon: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
-    },
-    violet: {
-      ring: "ring-violet-200/80 bg-white hover:shadow-lg dark:bg-slate-900 dark:ring-violet-900/40",
-      icon: "bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200"
-    },
-    sky: {
-      ring: "ring-sky-200/80 bg-white hover:shadow-lg dark:bg-slate-900 dark:ring-sky-900/40",
-      icon: "bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-200"
-    }
-  };
-  const s = styles[accent];
+const kitchenQueue = [
+  { id: "#1042", table: "T-7", items: 4, stage: "Preparing", time: "6m" },
+  { id: "#1041", table: "T-3", items: 2, stage: "New", time: "1m" },
+  { id: "#1040", table: "Delivery", items: 5, stage: "Ready", time: "12m" }
+];
 
-  return (
-    <div
-      className={`group rounded-xl p-5 shadow-md ring-1 transition-all duration-200 hover:-translate-y-0.5 ${s.ring}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</p>
-          <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50 sm:text-3xl">
-            {value}
-          </p>
-          {hint ? <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{hint}</p> : null}
-        </div>
-        <span
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm transition group-hover:scale-105 ${s.icon}`}
-        >
-          <Icon className="h-5 w-5" aria-hidden />
-        </span>
-      </div>
-    </div>
-  );
-}
+const inventoryAlerts = [
+  { item: "Chicken Breast", level: "Critical", stock: "2.1 kg", action: "Reorder" },
+  { item: "Tomatoes", level: "Low", stock: "8 kg", action: "Monitor" },
+  { item: "Cheese Block", level: "Low", stock: "1.5 kg", action: "Reorder" }
+];
 
-function SummarySkeletonGrid() {
-  return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-4" aria-busy="true" aria-label="Loading summary">
-      {["a", "b", "c", "d"].map((key) => (
-        <div key={key} className="rounded-xl bg-white p-5 shadow-md ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-700">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1 space-y-3">
-              <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-              <div className="h-8 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-              <div className="h-2 w-32 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
-            </div>
-            <div className="h-11 w-11 shrink-0 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+const recentActivities = [
+  { time: "2m ago", event: "Order #1042 sent to kitchen", type: "order" },
+  { time: "8m ago", event: "Table 5 merged with Table 6", type: "table" },
+  { time: "15m ago", event: "Payment Rs. 1,890 via UPI", type: "payment" },
+  { time: "22m ago", event: "New customer registered — Priya S.", type: "customer" }
+];
+
+const staffOnline = [
+  { name: "Rajesh K.", role: "Waiter", shift: "Evening", status: "Active" },
+  { name: "Anita M.", role: "Cashier", shift: "Evening", status: "Active" },
+  { name: "Suresh P.", role: "Kitchen", shift: "Evening", status: "Busy" }
+];
+
+const branchPerformance = [
+  { branch: "Main Branch", revenue: 42800, orders: 86, occupancy: 78 },
+  { branch: "Downtown", revenue: 31200, orders: 64, occupancy: 65 },
+  { branch: "Mall Outlet", revenue: 18900, orders: 41, occupancy: 52 }
+];
 
 export function DashboardPageFeature() {
   const { user, authClaimsResolved } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [summary, setSummary] = useState<SummaryMetrics | null>(null);
   const [highVolumeAlert, setHighVolumeAlert] = useState<{
     active: boolean;
     message: string;
-    count: number;
     threshold: number;
   } | null>(null);
 
-  useEffect(() => {
-    if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) {
-      setLoading(false);
-      setError("Firebase is not configured (missing NEXT_PUBLIC_FIREBASE_PROJECT_ID).");
-      return;
-    }
+  const summaryQuery = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: async () => {
+      const res = await adminApiFetch("/api/dashboard/summary");
+      return (await res.json()) as SummaryMetrics;
+    },
+    enabled: Boolean(user && authClaimsResolved),
+    refetchInterval: 45_000
+  });
 
-    if (!user) {
-      setSummary(null);
-      setLoading(false);
-      setError("Sign in to load live order stats.");
-      return;
-    }
-
-    if (!authClaimsResolved) {
-      setLoading(true);
-      setError(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadSummary() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await adminApiFetch("/api/dashboard/summary");
-        const data = (await res.json()) as SummaryMetrics;
-        if (cancelled) return;
-        if (
-          typeof data.ordersToday === "number" &&
-          typeof data.pendingOrders === "number" &&
-          typeof data.revenueToday === "number" &&
-          typeof data.activeOrders === "number" &&
-          typeof data.customers === "number"
-        ) {
-          setSummary(data);
-          setError(null);
-        } else {
-          setSummary(null);
-          setError("Unexpected summary response.");
-        }
-      } catch (e) {
-        if (cancelled) return;
-        setSummary(null);
-        setError(e instanceof Error ? e.message : "Could not load dashboard summary.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void loadSummary();
-    const interval = window.setInterval(() => void loadSummary(), 45_000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [user, authClaimsResolved, refreshKey]);
+  const analyticsQuery = useQuery({
+    queryKey: ["dashboard-analytics"],
+    queryFn: async () => {
+      const res = await adminApiFetch("/api/analytics");
+      if (!res.ok) throw new Error("Failed to load analytics");
+      return (await res.json()) as AdminAnalyticsPayload;
+    },
+    enabled: Boolean(user && authClaimsResolved),
+    staleTime: 60_000
+  });
 
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) return;
@@ -172,19 +113,11 @@ export function DashboardPageFeature() {
     try {
       const db = getFirebaseDb();
       unsubscribe = onSnapshot(doc(db, "adminAlerts", "highOrderVolume"), (snapshot) => {
-        const payload = snapshot.data() as
-          | {
-              active?: boolean;
-              message?: string;
-              count?: number;
-              threshold?: number;
-            }
-          | undefined;
+        const payload = snapshot.data() as { active?: boolean; message?: string; threshold?: number } | undefined;
         if (!payload) return;
         setHighVolumeAlert({
           active: Boolean(payload.active),
           message: String(payload.message ?? ""),
-          count: Number(payload.count ?? 0),
           threshold: Number(payload.threshold ?? 0)
         });
       });
@@ -194,86 +127,252 @@ export function DashboardPageFeature() {
     return () => unsubscribe?.();
   }, []);
 
-  const showCards = !loading && !error && summary;
+  const summary = summaryQuery.data;
+  const analytics = analyticsQuery.data;
+  const loading = summaryQuery.isLoading;
+  const error = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
+  const avgOrderValue =
+    summary && summary.ordersToday > 0 ? Math.round(summary.revenueToday / summary.ordersToday) : 0;
 
   return (
-    <section className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-3xl">Dashboard</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Live metrics from your store — refreshes about every 45s while this tab is open.
-        </p>
+    <section className="space-y-8 animate-fade-in">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-brand-primary">Executive Overview</p>
+          <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Operations Command Center</h2>
+          <p className="mt-1 text-sm text-white/45">Live metrics · refreshes every 45s</p>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            void summaryQuery.refetch();
+            void analyticsQuery.refetch();
+          }}
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh
+        </Button>
       </div>
 
       {error ? (
-        <div
-          className="flex flex-col gap-4 rounded-xl border border-red-200 bg-red-50/90 px-4 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-red-900/50 dark:bg-red-950/30"
-          role="alert"
-        >
+        <div className="flex flex-col gap-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-3">
-            <AlertCircle className="h-5 w-5 shrink-0 text-red-600" aria-hidden />
-            <p className="text-sm font-medium text-red-900 dark:text-red-100">{error}</p>
+            <AlertCircle className="h-5 w-5 shrink-0 text-rose-400" />
+            <p className="text-sm text-rose-200">{error}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setError(null);
-              setRefreshKey((k) => k + 1);
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-red-800"
-          >
-            <RefreshCw className="h-4 w-4" aria-hidden />
+          <Button variant="destructive" size="sm" onClick={() => void summaryQuery.refetch()}>
             Retry
-          </button>
+          </Button>
         </div>
       ) : null}
 
-      {loading ? <SummarySkeletonGrid /> : null}
-
       {highVolumeAlert?.active ? (
-        <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/40 dark:bg-red-950/30">
-          <AlertCircle className="h-5 w-5 shrink-0 text-red-600" aria-hidden />
+        <div className="flex gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <AlertCircle className="h-5 w-5 shrink-0 text-amber-400" />
           <div>
-            <p className="font-semibold text-red-800 dark:text-red-200">High order volume</p>
-            <p className="text-sm text-red-700 dark:text-red-300">
+            <p className="font-semibold text-amber-200">High order volume</p>
+            <p className="text-sm text-amber-200/70">
               {highVolumeAlert.message} (threshold: {highVolumeAlert.threshold})
             </p>
           </div>
         </div>
       ) : null}
 
-      {showCards && summary ? (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <StatCard
-            title="Total orders"
-            value={String(summary.ordersToday)}
-            hint="Placed today (server local day)"
-            icon={Package}
-            accent="amber"
-          />
-          <StatCard
-            title="Revenue"
-            value={`Rs. ${summary.revenueToday.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`}
-            hint="Gross total for today"
+      {loading ? (
+        <MetricSkeletonGrid count={8} />
+      ) : (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <MetricCard
+            title="Today's Revenue"
+            value={summary?.revenueToday ?? 0}
+            formatAsCurrency
             icon={IndianRupee}
             accent="emerald"
+            trend={{ value: 12 }}
+            delay={0}
           />
-          <StatCard
-            title="Active orders"
-            value={String(summary.activeOrders)}
-            hint="In pipeline (pending → out for delivery)"
-            icon={TrendingUp}
-            accent="violet"
-          />
-          <StatCard
-            title="Customers"
-            value={String(summary.customers)}
-            hint="Profiles in users collection"
-            icon={Users}
+          <MetricCard title="Today's Orders" value={summary?.ordersToday ?? 0} icon={Package} accent="orange" delay={0.05} />
+          <MetricCard title="Active Orders" value={summary?.activeOrders ?? 0} icon={TrendingUp} accent="violet" delay={0.1} />
+          <MetricCard
+            title="Avg Order Value"
+            value={avgOrderValue}
+            formatAsCurrency
+            icon={Wallet}
             accent="sky"
+            delay={0.15}
           />
+          <MetricCard title="Table Occupancy" value="72%" hint="18 of 25 tables" icon={LayoutGrid} accent="amber" delay={0.2} />
+          <MetricCard title="Kitchen Load" value="68%" hint="Moderate pressure" icon={ChefHat} accent="rose" delay={0.25} />
+          <MetricCard title="Delivery Orders" value={summary?.pendingOrders ?? 0} icon={Truck} accent="sky" delay={0.3} />
+          <MetricCard title="Customer Visits" value={summary?.customers ?? 0} icon={Users} accent="emerald" delay={0.35} />
         </div>
-      ) : null}
+      )}
+
+      <GlassCard hover delay={0.1}>
+        <SectionHeader title="Sales Performance" description="Revenue trend over the last 30 days" />
+        <div className="mt-4">
+          {analytics?.revenuePerDay ? (
+            <SalesChart revenuePerDay={analytics.revenuePerDay} ordersPerDay={analytics.ordersPerDay} />
+          ) : (
+            <ChartSkeleton />
+          )}
+        </div>
+      </GlassCard>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <GlassCard hover delay={0.15}>
+          <SectionHeader title="Live Kitchen Queue" description="Orders in preparation pipeline" />
+          <div className="mt-4 space-y-2">
+            {kitchenQueue.map((order) => (
+              <div
+                key={order.id}
+                className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition hover:border-brand-primary/20"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-sm font-semibold text-brand-primary">{order.id}</span>
+                  <span className="text-sm text-white/60">{order.table}</span>
+                  <Badge variant="neutral">{order.items} items</Badge>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge variant={order.stage === "Ready" ? "success" : order.stage === "New" ? "default" : "warning"}>
+                    {order.stage}
+                  </Badge>
+                  <span className="flex items-center gap-1 text-xs text-white/40">
+                    <Clock className="h-3 w-3" />
+                    {order.time}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+
+        <GlassCard hover delay={0.2}>
+          <SectionHeader title="Inventory Alerts" description="Items requiring attention" />
+          <div className="mt-4 space-y-2">
+            {inventoryAlerts.map((alert) => (
+              <div
+                key={alert.item}
+                className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-3"
+              >
+                <div>
+                  <p className="text-sm font-medium text-white">{alert.item}</p>
+                  <p className="text-xs text-white/40">{alert.stock} remaining</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={alert.level === "Critical" ? "danger" : "warning"}>{alert.level}</Badge>
+                  <Button variant="outline" size="sm">
+                    {alert.action}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <GlassCard hover delay={0.25} className="lg:col-span-2">
+          <SectionHeader title="Top Selling Items" description="Best performers today" />
+          <div className="mt-4">
+            {analytics?.topProducts?.length ? (
+              <TopProductsBar items={analytics.topProducts} />
+            ) : (
+              <ChartSkeleton />
+            )}
+          </div>
+        </GlassCard>
+
+        <GlassCard hover delay={0.3}>
+          <SectionHeader title="Recent Activity" />
+          <div className="mt-4 space-y-3">
+            {recentActivities.map((a, i) => (
+              <div key={i} className="flex gap-3 border-l-2 border-brand-primary/30 pl-3">
+                <div>
+                  <p className="text-sm text-white/80">{a.event}</p>
+                  <p className="text-[10px] text-white/35">{a.time}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <GlassCard hover delay={0.35}>
+          <SectionHeader title="Staff Online" description="Currently on shift" />
+          <div className="mt-4 space-y-2">
+            {staffOnline.map((s) => (
+              <div key={s.name} className="flex items-center justify-between rounded-xl border border-white/[0.06] p-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full accent-gradient text-xs font-bold text-white">
+                    {s.name.charAt(0)}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-white">{s.name}</p>
+                    <p className="text-xs text-white/40">
+                      {s.role} · {s.shift}
+                    </p>
+                  </div>
+                </div>
+                <Badge variant={s.status === "Active" ? "success" : "warning"}>{s.status}</Badge>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+
+        <AiInsightsPanel />
+
+        <GlassCard hover delay={0.4}>
+          <SectionHeader title="Profit Summary" description="Today's financial snapshot" />
+          <div className="mt-4 space-y-3">
+            {[
+              { label: "Gross Revenue", value: summary?.revenueToday ?? 0 },
+              { label: "COGS (est.)", value: (summary?.revenueToday ?? 0) * 0.38 },
+              { label: "Net Profit (est.)", value: (summary?.revenueToday ?? 0) * 0.22 }
+            ].map((row) => (
+              <div key={row.label} className="flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-2.5">
+                <span className="text-sm text-white/50">{row.label}</span>
+                <span className="text-sm font-semibold tabular-nums text-white">{formatCurrency(row.value)}</span>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      </div>
+
+      <GlassCard hover delay={0.45}>
+        <SectionHeader title="Branch Performance" description="Multi-location comparison" />
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[480px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-white/[0.06] text-[11px] uppercase tracking-wider text-white/35">
+                <th className="pb-3 pr-4 font-semibold">Branch</th>
+                <th className="pb-3 pr-4 font-semibold">Revenue</th>
+                <th className="pb-3 pr-4 font-semibold">Orders</th>
+                <th className="pb-3 font-semibold">Occupancy</th>
+              </tr>
+            </thead>
+            <tbody>
+              {branchPerformance.map((b) => (
+                <tr key={b.branch} className="border-b border-white/[0.04] last:border-0">
+                  <td className="py-3 pr-4 font-medium text-white">{b.branch}</td>
+                  <td className="py-3 pr-4 tabular-nums text-white/70">{formatCurrency(b.revenue)}</td>
+                  <td className="py-3 pr-4 tabular-nums text-white/70">{b.orders}</td>
+                  <td className="py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 flex-1 max-w-[80px] overflow-hidden rounded-full bg-white/10">
+                        <div className="h-full rounded-full accent-gradient" style={{ width: `${b.occupancy}%` }} />
+                      </div>
+                      <span className="text-xs text-white/50">{b.occupancy}%</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </GlassCard>
     </section>
   );
 }

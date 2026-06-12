@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, limit, orderBy, query } from "firebase/firestore";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 import { computeDashboardMetrics } from "../lib/order-dashboard-metrics";
 import { formatFirestoreIndexErrorMessage, isFirestoreCompositeIndexError } from "../lib/firestore-query-errors";
 import { staffDb } from "../lib/firebase";
@@ -89,7 +90,8 @@ export function useOrdersMetrics(enabled = true, listenerKey = 0): OrdersMetrics
       orderBy("createdAt", "desc"),
       limit(MANAGER_ORDERS_LIMIT)
     );
-    const unsub = onSnapshot(
+    const unsub = subscribeFirestoreQuery(
+      "useOrdersMetrics",
       q,
       (snap) => {
         const byStatus: Record<string, number> = {};

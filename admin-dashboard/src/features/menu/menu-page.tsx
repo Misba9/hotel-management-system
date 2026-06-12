@@ -211,14 +211,15 @@ export function MenuPageFeature() {
   const storageTargetProductId = modalMode === "create" ? productDraftId : editingId;
 
   return (
-    <section className="space-y-8">
+    <section className="space-y-8 animate-fade-in">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">Menu management</h2>
-        <p className="mt-1 text-sm text-slate-600">Categories first, then products. Changes apply to Firebase immediately.</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-brand-primary">Menu Catalog</p>
+        <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Menu Management</h2>
+        <p className="mt-1 text-sm text-white/45">Categories, products, images, and availability — synced to Firebase.</p>
       </div>
 
       {catError ? (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-rose-400">
           Categories: {catError}{" "}
           <button type="button" className="font-medium underline" onClick={() => void refetchCategories()}>
             Retry

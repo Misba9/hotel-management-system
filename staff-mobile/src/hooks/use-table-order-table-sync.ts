@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
-import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, query, updateDoc, where } from "firebase/firestore";
 import { staffDb } from "../lib/firebase";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
+import { requireFirestoreId } from "../lib/firestore-path";
 import { logWarn } from "../lib/error-logging";
 import { ORDERS_COLLECTION } from "../services/orders.js";
 import { TABLES_COLLECTION } from "./use-tables";
@@ -41,7 +43,8 @@ export function useTableOrderTableSync(enabled: boolean) {
 
     const q = query(collection(staffDb, ORDERS_COLLECTION), where("orderType", "==", "table"));
 
-    const unsub = onSnapshot(
+    const unsub = subscribeFirestoreQuery(
+      "useTableOrderTableSync",
       q,
       (snap) => {
         const hasOpenOrder = new Map<string, boolean>();
@@ -66,7 +69,9 @@ export function useTableOrderTableSync(enabled: boolean) {
           if (last === occupied) continue;
           lastDesiredOccupiedRef.current.set(tableId, occupied);
           const status = occupied ? "OCCUPIED" : "FREE";
-          void updateDoc(doc(staffDb, TABLES_COLLECTION, tableId), { status }).catch((err) => {
+          const tid = requireFirestoreId(tableId, "tableId");
+          if (!tid) return;
+          void updateDoc(doc(staffDb, TABLES_COLLECTION, tid), { status }).catch((err) => {
             logWarn(
               "useTableOrderTableSync.update",
               err instanceof Error ? err.message : String(err),

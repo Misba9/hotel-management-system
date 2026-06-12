@@ -3,7 +3,6 @@ import {
   collection,
   doc,
   limit,
-  onSnapshot,
   query,
   serverTimestamp,
   updateDoc,
@@ -13,6 +12,7 @@ import {
 import { normalizeStaffUsersRowRole } from "@shared/utils/staff-access-control";
 
 import { staffDb } from "../src/lib/firebase";
+import { subscribeFirestoreQuery } from "../src/lib/firestore-listener";
 import { STAFF_USERS_COLLECTION } from "../src/navigation/staff-role-routes";
 import { DELIVERIES_COLLECTION, fetchDeliveryByOrderId } from "./delivery";
 import type { StaffOrderRow } from "./orders";
@@ -50,7 +50,8 @@ export function subscribeStaffDirectory(
   onError?: (err: Error) => void
 ): Unsubscribe {
   const q = query(collection(staffDb, STAFF_USERS_COLLECTION), limit(400));
-  return onSnapshot(
+  return subscribeFirestoreQuery(
+    "subscribeStaffDirectory",
     q,
     (snap) => {
       const rows = snap.docs
@@ -58,7 +59,7 @@ export function subscribeStaffDirectory(
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
       onNext(rows);
     },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+    onError
   );
 }
 

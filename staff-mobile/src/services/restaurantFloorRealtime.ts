@@ -2,7 +2,6 @@ import type { Firestore } from "firebase/firestore";
 import {
   collection,
   limit as limitFn,
-  onSnapshot,
   orderBy,
   query,
   type Unsubscribe
@@ -13,6 +12,7 @@ import {
   RESTAURANT_ORDERS_COLLECTION,
   RESTAURANT_TABLES_COLLECTION
 } from "@shared/types/restaurant-floor-collections";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 
 export type { RestaurantTableDoc, TableServiceOrderDoc };
 export { RESTAURANT_TABLES_COLLECTION, RESTAURANT_ORDERS_COLLECTION };
@@ -50,14 +50,15 @@ export function subscribeTablesRealtime(
   onError?: (err: Error) => void
 ): Unsubscribe {
   const ref = collection(db, RESTAURANT_TABLES_COLLECTION);
-  return onSnapshot(
+  return subscribeFirestoreQuery(
+    "subscribeTablesRealtime",
     ref,
     (snap) => {
       const list = snap.docs.map((d) => parseTableDoc(d.id, d.data() as Record<string, unknown>));
       list.sort((a, b) => a.tableNumber - b.tableNumber || a.id.localeCompare(b.id));
       onNext(list);
     },
-    (err) => onError?.(err instanceof Error ? err : new Error(String(err)))
+    onError
   );
 }
 
@@ -78,7 +79,8 @@ export function subscribeOrdersRealtime(
 ): Unsubscribe {
   const maxRows = options.maxRows ?? 500;
   const q = query(collection(db, RESTAURANT_ORDERS_COLLECTION), orderBy("createdAt", "desc"), limitFn(maxRows));
-  return onSnapshot(
+  return subscribeFirestoreQuery(
+    "subscribeOrdersRealtime",
     q,
     (snap) => {
       const list: TableServiceOrderDoc[] = [];
@@ -88,6 +90,6 @@ export function subscribeOrdersRealtime(
       }
       onNext(list);
     },
-    (err) => onError?.(err instanceof Error ? err : new Error(String(err)))
+    onError
   );
 }

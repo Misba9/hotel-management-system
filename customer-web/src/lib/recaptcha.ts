@@ -51,7 +51,13 @@ function loadRecaptchaScript(siteKey: string): Promise<void> {
 export async function getRecaptchaToken(action: string): Promise<string> {
   const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
   if (!siteKey) {
-    throw new Error("NEXT_PUBLIC_RECAPTCHA_SITE_KEY is not set.");
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("NEXT_PUBLIC_RECAPTCHA_SITE_KEY is not set.");
+    }
+    console.warn(
+      "[recaptcha] NEXT_PUBLIC_RECAPTCHA_SITE_KEY missing — skipping client token (non-production only).",
+    );
+    return `dev-bypass:${action}`;
   }
   await loadRecaptchaScript(siteKey);
   return await window.grecaptcha!.execute(siteKey, { action });

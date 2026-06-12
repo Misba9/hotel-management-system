@@ -299,13 +299,10 @@ export function StaffPageFeature() {
     setResetting(true);
     setError(null);
     try {
-      const res = await adminApiFetch(
-        `/api/admin/staff-users/${encodeURIComponent(resetRow.uid)}/reset-password`,
-        {
-          method: "POST",
-          body: JSON.stringify({ newPassword })
-        }
-      );
+      const res = await adminApiFetch(`/api/admin/staff-users/${encodeURIComponent(resetRow.uid)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ newPassword })
+      });
       if (!res.ok) {
         const j = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(j?.error ?? "Reset failed.");
@@ -314,7 +311,11 @@ export function StaffPageFeature() {
       setNewPassword("");
       showToast("Password updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Reset failed.");
+      if (err instanceof TypeError) {
+        setError("Could not reach the server. Restart the admin app (`npm run dev:admin`) and try again.");
+      } else {
+        setError(err instanceof Error ? err.message : "Reset failed.");
+      }
     } finally {
       setResetting(false);
     }
@@ -878,34 +879,42 @@ export function StaffPageFeature() {
           <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
             <h2 className="text-lg font-bold text-slate-900">Reset password</h2>
             <p className="mt-1 text-sm text-slate-500">Set a new password for {resetRow.name}</p>
-            <label className="mt-4 block text-sm">
-              <span className="font-medium text-slate-700">New password (min 6)</span>
-              <input
-                type="password"
-                minLength={6}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
-              />
-            </label>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setResetRow(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmReset()}
-                disabled={resetting || newPassword.length < 6}
-                className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
-              >
-                {resetting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Update password
-              </button>
-            </div>
+            <form
+              className="mt-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void confirmReset();
+              }}
+            >
+              <label className="block text-sm">
+                <span className="font-medium text-slate-700">New password (min 6)</span>
+                <input
+                  type="password"
+                  minLength={6}
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
+                />
+              </label>
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setResetRow(null)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetting || newPassword.length < 6}
+                  className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+                >
+                  {resetting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Update password
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}

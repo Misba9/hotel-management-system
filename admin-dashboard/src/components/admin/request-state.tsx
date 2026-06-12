@@ -17,9 +17,9 @@ export function RequestState({
 }: RequestStateProps) {
   return (
     <>
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {loading ? <p className="text-sm text-slate-500">{loadingMessage}</p> : null}
-      {empty && !loading ? <p className="text-sm text-slate-500">{emptyMessage}</p> : null}
+      {error ? <p className="text-sm text-rose-400">{error}</p> : null}
+      {loading ? <p className="text-sm text-white/40">{loadingMessage}</p> : null}
+      {empty && !loading ? <p className="text-sm text-white/40">{emptyMessage}</p> : null}
     </>
   );
 }

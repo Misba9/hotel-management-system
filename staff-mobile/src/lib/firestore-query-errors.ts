@@ -14,7 +14,7 @@ export function formatFirestoreIndexErrorMessage(err: unknown): { title: string;
     return {
       title: "Database index required",
       body:
-        "This screen needs a Firestore composite index (status + createdAt). Ask an admin to deploy indexes from the repo, or open the Firebase console link below.",
+        "This screen needs a Firestore composite index. Deploy indexes from the repo or open the Firebase console link below.",
       indexUrl
     };
   }
@@ -29,6 +29,27 @@ export function extractFirestoreIndexUrl(err: unknown): string | null {
   const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "";
   const m = msg.match(/https:\/\/console\.firebase\.google\.com\/[^\s)]+/);
   return m ? m[0].replace(/["')\]}]+$/, "") : null;
+}
+
+/** SDK internal failures (e.g. INTERNAL ASSERTION FAILED: Unexpected state). */
+export function isFirestoreInternalError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes("INTERNAL ASSERTION FAILED") ||
+    msg.includes("Unexpected state") ||
+    (err instanceof FirebaseError && err.code === "internal")
+  );
+}
+
+export function formatFirestoreListenerError(err: unknown): string {
+  if (isFirestoreInternalError(err)) {
+    return "Firestore connection error. Stop the dev server, run npx expo start -c, and reload.";
+  }
+  if (isFirestoreCompositeIndexError(err)) {
+    const { body, indexUrl } = formatFirestoreIndexErrorMessage(err);
+    return indexUrl ? `${body}\n\n${indexUrl}` : body;
+  }
+  return err instanceof Error ? err.message : "Could not load data from Firestore.";
 }
 
 export function logFirestoreQueryError(scope: string, err: unknown): void {

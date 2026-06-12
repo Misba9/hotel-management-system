@@ -1,6 +1,7 @@
-import { collection, onSnapshot, type Unsubscribe } from "firebase/firestore";
+import { collection, type Unsubscribe } from "firebase/firestore";
 
 import { staffDb } from "../src/lib/firebase";
+import { subscribeFirestoreQuery } from "../src/lib/firestore-listener";
 
 export const PRODUCTS_COLLECTION = "products";
 export const CATEGORIES_COLLECTION = "categories";
@@ -103,7 +104,8 @@ export function subscribeMenuProducts(
     onNext(list);
   };
 
-  const unsubCat = onSnapshot(
+  const unsubCat = subscribeFirestoreQuery(
+    "subscribeMenuProducts:categories",
     collection(staffDb, CATEGORIES_COLLECTION),
     (snap) => {
       const m = new Map<string, string>();
@@ -116,17 +118,18 @@ export function subscribeMenuProducts(
       catReady = true;
       emit();
     },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+    onError
   );
 
-  const unsubProd = onSnapshot(
+  const unsubProd = subscribeFirestoreQuery(
+    "subscribeMenuProducts:products",
     collection(staffDb, PRODUCTS_COLLECTION),
     (snap) => {
       productDocs = snap.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
       prodReady = true;
       emit();
     },
-    (e) => onError?.(e instanceof Error ? e : new Error(String(e)))
+    onError
   );
 
   return () => {

@@ -1,6 +1,8 @@
-import { collection, doc, getDoc, onSnapshot, setDoc, writeBatch, type Unsubscribe } from "firebase/firestore";
+import { collection, doc, getDoc, setDoc, writeBatch, type Unsubscribe } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import { staffDb } from "../lib/firebase";
+import { subscribeFirestoreDocument } from "../lib/firestore-listener";
+import { requireFirestoreId } from "../lib/firestore-path";
 import { TABLES_COLLECTION, parseFloorTableDoc, type FloorTable, type TableStatus } from "../hooks/use-tables";
 
 export { TABLES_COLLECTION };
@@ -18,25 +20,20 @@ export function subscribeTableById(
   onNext: (table: FloorTable | null) => void,
   onError?: (e: Error) => void
 ): Unsubscribe {
-  const id = tableId?.trim();
+  const id = requireFirestoreId(tableId, "tableId");
   if (!id) {
     onNext(null);
     return () => {};
   }
   const ref = doc(staffDb, TABLES_COLLECTION, id);
-  return onSnapshot(
-    ref,
-    (snap) => {
-      if (!snap.exists()) {
-        onNext(null);
-        return;
-      }
-      onNext(parseFloorTableDoc(snap.id, snap.data()));
-    },
-    (err) => {
-      onError?.(err instanceof Error ? err : new Error(String(err)));
+  const unsub = subscribeFirestoreDocument("subscribeTableById", ref, (snap) => {
+    if (!snap.exists()) {
+      onNext(null);
+      return;
     }
-  );
+    onNext(parseFloorTableDoc(snap.id, snap.data()));
+  }, onError);
+  return unsub ?? (() => {});
 }
 
 /**

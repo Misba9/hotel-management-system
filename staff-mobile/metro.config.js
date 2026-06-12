@@ -111,6 +111,12 @@ try {
 } catch {
   /* optional */
 }
+/** Single Firestore SDK for staff-mobile + `@shared` hooks (prevents collection() type errors on web). */
+try {
+  deduped.firebase = resolvePackageDir("firebase");
+} catch {
+  /* optional */
+}
 
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,

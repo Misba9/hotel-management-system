@@ -15,7 +15,6 @@ import {
   doc,
   getDoc,
   limit,
-  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -26,6 +25,7 @@ import {
 } from "firebase/firestore";
 import { staffAuth as auth, staffDb as db } from "../lib/firebase";
 import { isFirestoreCompositeIndexError, logFirestoreQueryError } from "../lib/firestore-query-errors";
+import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 import { assertValidTransition, ORDER_LIFECYCLE } from "../lib/order-status-lifecycle";
 
 export const ORDERS_COLLECTION = "orders";
@@ -483,13 +483,14 @@ export const MANAGER_ORDERS_LIMIT = 250;
 
 export function subscribeToOrders(callback, onError) {
   const q = query(collection(db, ORDERS_COLLECTION), orderBy("createdAt", "desc"), limit(MANAGER_ORDERS_LIMIT));
-  return onSnapshot(
+  return subscribeFirestoreQuery(
+    "subscribeToOrders",
     q,
     (snap) => {
       const list = snap.docs.map((d) => mapOrderDoc(d.id, d.data()));
       callback(list);
     },
-    onError
+    onError ? (e) => onError(e) : undefined
   );
 }
 
@@ -517,29 +518,26 @@ export function subscribeKitchenOrderDocs(callback, onError) {
     callback(next);
   };
 
-  const unsubPrimary = onSnapshot(
+  const unsubPrimary = subscribeFirestoreQuery(
+    "subscribeKitchenOrderDocs:primary",
     getKitchenOrdersQuery(),
     emitPrimary,
     (err) => {
       if (!isFirestoreCompositeIndexError(err)) {
-        logFirestoreQueryError("kitchen-board-primary", err);
         onError?.(err);
         return;
       }
-      logFirestoreQueryError("kitchen-board-fallback", err);
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         // eslint-disable-next-line no-console
         console.warn(
           "[orders] Kitchen board: missing composite index — using recent-orders fallback (deploy backend/firestore.indexes.json)."
         );
       }
-      unsubFallback = onSnapshot(
+      unsubFallback = subscribeFirestoreQuery(
+        "subscribeKitchenOrderDocs:fallback",
         getRecentOrdersFallbackQuery(),
         emitFallback,
-        (err2) => {
-          logFirestoreQueryError("kitchen-board-fallback-snapshot", err2);
-          onError?.(err2);
-        }
+        (err2) => onError?.(err2)
       );
     }
   );
@@ -553,7 +551,8 @@ export function subscribeKitchenOrderDocs(callback, onError) {
 export function subscribeKitchenOrders(callback, onError) {
   let unsubFallback = () => {};
 
-  const unsubPrimary = onSnapshot(
+  const unsubPrimary = subscribeFirestoreQuery(
+    "subscribeKitchenOrders:primary",
     getKitchenOrdersQuery(),
     (snap) => {
       const list = snap.docs.map((d) => mapOrderDoc(d.id, d.data()));
@@ -561,18 +560,17 @@ export function subscribeKitchenOrders(callback, onError) {
     },
     (err) => {
       if (!isFirestoreCompositeIndexError(err)) {
-        logFirestoreQueryError("kitchen-primary", err);
         onError?.(err);
         return;
       }
-      logFirestoreQueryError("kitchen-fallback", err);
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         // eslint-disable-next-line no-console
         console.warn(
           "[orders] Kitchen: missing composite index — using recent-orders fallback (deploy backend/firestore.indexes.json)."
         );
       }
-      unsubFallback = onSnapshot(
+      unsubFallback = subscribeFirestoreQuery(
+        "subscribeKitchenOrders:fallback",
         getRecentOrdersFallbackQuery(),
         (snap) => {
           const list = snap.docs
@@ -580,10 +578,7 @@ export function subscribeKitchenOrders(callback, onError) {
             .filter((o) => KITCHEN_ORDER_STATUS_SET.has(String(o.status ?? "").toLowerCase()));
           callback(list);
         },
-        (err2) => {
-          logFirestoreQueryError("kitchen-fallback-snapshot", err2);
-          onError?.(err2);
-        }
+        (err2) => onError?.(err2)
       );
     }
   );
@@ -602,6 +597,12 @@ export function subscribeKitchenOrders(callback, onError) {
  * @param {(err: import('firebase/firestore').FirestoreError) => void} [onError]
  */
 export function subscribeDeliveryOrders(deliveryUid, callback, onError) {
+  const uid = typeof deliveryUid === "string" ? deliveryUid.trim() : "";
+  if (!uid) {
+    console.error("Missing userId");
+    callback([]);
+    return () => {};
+  }
   let unsubFallback = () => {};
 
   const applyDeliveryFilter = (all) => {
@@ -614,7 +615,8 @@ export function subscribeDeliveryOrders(deliveryUid, callback, onError) {
     callback(filtered);
   };
 
-  const unsubPrimary = onSnapshot(
+  const unsubPrimary = subscribeFirestoreQuery(
+    "subscribeDeliveryOrders:primary",
     getDeliveryOrdersQuery(),
     (snap) => {
       const all = snap.docs.map((d) => mapOrderDoc(d.id, d.data()));
@@ -622,18 +624,17 @@ export function subscribeDeliveryOrders(deliveryUid, callback, onError) {
     },
     (err) => {
       if (!isFirestoreCompositeIndexError(err)) {
-        logFirestoreQueryError("delivery-primary", err);
         onError?.(err);
         return;
       }
-      logFirestoreQueryError("delivery-fallback", err);
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         // eslint-disable-next-line no-console
         console.warn(
           "[orders] Delivery: missing composite index — using recent-orders fallback (deploy backend/firestore.indexes.json)."
         );
       }
-      unsubFallback = onSnapshot(
+      unsubFallback = subscribeFirestoreQuery(
+        "subscribeDeliveryOrders:fallback",
         getRecentOrdersFallbackQuery(),
         (snap) => {
           const all = snap.docs
@@ -645,10 +646,7 @@ export function subscribeDeliveryOrders(deliveryUid, callback, onError) {
             );
           applyDeliveryFilter(all);
         },
-        (err2) => {
-          logFirestoreQueryError("delivery-fallback-snapshot", err2);
-          onError?.(err2);
-        }
+        (err2) => onError?.(err2)
       );
     }
   );

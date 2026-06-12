@@ -118,6 +118,103 @@ export async function confirmRestaurantOrder(params: {
   };
 }
 
+/**
+ * Cashier POS — parcel, dine-in, or online counter order with token allocation.
+ */
+export async function confirmCashierPosOrder(params: {
+  orderType: "dine_in" | "parcel" | "online";
+  lines: CartLine[];
+  tableNumber?: number;
+  tableFirestoreId?: string;
+  tableDisplayName?: string;
+  customerName?: string;
+  phone?: string;
+}): Promise<PlacedRestaurantOrder> {
+  if (params.lines.length === 0) throw new Error("Add at least one item to the cart.");
+  const total = cartTotal(params.lines);
+  const tokenNumber = await allocateNextTokenNumber();
+  const orderRef = doc(collection(staffDb, ORDERS_COLLECTION));
+  const orderId = orderRef.id;
+  const items = linesToFirestoreItems(params.lines);
+  const ts = serverTimestamp();
+  const tableNum = params.tableNumber ?? 0;
+  const tableLabel =
+    params.orderType === "dine_in"
+      ? (params.tableDisplayName ?? "").trim() || (tableNum > 0 ? `Table ${tableNum}` : "Dine-in")
+      : params.orderType === "online"
+        ? "Online"
+        : "Parcel";
+
+  await setDoc(orderRef, {
+    id: orderId,
+    tableNumber: params.orderType === "dine_in" ? tableNum : null,
+    tableId: params.tableFirestoreId ?? null,
+    tableName: tableLabel,
+    orderType: params.orderType,
+    customerName: params.customerName?.trim() || null,
+    phone: params.phone?.trim() || null,
+    items,
+    total,
+    totalAmount: total,
+    status: "preparing",
+    paymentStatus: "pending",
+    tokenNumber,
+    createdAt: ts,
+    updatedAt: ts
+  });
+
+  if (params.orderType === "dine_in" && params.tableFirestoreId) {
+    try {
+      await patchWaiterTable(params.tableFirestoreId, { status: "OCCUPIED" });
+    } catch {
+      // Order still placed if table patch fails.
+    }
+  }
+
+  return {
+    orderId,
+    tokenNumber,
+    tableNumber: tableNum,
+    tableLabel,
+    items: params.lines,
+    total
+  };
+}
+
+export function computePosBillTotals(
+  subtotal: number,
+  taxPercent: number,
+  discountPercent: number,
+  serviceChargePercent: number
+): {
+  subtotal: number;
+  discountPercent: number;
+  discountAmount: number;
+  serviceChargePercent: number;
+  serviceChargeAmount: number;
+  taxPercent: number;
+  taxAmount: number;
+  grandTotal: number;
+} {
+  const s = Math.round(Number(subtotal) * 100) / 100;
+  const discountAmount = Math.round(s * (discountPercent / 100) * 100) / 100;
+  const afterDiscount = Math.max(0, s - discountAmount);
+  const serviceChargeAmount = Math.round(afterDiscount * (serviceChargePercent / 100) * 100) / 100;
+  const taxable = afterDiscount + serviceChargeAmount;
+  const taxAmount = Math.round(taxable * (taxPercent / 100) * 100) / 100;
+  const grandTotal = Math.round((taxable + taxAmount) * 100) / 100;
+  return {
+    subtotal: s,
+    discountPercent,
+    discountAmount,
+    serviceChargePercent,
+    serviceChargeAmount,
+    taxPercent,
+    taxAmount,
+    grandTotal
+  };
+}
+
 export function buildReceiptHtml(p: {
   tokenNumber: number;
   tableNumber: number;
@@ -208,14 +305,18 @@ export async function printRestaurantReceipt(p: {
 /** Default GST-style rate shown on cashier invoice (subtotal is Firestore `total`). */
 export const DEFAULT_INVOICE_TAX_PERCENT = 5;
 
-export type PaymentMethodId = "cash" | "upi" | "qr" | "card";
+export type PaymentMethodId = "cash" | "upi" | "qr" | "card" | "wallet" | "split";
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethodId, string> = {
   cash: "Cash",
   upi: "UPI",
   qr: "QR",
-  card: "Card"
+  card: "Card",
+  wallet: "Wallet",
+  split: "Split"
 };
+
+export const CASHIER_PAYMENT_METHODS: PaymentMethodId[] = ["cash", "upi", "card", "wallet", "split"];
 
 export function calculateBillTotals(subtotal: number, taxPercent: number): {
   subtotal: number;
