@@ -4,6 +4,8 @@
   "private": true,
   "workspaces": [
     "admin-dashboard",
+    "apps/desktop-pos",
+    "apps/kitchen-kds",
     "customer-web",
     "staff-mobile",
     "backend/functions"

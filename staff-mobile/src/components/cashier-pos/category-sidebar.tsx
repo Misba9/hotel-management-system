@@ -1,23 +1,24 @@
 import React, { useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import type { MenuQuickFilter } from "./pos-types";
+import { PosIcon } from "./pos-icons";
 import { PosInput } from "./pos-ui";
 import { posColors, posPanel, posRadius, posSpacing, posType } from "./pos-theme";
 
 const CATEGORY_ICONS: Record<string, string> = {
   all: "◉",
-  drinks: "🥤",
-  beverage: "🥤",
+  drink: "🥤",
   juice: "🍹",
-  fast: "🍔",
-  chinese: "🥡",
+  milk: "🥛",
+  shake: "🥛",
+  food: "🍔",
   dessert: "🍰",
-  special: "⭐",
-  combo: "⊕",
   default: "🍽"
 };
 
 function iconForCategory(name: string) {
   const key = name.toLowerCase();
+  if (key === "all") return CATEGORY_ICONS.all;
   for (const [k, icon] of Object.entries(CATEGORY_ICONS)) {
     if (key.includes(k)) return icon;
   }
@@ -29,25 +30,57 @@ type Props = {
   grouped: Record<string, unknown[]>;
   selectedCategory: string;
   onCategorySelect: (cat: string) => void;
+  onQuickFilter: (f: MenuQuickFilter) => void;
   compact?: boolean;
 };
 
-export function CategorySidebar({ categories, grouped, selectedCategory, onCategorySelect, compact }: Props) {
+export function CategorySidebar({
+  categories,
+  grouped,
+  selectedCategory,
+  onCategorySelect,
+  onQuickFilter,
+  compact
+}: Props) {
   const [catSearch, setCatSearch] = useState("");
 
   const visibleCategories = useMemo(() => {
     const q = catSearch.trim().toLowerCase();
-    return categories.filter((c) => !q || c.toLowerCase().includes(q));
+    return categories.filter((c) => c !== "all" && (!q || c.toLowerCase().includes(q)));
   }, [categories, catSearch]);
+
+  const totalCount = useMemo(() => Object.values(grouped).flat().length, [grouped]);
 
   return (
     <View style={[posPanel(), styles.sidebar, compact && styles.compact]}>
       <View style={styles.header}>
         <Text style={posType.label}>Categories</Text>
         {!compact ? (
-          <PosInput value={catSearch} onChangeText={setCatSearch} placeholder="Search…" style={styles.search} />
+          <View style={styles.searchWrap}>
+            <PosIcon name="search" size={14} color={posColors.textDim} />
+            <PosInput
+              value={catSearch}
+              onChangeText={setCatSearch}
+              placeholder="Search category…"
+              style={styles.search}
+            />
+          </View>
         ) : null}
       </View>
+
+      <Pressable
+        onPress={() => {
+          onCategorySelect("all");
+          onQuickFilter("all");
+        }}
+        style={[styles.catRow, selectedCategory === "all" && styles.catRowOn]}
+      >
+        <Text style={styles.catIcon}>◉</Text>
+        <View style={styles.catTextWrap}>
+          <Text style={[styles.catLabel, selectedCategory === "all" && styles.catLabelOn]}>All Items</Text>
+          {!compact ? <Text style={styles.catCount}>({totalCount})</Text> : null}
+        </View>
+      </Pressable>
 
       <FlatList
         data={visibleCategories}
@@ -56,23 +89,27 @@ export function CategorySidebar({ categories, grouped, selectedCategory, onCateg
         contentContainerStyle={styles.list}
         renderItem={({ item: cat }) => {
           const active = selectedCategory === cat;
-          const count = cat === "all" ? Object.values(grouped).flat().length : (grouped[cat]?.length ?? 0);
-          const label = cat === "all" ? "All Items" : cat;
+          const count = grouped[cat]?.length ?? 0;
           return (
             <Pressable
-              onPress={() => onCategorySelect(cat)}
-              style={({ pressed }) => [styles.catRow, active && styles.catRowOn, pressed && styles.catRowPressed]}
+              onPress={() => {
+                onQuickFilter("all");
+                onCategorySelect(cat);
+              }}
+              style={({ pressed }) => [
+                styles.catRow,
+                active && styles.catRowOn,
+                pressed && styles.catRowPressed
+              ]}
             >
-              <Text style={styles.catIcon}>{iconForCategory(label)}</Text>
+              <Text style={styles.catIcon}>{iconForCategory(cat)}</Text>
               <View style={styles.catTextWrap}>
                 <Text style={[styles.catLabel, active && styles.catLabelOn]} numberOfLines={1}>
-                  {label}
+                  {cat}
                 </Text>
-                {!compact ? <Text style={styles.catCount}>{count} items</Text> : null}
+                {!compact ? <Text style={styles.catCount}>({count})</Text> : null}
               </View>
-              <View style={[styles.countBadge, active && styles.countBadgeOn]}>
-                <Text style={[styles.countText, active && styles.countTextOn]}>{count}</Text>
-              </View>
+              {active ? <View style={styles.activeBar} /> : null}
             </Pressable>
           );
         }}
@@ -83,14 +120,15 @@ export function CategorySidebar({ categories, grouped, selectedCategory, onCateg
 
 const styles = StyleSheet.create({
   sidebar: {
-    width: 200,
-    minWidth: 180,
-    maxWidth: 220,
+    width: 210,
+    minWidth: 190,
+    maxWidth: 230,
     borderRightWidth: 1
   },
   compact: { width: "100%", maxWidth: "100%", minWidth: 0, borderRightWidth: 0, maxHeight: 120 },
   header: { padding: posSpacing.md, borderBottomWidth: 1, borderBottomColor: posColors.border, gap: posSpacing.sm },
-  search: { paddingVertical: 8 },
+  searchWrap: { flexDirection: "row", alignItems: "center", gap: posSpacing.xs },
+  search: { flex: 1, paddingVertical: 8, fontSize: 12 },
   list: { padding: posSpacing.sm, paddingBottom: posSpacing.xxl, gap: 2 },
   catRow: {
     flexDirection: "row",
@@ -100,24 +138,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: posRadius.md,
     borderWidth: 1,
-    borderColor: "transparent"
+    borderColor: "transparent",
+    position: "relative"
   },
-  catRowOn: { backgroundColor: posColors.primaryMuted, borderColor: "rgba(255,122,0,0.2)" },
+  catRowOn: {
+    backgroundColor: posColors.primaryMuted,
+    borderColor: "rgba(255,122,0,0.25)"
+  },
   catRowPressed: { opacity: 0.85 },
   catIcon: { fontSize: 16, width: 22, textAlign: "center" },
-  catTextWrap: { flex: 1, minWidth: 0 },
+  catTextWrap: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "baseline", gap: 4 },
   catLabel: { fontSize: 13, fontWeight: "700", color: posColors.textSecondary },
   catLabelOn: { color: posColors.primary },
-  catCount: { fontSize: 10, color: posColors.textDim, marginTop: 1 },
-  countBadge: {
-    minWidth: 24,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: posRadius.pill,
-    backgroundColor: posColors.bg,
-    alignItems: "center"
-  },
-  countBadgeOn: { backgroundColor: posColors.primary },
-  countText: { fontSize: 10, fontWeight: "800", color: posColors.textDim },
-  countTextOn: { color: "#fff" }
+  catCount: { fontSize: 11, color: posColors.textDim, fontWeight: "600" },
+  activeBar: {
+    position: "absolute",
+    left: 0,
+    top: 6,
+    bottom: 6,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: posColors.primary
+  }
 });

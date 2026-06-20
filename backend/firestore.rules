@@ -966,9 +966,14 @@ service cloud.firestore {
     }
 
     match /settings/{id} {
-      allow read: if hasAnyRole(["manager", "admin"]);
+      allow read: if id == "pos" && staffUserActive() || hasAnyRole(["manager", "admin"]);
       allow write: if hasRole("admin") &&
         hasOnlyKeys(["id", "storeName", "currency", "timezone", "businessHours", "deliveryRadiusKm", "taxPercent", "discountPercent", "updatedAt", "createdAt"]);
+    }
+
+    match /settings/pos {
+      allow read: if staffUserActive();
+      allow write: if false;
     }
 
     // Mirrors / sync collections (written by Admin SDK or Cloud Functions only)

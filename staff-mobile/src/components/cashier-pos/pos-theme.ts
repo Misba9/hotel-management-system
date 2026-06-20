@@ -23,7 +23,16 @@ export const posColors = {
   parcel: "#FF7A00",
   online: "#38BDF8",
   glow: "rgba(255,122,0,0.35)",
-  glass: "rgba(18,18,26,0.85)"
+  glass: "rgba(18,18,26,0.85)",
+  info: "#38BDF8",
+  infoMuted: "rgba(56,189,248,0.14)",
+  purple: "#8B5CF6",
+  purpleMuted: "rgba(139,92,246,0.14)",
+  statusReady: "#22C55E",
+  statusAccepted: "#38BDF8",
+  statusPreparing: "#FF7A00",
+  statusCancelled: "#EF4444",
+  statusCompleted: "#71717A"
 };
 
 export const posSpacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, huge: 48 } as const;
@@ -91,5 +100,17 @@ export function posCard(elevated = false): ViewStyle {
     borderWidth: 1,
     borderColor: posColors.border,
     ...posShadow(elevated)
+  };
+}
+
+export function posGlass(): ViewStyle {
+  return {
+    backgroundColor: posColors.glass,
+    borderWidth: 1,
+    borderColor: posColors.border,
+    ...Platform.select({
+      web: { backdropFilter: "blur(12px)" } as ViewStyle,
+      default: {}
+    })
   };
 }

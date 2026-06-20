@@ -11,6 +11,7 @@ import {
   Plug,
   Settings,
   ShoppingCart,
+  Truck,
   Users,
   UserCog,
   Warehouse,
@@ -53,6 +54,13 @@ export const adminNav: NavItem[] = [
     label: "Orders",
     icon: Package,
     match: (p) => p.startsWith("/admin/orders"),
+    group: "main"
+  },
+  {
+    href: "/admin/delivery",
+    label: "Delivery Management",
+    icon: Truck,
+    match: (p) => p.startsWith("/admin/delivery"),
     group: "main"
   },
   {

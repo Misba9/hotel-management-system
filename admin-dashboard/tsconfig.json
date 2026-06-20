@@ -34,11 +34,15 @@
       ],
       "@shared/hooks/*": [
         "../shared/hooks/*"
+      ],
+      "@shared/types/*": [
+        "../shared/types/*"
       ]
     },
     "allowJs": true,
     "noEmit": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "strictNullChecks": true
   },
   "include": [
     "next-env.d.ts",

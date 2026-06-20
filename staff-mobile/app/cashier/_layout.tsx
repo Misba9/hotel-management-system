@@ -1,6 +1,6 @@
 import { Tabs, useRouter } from "expo-router";
 import React, { useCallback } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { signOut } from "firebase/auth";
 
 import { staffAuth as auth } from "../../src/lib/firebase";
@@ -67,7 +67,12 @@ export default function CashierLayout() {
         headerShadowVisible: false,
         headerTitle: "Cashier POS",
         headerTintColor: "#f1f5f9",
-        headerRight: () => <CashierHeaderActions />
+        headerRight: () => <CashierHeaderActions />,
+        tabBarStyle: Platform.select({
+          web: { display: "none" },
+          default: { height: 0, minHeight: 0, overflow: "hidden" as const }
+        }),
+        tabBarShowLabel: false
       }}
     >
       <Tabs.Screen name="billing" options={{ title: "POS", headerShown: false }} />

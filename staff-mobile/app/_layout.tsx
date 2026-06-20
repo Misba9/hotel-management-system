@@ -1,7 +1,7 @@
 import "react-native-gesture-handler";
 import NetInfo from "@react-native-community/netinfo";
 import { Stack, usePathname, useRootNavigationState, useRouter } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
 import { installGlobalErrorHandlers } from "../src/bootstrap-global-errors";
 import { ensureStaffFirestoreOnline } from "../src/services/firebase";
@@ -24,8 +24,6 @@ export default function RootLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const nav = useRootNavigationState();
-  const didInitAuthRef = useRef(false);
-  const lastRedirectRef = useRef<string | null>(null);
 
   useEffect(() => {
     installGlobalErrorHandlers();
@@ -41,8 +39,6 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (didInitAuthRef.current) return;
-    didInitAuthRef.current = true;
     return init();
   }, [init]);
 
@@ -51,43 +47,34 @@ export default function RootLayout() {
     if (!nav?.key) return;
     if (!authReady || loading) return;
     const root = pathname.split("/")[1] || undefined;
-    const redirectTo = (target: string) => {
-      if (pathname === target) return;
-      if (lastRedirectRef.current === target) return;
-      lastRedirectRef.current = target;
-      router.replace(target as never);
-    };
 
     if (!user) {
-      redirectTo("/login");
+      if (pathname !== "/login") router.replace("/login");
       return;
     }
 
     if (!isAuthenticated || !role) {
-      redirectTo("/login");
+      if (pathname !== "/login") router.replace("/login");
       return;
     }
 
     const roleHome = String(roleHomeHref(role));
     if (root === "login" || root === "index" || root === undefined || root === "") {
-      redirectTo(roleHome);
+      if (pathname !== roleHome) router.replace(roleHome as never);
       return;
     }
 
     const prefix = roleRoutePrefix(role);
     if (root !== prefix && !isGlobalStaffRouteRoot(root)) {
-      redirectTo(roleHome);
-      return;
+      if (pathname !== roleHome) router.replace(roleHome as never);
     }
-
-    lastRedirectRef.current = null;
   }, [nav?.key, authReady, loading, user, isAuthenticated, role, pathname, router]);
 
   return (
     <SafeAreaProvider>
-      {(!authReady || loading) && (
+      {(!authReady || loading) && pathname !== "/login" && (
         <View style={styles.boot} pointerEvents="auto">
-          <ActivityIndicator size="large" color="#0f172a" />
+          <ActivityIndicator size="large" color="#FF7A00" />
         </View>
       )}
       <Stack screenOptions={{ headerShown: false }} />
@@ -102,7 +89,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#0A0A0F",
     zIndex: 50
   }
 });

@@ -14,13 +14,14 @@ type Props = {
 const SHORTCUTS = [
   { key: "F1", label: "Search" },
   { key: "F2", label: "New" },
-  { key: "F3", label: "Pay" },
+  { key: "F3", label: "Payment" },
   { key: "F4", label: "Print" },
   { key: "F5", label: "Hold" },
   { key: "F6", label: "Discount" },
   { key: "F7", label: "Customer" },
   { key: "F8", label: "Kitchen" },
-  { key: "ESC", label: "Cancel" }
+  { key: "ESC", label: "Cancel" },
+  { key: "CTRL+B", label: "Barcode" }
 ];
 
 export function PosBottomBar({ isMobile, onNewOrder, onPrint, onPay, onMore }: Props) {
@@ -75,24 +76,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     flexWrap: "wrap",
-    gap: posSpacing.lg,
-    paddingVertical: posSpacing.sm,
+    gap: posSpacing.md,
+    paddingVertical: posSpacing.xs,
     paddingHorizontal: posSpacing.lg,
     backgroundColor: posColors.secondary,
     borderTopWidth: 1,
-    borderTopColor: posColors.border
+    borderTopColor: posColors.border,
+    minHeight: 36
   },
-  shortcut: { flexDirection: "row", alignItems: "center", gap: 8 },
+  shortcut: { flexDirection: "row", alignItems: "center", gap: 6 },
   keyCap: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 6,
     backgroundColor: posColors.card,
     borderWidth: 1,
     borderColor: posColors.border
   },
-  keyText: { fontSize: 11, fontWeight: "800", color: posColors.textSecondary, fontFamily: Platform.OS === "web" ? "monospace" : undefined },
-  shortcutLabel: { fontSize: 12, color: posColors.textDim, fontWeight: "600" },
+  keyText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: posColors.textSecondary,
+    fontFamily: Platform.OS === "web" ? "monospace" : undefined
+  },
+  shortcutLabel: { fontSize: 11, color: posColors.textDim, fontWeight: "600" },
   mobileBar: {
     flexDirection: "row",
     alignItems: "center",

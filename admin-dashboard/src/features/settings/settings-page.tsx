@@ -14,6 +14,20 @@ type SettingsPayload = {
   deliveryRadiusKm: number;
   taxPercent: number;
   discountPercent: number;
+  paymentProvider: "razorpay" | "manual";
+  upiVpa: string;
+  upiBankName: string;
+  enabledPaymentMethods: Array<"cash" | "upi" | "card" | "wallet" | "split">;
+  counterPrinterId: string;
+  kitchenPrinterId: string;
+};
+
+type PrinterRow = {
+  id: string;
+  name: string;
+  type: string;
+  role?: string;
+  ipAddress?: string;
 };
 
 export function SettingsPageFeature() {
@@ -21,8 +35,15 @@ export function SettingsPageFeature() {
     businessHours: "09:00 - 23:00",
     deliveryRadiusKm: 20,
     taxPercent: 5,
-    discountPercent: 10
+    discountPercent: 10,
+    paymentProvider: "manual",
+    upiVpa: "",
+    upiBankName: "",
+    enabledPaymentMethods: ["cash", "upi", "card", "split"],
+    counterPrinterId: "counter_bluetooth",
+    kitchenPrinterId: "kitchen_receipt_default"
   });
+  const [printers, setPrinters] = useState<PrinterRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -35,7 +56,12 @@ export function SettingsPageFeature() {
         const res = await adminApiFetch("/api/settings");
         if (res.ok) {
           const data = (await res.json()) as { settings?: SettingsPayload };
-          if (data.settings) setSettings(data.settings);
+          if (data.settings) setSettings((p) => ({ ...p, ...data.settings }));
+        }
+        const pr = await adminApiFetch("/api/printers");
+        if (pr.ok) {
+          const pdata = (await pr.json()) as { printers?: PrinterRow[] };
+          if (pdata.printers) setPrinters(pdata.printers);
         }
       } catch {
         setError("Failed to load settings.");
@@ -142,8 +168,119 @@ export function SettingsPageFeature() {
           </GlassCard>
         </TabsContent>
 
+        <TabsContent value="payments">
+          <GlassCard hover>
+            <h3 className="mb-4 font-semibold text-white">Payment gateway</h3>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-white/50">Provider</span>
+                <select
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                  value={settings.paymentProvider}
+                  onChange={(e) =>
+                    setSettings((p) => ({ ...p, paymentProvider: e.target.value as SettingsPayload["paymentProvider"] }))
+                  }
+                >
+                  <option value="manual">Manual UPI / terminal</option>
+                  <option value="razorpay">Razorpay (UPI & card online)</option>
+                </select>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-white/50">Merchant UPI ID</span>
+                <Input value={settings.upiVpa} onChange={(e) => setSettings((p) => ({ ...p, upiVpa: e.target.value }))} placeholder="store@upi" />
+              </label>
+              <label className="space-y-1.5 md:col-span-2">
+                <span className="text-xs font-medium text-white/50">Bank / display name</span>
+                <Input value={settings.upiBankName} onChange={(e) => setSettings((p) => ({ ...p, upiBankName: e.target.value }))} />
+              </label>
+              <div className="md:col-span-2 space-y-2">
+                <span className="text-xs font-medium text-white/50">Enabled cashier methods</span>
+                <div className="flex flex-wrap gap-2">
+                  {(["cash", "upi", "card", "wallet", "split"] as const).map((m) => {
+                    const on = settings.enabledPaymentMethods.includes(m);
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${on ? "bg-brand-primary text-white" : "bg-white/10 text-white/60"}`}
+                        onClick={() =>
+                          setSettings((p) => ({
+                            ...p,
+                            enabledPaymentMethods: on
+                              ? p.enabledPaymentMethods.filter((x) => x !== m)
+                              : [...p.enabledPaymentMethods, m]
+                          }))
+                        }
+                      >
+                        {m}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <p className="mt-4 text-xs text-white/40">
+              Razorpay keys are set in server env (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET). Manual UPI shows on cashier when provider is Manual.
+            </p>
+            <Button className="mt-6" onClick={() => void save()} disabled={saving || loading}>
+              {saving ? "Saving…" : "Save payment settings"}
+            </Button>
+          </GlassCard>
+        </TabsContent>
+
+        <TabsContent value="printers">
+          <GlassCard hover>
+            <h3 className="mb-4 font-semibold text-white">Printer routing</h3>
+            <p className="mb-4 text-sm text-white/50">Assign counter receipt and kitchen KOT printers. Cashier prints to both after payment.</p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-white/50">Counter receipt printer</span>
+                <select
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                  value={settings.counterPrinterId}
+                  onChange={(e) => setSettings((p) => ({ ...p, counterPrinterId: e.target.value }))}
+                >
+                  {printers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.role ? `(${p.role})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-white/50">Kitchen KOT printer</span>
+                <select
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                  value={settings.kitchenPrinterId}
+                  onChange={(e) => setSettings((p) => ({ ...p, kitchenPrinterId: e.target.value }))}
+                >
+                  {printers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.role ? `(${p.role})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {printers.length > 0 ? (
+              <ul className="mt-6 space-y-2 text-sm text-white/60">
+                {printers.map((p) => (
+                  <li key={p.id}>
+                    {p.name} · {p.type} {p.ipAddress ? `· ${p.ipAddress}` : ""} {p.role ? `· ${p.role}` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 text-sm text-white/40">No printers in Firestore yet. Seed via backend or add printers collection docs.</p>
+            )}
+            <Button className="mt-6" onClick={() => void save()} disabled={saving || loading}>
+              {saving ? "Saving…" : "Save printer routing"}
+            </Button>
+          </GlassCard>
+        </TabsContent>
+
         {settingSections
-          .filter((s) => s.id !== "restaurant")
+          .filter((s) => !["restaurant", "payments", "printers"].includes(s.id))
           .map(({ id, label, icon: Icon }) => (
             <TabsContent key={id} value={id}>
               <GlassCard>

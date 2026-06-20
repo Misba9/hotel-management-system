@@ -5,6 +5,7 @@
 declare const process: { env: Record<string, string | undefined> };
 
 import { type FirebaseApp, getApp, getApps, initializeApp } from "firebase/app";
+import { Platform } from "react-native";
 import {
   enableNetwork,
   getFirestore,
@@ -82,10 +83,17 @@ const FIRESTORE_SETTINGS: FirestoreSettings & { useFetchStreams?: boolean } = {
 let firestoreSingleton: Firestore | null = null;
 
 /**
- * One Firestore instance per app. Re-calling `initializeFirestore` after HMR throws; `getFirestore(app)` returns the same instance.
+ * One Firestore instance per app.
+ * Web: default transport (long-polling on web causes INTERNAL ASSERTION failures).
+ * Native: optional long-polling for React Native networking quirks.
  */
 function getStaffFirestoreInstance(): Firestore {
   if (firestoreSingleton) return firestoreSingleton;
+
+  if (Platform.OS === "web") {
+    firestoreSingleton = getFirestore(firebaseApp);
+    return firestoreSingleton;
+  }
 
   const useLongPolling = env("EXPO_PUBLIC_FIRESTORE_LONG_POLLING") !== "false";
   if (!useLongPolling) {

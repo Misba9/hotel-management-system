@@ -2,15 +2,18 @@ import React, { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { staffAuth } from "../../lib/firebase";
 import { PosIcon } from "./pos-icons";
-import { posColors, posRadius, posShadow, posSpacing, posType } from "./pos-theme";
+import { posColors, posGlass, posRadius, posShadow, posSpacing, posType } from "./pos-theme";
 
 type Props = {
   restaurantName?: string;
   branchName?: string;
+  cashierName?: string;
+  counterNumber?: number;
+  shiftActive?: boolean;
   unreadCount: number;
+  onMenuToggle?: () => void;
   onHistory: () => void;
   onNotifications: () => void;
-  onMessages: () => void;
   onDelivery: () => void;
   onSettings: () => void;
   onProfile: () => void;
@@ -19,12 +22,15 @@ type Props = {
 };
 
 export function PosNavbar({
-  restaurantName = "Nausheen Fruits",
+  restaurantName = "Nausheen Fruits Juice Center",
   branchName = "Main Branch",
+  cashierName,
+  counterNumber = 1,
+  shiftActive = true,
   unreadCount,
+  onMenuToggle,
   onHistory,
   onNotifications,
-  onMessages,
   onDelivery,
   onSettings,
   onProfile,
@@ -33,56 +39,67 @@ export function PosNavbar({
 }: Props) {
   const [now, setNow] = useState(new Date());
   const user = staffAuth?.currentUser;
+  const displayCashier = cashierName ?? user?.displayName ?? user?.email?.split("@")[0] ?? "Cashier";
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30_000);
+    const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
 
   const clock = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const date = now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 
   return (
     <View style={styles.bar}>
       <View style={styles.left}>
+        {onMenuToggle ? (
+          <Pressable onPress={onMenuToggle} style={styles.menuBtn} accessibilityLabel="Toggle menu">
+            <Text style={styles.menuIcon}>☰</Text>
+          </Pressable>
+        ) : null}
         <View style={styles.logo}>
-          <Text style={styles.logoText}>N</Text>
+          <Text style={styles.logoText}>POS</Text>
         </View>
-        <View>
-          <Text style={posType.h3}>Cashier POS</Text>
-          <Text style={posType.small}>{branchName} · Live sync</Text>
+        <View style={styles.brandBlock}>
+          <Text style={styles.restaurant} numberOfLines={1}>
+            {restaurantName}
+          </Text>
+          <Text style={styles.branch}>{branchName}</Text>
         </View>
       </View>
 
       <View style={styles.center}>
-        <Text style={styles.restaurant}>{restaurantName}</Text>
-        <View style={styles.shiftPill}>
-          <View style={styles.shiftDot} />
-          <Text style={styles.shiftText}>Shift Active</Text>
+        <View style={[styles.shiftPill, !shiftActive && styles.shiftOff]}>
+          <View style={[styles.shiftDot, !shiftActive && styles.shiftDotOff]} />
+          <Text style={[styles.shiftText, !shiftActive && styles.shiftTextOff]}>
+            {shiftActive ? "Shift Active" : "Shift Ended"}
+          </Text>
+        </View>
+        <View style={styles.cashierRow}>
+          <PosIcon name="user" size={12} color={posColors.textSecondary} />
+          <Text style={styles.cashierName}>{displayCashier}</Text>
+          <Text style={styles.counter}>Counter {counterNumber}</Text>
         </View>
       </View>
 
       <View style={styles.right}>
         <View style={styles.clockBox}>
-          <PosIcon name="clock" size={14} color={posColors.textSecondary} />
-          <View>
-            <Text style={styles.clockTime}>{clock}</Text>
-            <Text style={styles.clockDate}>{date}</Text>
-          </View>
+          <PosIcon name="clock" size={14} color={posColors.primary} />
+          <Text style={styles.clockTime}>{clock}</Text>
         </View>
 
         <NavIconBtn icon="bell" badge={unreadCount} onPress={onNotifications} label="Notifications" />
         <NavIconBtn icon="history" onPress={onHistory} label="History" />
-        <NavIconBtn icon="user" onPress={onProfile} label="Profile" />
+        <NavIconBtn icon="help" onPress={onHelp} label="Shortcuts" />
+        <Pressable onPress={onSettings} style={styles.settingsBtn} accessibilityLabel="Settings">
+          <Text style={styles.settingsIcon}>⚙</Text>
+        </Pressable>
+        <Pressable onPress={onProfile} style={styles.iconBtn} accessibilityLabel="Profile">
+          <PosIcon name="user" size={18} color={posColors.textSecondary} />
+        </Pressable>
         <Pressable onPress={onLogout} style={styles.logoutBtn} accessibilityLabel="Logout">
-          <PosIcon name="logout" size={16} color={posColors.danger} />
+          <PosIcon name="logout" size={14} color={posColors.danger} />
           <Text style={styles.logoutText}>Logout</Text>
         </Pressable>
-        {user?.email ? (
-          <Text style={styles.email} numberOfLines={1}>
-            {user.email}
-          </Text>
-        ) : null}
       </View>
     </View>
   );
@@ -103,7 +120,7 @@ function NavIconBtn({
     <Pressable
       onPress={onPress}
       accessibilityLabel={label}
-      style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7, backgroundColor: posColors.card }]}
+      style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
     >
       <PosIcon name={icon} size={18} color={posColors.textSecondary} />
       {badge && badge > 0 ? (
@@ -121,16 +138,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: posSpacing.lg,
-    paddingVertical: posSpacing.md,
-    backgroundColor: posColors.secondary,
+    paddingVertical: posSpacing.sm,
+    ...posGlass(),
     borderBottomWidth: 1,
     borderBottomColor: posColors.border,
     ...posShadow(false),
     zIndex: 100,
     flexWrap: "wrap",
-    gap: posSpacing.md
+    gap: posSpacing.sm,
+    minHeight: 56
   },
-  left: { flexDirection: "row", alignItems: "center", gap: posSpacing.md, minWidth: 160 },
+  left: { flexDirection: "row", alignItems: "center", gap: posSpacing.sm, flex: 1, minWidth: 200 },
+  menuBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: posRadius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: posColors.card,
+    borderWidth: 1,
+    borderColor: posColors.border
+  },
+  menuIcon: { fontSize: 16, color: posColors.text },
   logo: {
     width: 40,
     height: 40,
@@ -140,14 +169,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     ...posShadow(false)
   },
-  logoText: { color: "#fff", fontSize: 20, fontWeight: "900" },
-  center: { alignItems: "center", flex: 1, minWidth: 140 },
-  restaurant: { ...posType.h3, fontSize: 18 },
+  logoText: { color: "#fff", fontSize: 11, fontWeight: "900", letterSpacing: 0.5 },
+  brandBlock: { flex: 1, minWidth: 0 },
+  restaurant: { ...posType.h3, fontSize: 15 },
+  branch: { ...posType.small, fontSize: 11, marginTop: 1 },
+  center: { alignItems: "center", gap: 4, minWidth: 140 },
   shiftPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 4,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: posRadius.pill,
@@ -155,24 +185,48 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(34,197,94,0.3)"
   },
+  shiftOff: { backgroundColor: posColors.dangerMuted, borderColor: "rgba(239,68,68,0.3)" },
   shiftDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: posColors.success },
-  shiftText: { fontSize: 11, fontWeight: "700", color: posColors.success },
-  right: { flexDirection: "row", alignItems: "center", gap: posSpacing.sm, flexWrap: "wrap", justifyContent: "flex-end" },
-  clockBox: { flexDirection: "row", alignItems: "center", gap: 8, paddingRight: posSpacing.sm },
-  clockTime: { fontSize: 14, fontWeight: "800", color: posColors.text },
-  clockDate: { fontSize: 10, color: posColors.textDim },
+  shiftDotOff: { backgroundColor: posColors.danger },
+  shiftText: { fontSize: 10, fontWeight: "700", color: posColors.success },
+  shiftTextOff: { color: posColors.danger },
+  cashierRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  cashierName: { fontSize: 11, fontWeight: "700", color: posColors.textSecondary },
+  counter: { fontSize: 10, fontWeight: "600", color: posColors.textDim },
+  right: { flexDirection: "row", alignItems: "center", gap: posSpacing.xs, flexWrap: "wrap", justifyContent: "flex-end" },
+  clockBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: posRadius.sm,
+    backgroundColor: posColors.card,
+    borderWidth: 1,
+    borderColor: posColors.border
+  },
+  clockTime: { fontSize: 13, fontWeight: "800", color: posColors.text, fontVariant: ["tabular-nums"] },
   iconBtn: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: posRadius.md,
     alignItems: "center",
     justifyContent: "center",
     position: "relative"
   },
+  iconBtnPressed: { opacity: 0.7, backgroundColor: posColors.card },
+  settingsBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: posRadius.md,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  settingsIcon: { fontSize: 16 },
   badge: {
     position: "absolute",
-    top: 4,
-    right: 4,
+    top: 2,
+    right: 2,
     minWidth: 16,
     height: 16,
     borderRadius: 8,
@@ -185,16 +239,13 @@ const styles = StyleSheet.create({
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: posRadius.md,
     borderWidth: 1,
     borderColor: posColors.dangerMuted,
     backgroundColor: posColors.dangerMuted
   },
-  logoutText: { fontSize: 12, fontWeight: "800", color: posColors.danger },
-  email: { fontSize: 10, color: posColors.textDim, maxWidth: 120 },
-  msgBtn: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: posColors.border },
-  msgText: { fontSize: 11, fontWeight: "800", color: posColors.textSecondary }
+  logoutText: { fontSize: 11, fontWeight: "800", color: posColors.danger }
 });

@@ -14,6 +14,8 @@ export type CartLine = {
   name: string;
   unitPrice: number;
   qty: number;
+  note?: string;
+  modifications?: string[];
 };
 
 function linesToFirestoreItems(lines: CartLine[]) {
@@ -23,7 +25,9 @@ function linesToFirestoreItems(lines: CartLine[]) {
     qty: line.qty,
     price: line.unitPrice,
     unitPrice: line.unitPrice,
-    id: line.productId || `line_${idx}`
+    id: line.productId || `line_${idx}`,
+    ...(line.note ? { note: line.note } : {}),
+    ...(line.modifications?.length ? { modifications: line.modifications } : {})
   }));
 }
 
@@ -129,6 +133,13 @@ export async function confirmCashierPosOrder(params: {
   tableDisplayName?: string;
   customerName?: string;
   phone?: string;
+  /** Channel source for online orders (swiggy, zomato, website, qr, phone). */
+  source?: string;
+  paymentMethod?: string;
+  /** When set, order is created as paid (counter checkout). */
+  markPaid?: boolean;
+  couponCode?: string;
+  discountAmount?: number;
 }): Promise<PlacedRestaurantOrder> {
   if (params.lines.length === 0) throw new Error("Add at least one item to the cart.");
   const total = cartTotal(params.lines);
@@ -156,11 +167,15 @@ export async function confirmCashierPosOrder(params: {
     items,
     total,
     totalAmount: total,
-    status: "preparing",
-    paymentStatus: "pending",
+    status: params.markPaid ? "completed" : "preparing",
+    paymentStatus: params.markPaid ? "paid" : "pending",
     tokenNumber,
     createdAt: ts,
-    updatedAt: ts
+    updatedAt: ts,
+    ...(params.source ? { source: params.source } : {}),
+    ...(params.markPaid && params.paymentMethod ? { paymentMethod: params.paymentMethod, paidAt: ts } : {}),
+    ...(params.couponCode ? { couponCode: params.couponCode } : {}),
+    ...(params.discountAmount && params.discountAmount > 0 ? { discountAmount: params.discountAmount } : {})
   });
 
   if (params.orderType === "dine_in" && params.tableFirestoreId) {
@@ -185,7 +200,8 @@ export function computePosBillTotals(
   subtotal: number,
   taxPercent: number,
   discountPercent: number,
-  serviceChargePercent: number
+  serviceChargePercent: number,
+  discountFlatAmount = 0
 ): {
   subtotal: number;
   discountPercent: number;
@@ -197,7 +213,9 @@ export function computePosBillTotals(
   grandTotal: number;
 } {
   const s = Math.round(Number(subtotal) * 100) / 100;
-  const discountAmount = Math.round(s * (discountPercent / 100) * 100) / 100;
+  const fromPercent = Math.round(s * (discountPercent / 100) * 100) / 100;
+  const flat = Math.round(Math.max(0, discountFlatAmount) * 100) / 100;
+  const discountAmount = flat > 0 ? Math.min(flat, s) : fromPercent;
   const afterDiscount = Math.max(0, s - discountAmount);
   const serviceChargeAmount = Math.round(afterDiscount * (serviceChargePercent / 100) * 100) / 100;
   const taxable = afterDiscount + serviceChargeAmount;

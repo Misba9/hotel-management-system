@@ -1,32 +1,22 @@
-import { useEffect, useState } from "react";
-import { subscribeRecentOrders, type StaffOrderRow } from "../../services/orders";
+import { useMemo } from "react";
+import type { StaffOrderRow } from "../../services/orders";
+import { mergeCashierOrders } from "../lib/pos/cashier-orders-view";
+import { useCashierPosStore } from "../lib/pos/cashier-pos-store";
 
-export function useCashierActiveOrders(enabled = true) {
-  const [orders, setOrders] = useState<StaffOrderRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+/**
+ * @deprecated Prefer `useCashierOrders` from `./use-cashier-orders`.
+ * Reads the canonical merged order list from the shared cashier store.
+ */
+export function useCashierActiveOrders(_enabled = true) {
+  const firestoreOrders = useCashierPosStore((s) => s.firestoreOrders);
+  const testOrders = useCashierPosStore((s) => s.testOrders);
+  const loading = useCashierPosStore((s) => s.ordersLoading);
+  const error = useCashierPosStore((s) => s.ordersError);
 
-  useEffect(() => {
-    if (!enabled) {
-      setOrders([]);
-      setLoading(false);
-      return undefined;
-    }
-    setLoading(true);
-    const unsub = subscribeRecentOrders(
-      (list) => {
-        setOrders(list);
-        setLoading(false);
-        setError(null);
-      },
-      (err) => {
-        setOrders([]);
-        setLoading(false);
-        setError(err instanceof Error ? err.message : "Could not load orders.");
-      }
-    );
-    return unsub;
-  }, [enabled]);
+  const orders = useMemo(
+    (): StaffOrderRow[] => mergeCashierOrders(firestoreOrders, testOrders),
+    [firestoreOrders, testOrders]
+  );
 
   return { orders, loading, error };
 }

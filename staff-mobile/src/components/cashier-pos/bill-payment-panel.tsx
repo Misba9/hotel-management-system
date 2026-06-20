@@ -1,18 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { StaffOrderRow } from "../../../services/orders";
 import {
-  CASHIER_PAYMENT_METHODS,
-  DEFAULT_INVOICE_TAX_PERCENT,
   PAYMENT_METHOD_LABELS,
   computePosBillTotals,
   type PaymentMethodId
 } from "../../../services/restaurant-orders";
+import type { PosSettingsDoc } from "@shared/types/pos-settings";
 import { formatOrderTypeLabel, isOrderPaid } from "../../lib/cashier-order-filters";
 import { loadHeldOrders, type HeldOrder } from "../../lib/pos/hold-orders-store";
-import type { CartLine, DiscountMode, SplitPaymentLine } from "./pos-types";
+import type { CartLine, DiscountMode, PosOrderChannel, SplitPaymentLine } from "./pos-types";
+import { POS_ITEM_MODIFICATIONS } from "./pos-types";
 import { PosCustomerPanel } from "./pos-customer-panel";
 import { PosKitchenTracker } from "./pos-kitchen-tracker";
+import { PosPaymentFlow } from "./pos-payment-flow";
 import { PosSplitPayment } from "./pos-split-payment";
 import { PosBadge, PosButton, PosChip, PosDivider, PosEmpty, PosInput, PosSectionTitle } from "./pos-ui";
 import { posCard, posColors, posPanel, posRadius, posSpacing, posType } from "./pos-theme";
@@ -23,47 +24,79 @@ type Props = {
   mode: BillMode;
   selectedOrder: StaffOrderRow | null;
   cartLines: CartLine[];
-  newOrderType: "dine_in" | "parcel" | "online";
+  orderChannel: PosOrderChannel;
   customerName: string;
   phone: string;
   tableLabel: string;
+  guestCount: string;
+  gstNumber: string;
+  address: string;
   paymentMethod: PaymentMethodId | null;
+  taxPercent: number;
+  posSettings: PosSettingsDoc;
   discountPercent: number;
+  discountFlatAmount: number;
+  couponCode: string;
+  couponError: string | null;
+  cashReceived: string;
   serviceChargePercent: number;
   busy: boolean;
   orders: StaffOrderRow[];
-  customerMode: "walkin" | "existing" | "new";
   discountMode: DiscountMode;
   splitLines: SplitPaymentLine[];
-  orderNote: string;
-  onCustomerModeChange: (m: "walkin" | "existing" | "new") => void;
   onDiscountModeChange: (m: DiscountMode) => void;
   onSplitChange: (lines: SplitPaymentLine[]) => void;
-  onOrderNoteChange: (v: string) => void;
+  onCouponCodeChange: (v: string) => void;
+  onApplyCoupon: () => void;
+  onCashReceivedChange: (v: string) => void;
   onHold: () => void;
   onResumeHeld: (held: HeldOrder) => void;
   onCustomerNameChange: (v: string) => void;
   onPhoneChange: (v: string) => void;
-  onNewOrderTypeChange: (t: "dine_in" | "parcel" | "online") => void;
+  onGuestCountChange: (v: string) => void;
+  onGstChange: (v: string) => void;
+  onAddressChange: (v: string) => void;
+  onOrderChannelChange: (t: PosOrderChannel) => void;
   onPaymentMethod: (m: PaymentMethodId) => void;
   onDiscountChange: (v: number) => void;
   onServiceChargeChange: (v: number) => void;
   onCartQtyChange: (menuItemId: string, delta: number) => void;
+  onCartLineModify: (menuItemId: string, updates: { modifications?: string[]; note?: string }) => void;
   onRemoveCartLine: (menuItemId: string) => void;
-  onSendToKitchen: () => void;
+  onPayAndComplete: () => void;
+  onPayRazorpay: () => void;
   onAcceptPayment: () => void;
   onPrint: () => void;
   onRefund: () => void;
+  onCancelOrder: () => void;
+  onSaveDraft: () => void;
   tables?: import("../../hooks/use-tables").FloorTable[];
   selectedTableId?: string | null;
   onSelectTable?: (table: import("../../hooks/use-tables").FloorTable) => void;
   tablesLoading?: boolean;
 };
 
-const EXTRA_METHODS: PaymentMethodId[] = ["cash", "upi", "card", "wallet", "split"];
+const PAYMENT_OPTIONS: { id: PaymentMethodId; label: string }[] = [
+  { id: "cash", label: "Cash" },
+  { id: "upi", label: "UPI" },
+  { id: "card", label: "Card" },
+  { id: "wallet", label: "Wallet" },
+  { id: "split", label: "Split" }
+];
+
+function enabledPaymentOptions(posSettings: PosSettingsDoc) {
+  const enabled = new Set(posSettings.enabledPaymentMethods ?? []);
+  return PAYMENT_OPTIONS.filter((o) => enabled.has(o.id as (typeof posSettings.enabledPaymentMethods)[number]));
+}
 
 function formatMoney(n: number) {
   return `₹${Number.isFinite(n) ? n.toFixed(2) : "0.00"}`;
+}
+
+function formatLineExtras(line: Pick<CartLine, "modifications" | "note">) {
+  const parts = [...(line.modifications ?? [])];
+  if (line.note?.trim()) parts.push(line.note.trim());
+  return parts.join(" · ");
 }
 
 function cartSubtotal(lines: CartLine[]) {
@@ -81,43 +114,61 @@ export function BillPaymentPanel({
   mode,
   selectedOrder,
   cartLines,
-  newOrderType,
+  orderChannel,
   customerName,
   phone,
   tableLabel,
+  guestCount,
+  gstNumber,
+  address,
   paymentMethod,
+  taxPercent,
+  posSettings,
   discountPercent,
+  discountFlatAmount,
+  couponCode,
+  couponError,
+  cashReceived,
   serviceChargePercent,
   busy,
   orders,
-  customerMode,
   discountMode,
   splitLines,
-  orderNote,
-  onCustomerModeChange,
   onDiscountModeChange,
   onSplitChange,
-  onOrderNoteChange,
+  onCouponCodeChange,
+  onApplyCoupon,
+  onCashReceivedChange,
   onHold,
   onResumeHeld,
   onCustomerNameChange,
   onPhoneChange,
-  onNewOrderTypeChange,
+  onGuestCountChange,
+  onGstChange,
+  onAddressChange,
+  onOrderChannelChange,
   onPaymentMethod,
   onDiscountChange,
   onServiceChargeChange,
   onCartQtyChange,
+  onCartLineModify,
   onRemoveCartLine,
-  onSendToKitchen,
+  onPayAndComplete,
+  onPayRazorpay,
   onAcceptPayment,
   onPrint,
   onRefund,
+  onCancelOrder,
+  onSaveDraft,
   tables = [],
   selectedTableId,
   onSelectTable,
   tablesLoading
 }: Props) {
   const [heldOrders, setHeldOrders] = useState<HeldOrder[]>([]);
+  const [modifyLineId, setModifyLineId] = useState<string | null>(null);
+  const [draftMods, setDraftMods] = useState<string[]>([]);
+  const [draftNote, setDraftNote] = useState("");
 
   useEffect(() => {
     setHeldOrders(loadHeldOrders());
@@ -131,17 +182,60 @@ export function BillPaymentPanel({
   const lines = useMemo(() => {
     if (mode === "new") return cartLines;
     if (!selectedOrder) return [];
-    return selectedOrder.items.map((it, i) => ({
+    const rawItems = selectedOrder.items as Array<{
+      id?: string;
+      name: string;
+      price: number;
+      qty: number;
+      note?: string;
+      modifications?: string[];
+    }>;
+    return rawItems.map((it, i) => ({
       menuItemId: it.id ?? `line_${i}`,
       name: it.name,
       unitPrice: it.price,
-      qty: it.qty
+      qty: it.qty,
+      note: it.note,
+      modifications: it.modifications
     }));
   }, [mode, cartLines, selectedOrder]);
 
+  const modifyLine = useMemo(
+    () => (modifyLineId ? lines.find((l) => l.menuItemId === modifyLineId) ?? null : null),
+    [modifyLineId, lines]
+  );
+
+  const openModifyModal = (line: CartLine) => {
+    setModifyLineId(line.menuItemId);
+    setDraftMods(line.modifications ?? []);
+    setDraftNote(line.note ?? "");
+  };
+
+  const closeModifyModal = () => {
+    setModifyLineId(null);
+    setDraftMods([]);
+    setDraftNote("");
+  };
+
+  const saveModifyModal = () => {
+    if (!modifyLineId) return;
+    onCartLineModify(modifyLineId, {
+      modifications: draftMods.length > 0 ? draftMods : undefined,
+      note: draftNote.trim() || undefined
+    });
+    closeModifyModal();
+  };
+
+  const toggleDraftMod = (mod: string) => {
+    setDraftMods((prev) => (prev.includes(mod) ? prev.filter((m) => m !== mod) : [...prev, mod]));
+  };
+
+  const flatDiscount = discountMode === "coupon" || discountMode === "flat" ? discountFlatAmount : 0;
+  const pctDiscount = discountMode === "percent" || discountMode === "promo" ? discountPercent : 0;
+
   const totals = useMemo(
-    () => computePosBillTotals(subtotal, DEFAULT_INVOICE_TAX_PERCENT, discountPercent, serviceChargePercent),
-    [subtotal, discountPercent, serviceChargePercent]
+    () => computePosBillTotals(subtotal, taxPercent, pctDiscount, serviceChargePercent, flatDiscount),
+    [subtotal, taxPercent, pctDiscount, serviceChargePercent, flatDiscount]
   );
 
   const roundOff = useMemo(() => {
@@ -160,37 +254,49 @@ export function BillPaymentPanel({
       : "—";
 
   return (
+    <>
     <View style={[posPanel(), styles.stickyPanel]}>
       <View style={styles.header}>
-        <Text style={posType.h3}>Current Bill</Text>
-        {mode === "new" ? (
-          <View style={styles.typeRow}>
-            {(["dine_in", "parcel", "online"] as const).map((t) => {
-              const label = t === "dine_in" ? "Dine-In" : t === "parcel" ? "Parcel" : "Online";
-              return <PosChip key={t} label={label} active={newOrderType === t} onPress={() => onNewOrderTypeChange(t)} />;
-            })}
-          </View>
-        ) : selectedOrder ? (
+        <Text style={posType.h2}>Current Bill</Text>
+        {mode === "existing" && selectedOrder ? (
           <PosBadge label={formatOrderTypeLabel(selectedOrder.orderType)} color={posColors.primary} />
         ) : null}
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator>
         {mode === "existing" && !selectedOrder ? (
-          <PosEmpty message="No order selected" hint="Pick an order from the left or press F2 for new" />
+          <PosEmpty message="No order selected" hint="Open from Recent Orders or press F2 for new" />
         ) : (
           <>
             <PosCustomerPanel
-              mode={customerMode}
               phone={phone}
               customerName={customerName}
+              guestCount={guestCount}
+              gstNumber={gstNumber}
+              address={address}
+              tableLabel={tableLabel}
               orders={orders}
-              onModeChange={onCustomerModeChange}
               onPhoneChange={onPhoneChange}
               onNameChange={onCustomerNameChange}
+              onGuestCountChange={onGuestCountChange}
+              onGstChange={onGstChange}
+              onAddressChange={onAddressChange}
             />
 
-            {mode === "new" && newOrderType === "dine_in" && tables.length > 0 ? (
+            {mode === "new" ? (
+              <View style={styles.channelSection}>
+                <PosSectionTitle title="Order Type" />
+                <View style={styles.channelGrid}>
+                  <View style={[styles.channelBtn, { backgroundColor: posColors.parcel, borderColor: posColors.parcel }]}>
+                    <Text style={styles.channelEmoji}>🛍</Text>
+                    <Text style={[styles.channelLabel, styles.channelLabelOn]}>Parcel</Text>
+                  </View>
+                </View>
+                <Text style={posType.small}>Cashier can only create new Parcel orders. Other channels sync automatically.</Text>
+              </View>
+            ) : null}
+
+            {false && mode === "new" && orderChannel === "dine_in" && tables.length > 0 ? (
               <View style={[posCard(), styles.tablePicker]}>
                 <PosSectionTitle title="Select Table" />
                 {tablesLoading ? <Text style={posType.small}>Loading tables…</Text> : null}
@@ -199,12 +305,12 @@ export function BillPaymentPanel({
                     .sort((a, b) => a.number - b.number)
                     .map((t) => {
                       const on = selectedTableId === t.id;
-                      const busy = t.status === "occupied";
+                      const occupied = t.status === "occupied";
                       return (
                         <Pressable
                           key={t.id}
                           onPress={() => onSelectTable?.(t)}
-                          style={[styles.tableChip, on && styles.tableChipOn, busy && !on && styles.tableChipBusy]}
+                          style={[styles.tableChip, on && styles.tableChipOn, occupied && !on && styles.tableChipBusy]}
                         >
                           <Text style={[styles.tableChipText, on && styles.tableChipTextOn]}>
                             {t.displayName ?? `T${t.number}`}
@@ -218,57 +324,90 @@ export function BillPaymentPanel({
 
             <PosKitchenTracker order={mode === "existing" ? selectedOrder : null} />
 
-            <View style={[posCard(), styles.detailCard]}>
-              <PosSectionTitle title="Order Details" />
-              <DetailRow label="Customer" value={customerName || "Walk-in"} />
-              <DetailRow label="Table" value={tableLabel || "—"} />
-              <DetailRow label="Token" value={token} />
-              <DetailRow label="Time" value={selectedOrder ? formatOrderTime(selectedOrder.createdAt) : "Now"} />
-              {mode === "new" && (newOrderType === "parcel" || newOrderType === "online") ? (
-                <>
-                  <PosInput value={customerName} onChangeText={onCustomerNameChange} placeholder="Customer name" style={{ marginTop: posSpacing.sm }} />
-                  <PosInput value={phone} onChangeText={onPhoneChange} placeholder="Phone" keyboardType="phone-pad" style={{ marginTop: posSpacing.sm }} />
-                </>
-              ) : null}
-            </View>
-
-            <PosDivider />
-
             <PosSectionTitle title="Items" />
             {lines.length === 0 ? (
               <Text style={posType.small}>Add products from the menu</Text>
             ) : (
-              lines.map((line) => (
+              lines.map((line) => {
+                const extras = formatLineExtras(line);
+                return (
                 <View key={line.menuItemId} style={styles.lineRow}>
-                  <Text style={styles.lineQty}>{line.qty}×</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.lineName}>{line.name}</Text>
-                    <Text style={styles.lineUnit}>{formatMoney(line.unitPrice)} each</Text>
+                    <Text style={styles.lineUnit}>
+                      {formatMoney(line.unitPrice)} · x{line.qty}
+                    </Text>
+                    {extras ? <Text style={styles.lineExtras}>{extras}</Text> : null}
                   </View>
                   {mode === "new" ? (
                     <View style={styles.lineActions}>
-                      <PosButton label="−" variant="ghost" onPress={() => onCartQtyChange(line.menuItemId, -1)} style={styles.miniBtn} />
-                      <PosButton label="+" variant="ghost" onPress={() => onCartQtyChange(line.menuItemId, 1)} style={styles.miniBtn} />
-                      <PosButton label="Del" variant="danger" onPress={() => onRemoveCartLine(line.menuItemId)} style={styles.miniBtn} />
+                      <Pressable onPress={() => onCartQtyChange(line.menuItemId, -1)} style={styles.lineBtn}>
+                        <Text style={styles.lineBtnText}>−</Text>
+                      </Pressable>
+                      <Pressable onPress={() => onCartQtyChange(line.menuItemId, 1)} style={styles.lineBtn}>
+                        <Text style={styles.lineBtnText}>+</Text>
+                      </Pressable>
+                      <Pressable onPress={() => openModifyModal(line)} style={[styles.lineBtn, extras ? styles.lineBtnActive : null]}>
+                        <Text style={styles.lineBtnText}>◇</Text>
+                      </Pressable>
+                      <Pressable onPress={() => onRemoveCartLine(line.menuItemId)} style={[styles.lineBtn, styles.lineBtnDel]}>
+                        <Text style={styles.lineBtnTextDel}>✕</Text>
+                      </Pressable>
                     </View>
                   ) : null}
                   <Text style={styles.lineTotal}>{formatMoney(line.unitPrice * line.qty)}</Text>
                 </View>
-              ))
+              );
+              })
             )}
 
             <PosDivider />
 
             <View style={styles.discountModes}>
-              {(["percent", "flat", "coupon", "promo"] as DiscountMode[]).map((m) => (
+              {(["percent", "flat", "coupon"] as DiscountMode[]).map((m) => (
                 <PosChip key={m} label={m} active={discountMode === m} onPress={() => onDiscountModeChange(m)} />
               ))}
             </View>
 
             <View style={[posCard(), styles.summary]}>
               <SummaryRow label="Subtotal" value={formatMoney(totals.subtotal)} />
+              {totals.discountAmount > 0 ? (
+                <SummaryRow
+                  label={discountMode === "coupon" && couponCode ? `Coupon (${couponCode})` : "Discount"}
+                  value={`−${formatMoney(totals.discountAmount)}`}
+                  muted
+                />
+              ) : null}
+              <SummaryRow label={`Tax (${totals.taxPercent}%)`} value={formatMoney(totals.taxAmount)} muted />
+              {totals.serviceChargeAmount > 0 ? (
+                <SummaryRow label="Service Charge" value={formatMoney(totals.serviceChargeAmount)} muted />
+              ) : null}
+              <SummaryRow label="Round Off" value={formatMoney(roundOff)} muted />
+              <View style={styles.grandRow}>
+                <Text style={styles.grandLabel}>Grand Total</Text>
+                <Text style={styles.grandValue}>{formatMoney(displayGrandTotal)}</Text>
+              </View>
+            </View>
+
+            {discountMode === "coupon" ? (
+              <View style={styles.couponRow}>
+                <PosInput
+                  value={couponCode}
+                  onChangeText={onCouponCodeChange}
+                  placeholder="Coupon code"
+                  autoCapitalize="characters"
+                  style={styles.couponInput}
+                />
+                <Pressable onPress={onApplyCoupon} style={styles.couponBtn}>
+                  <Text style={styles.couponBtnText}>Apply</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {couponError ? <Text style={styles.couponError}>{couponError}</Text> : null}
+
+            {discountMode === "percent" || discountMode === "promo" ? (
               <View style={styles.inlineField}>
-                <Text style={posType.small}>{discountMode === "flat" ? "Discount ₹" : "Discount %"}</Text>
+                <Text style={posType.small}>Discount %</Text>
                 <PosInput
                   value={String(discountPercent)}
                   onChangeText={(v) => onDiscountChange(Math.max(0, Math.min(100, Number(v) || 0)))}
@@ -276,44 +415,47 @@ export function BillPaymentPanel({
                   style={styles.pctInput}
                 />
               </View>
-              {totals.discountAmount > 0 ? <SummaryRow label="Discount" value={`−${formatMoney(totals.discountAmount)}`} muted /> : null}
+            ) : null}
+
+            {discountMode === "flat" ? (
               <View style={styles.inlineField}>
-                <Text style={posType.small}>Service %</Text>
+                <Text style={posType.small}>Discount ₹</Text>
                 <PosInput
-                  value={String(serviceChargePercent)}
-                  onChangeText={(v) => onServiceChargeChange(Math.max(0, Math.min(100, Number(v) || 0)))}
+                  value={String(discountFlatAmount)}
+                  onChangeText={(v) => onDiscountChange(Math.max(0, Number(v) || 0))}
                   keyboardType="decimal-pad"
                   style={styles.pctInput}
                 />
               </View>
-              {totals.serviceChargeAmount > 0 ? <SummaryRow label="Service Charge" value={formatMoney(totals.serviceChargeAmount)} muted /> : null}
-              <SummaryRow label={`Tax (${totals.taxPercent}%)`} value={formatMoney(totals.taxAmount)} muted />
-              {roundOff !== 0 ? <SummaryRow label="Round Off" value={formatMoney(roundOff)} muted /> : null}
-              <View style={styles.grandRow}>
-                <Text style={styles.grandLabel}>Grand Total</Text>
-                <Text style={styles.grandValue}>{formatMoney(displayGrandTotal)}</Text>
-              </View>
-            </View>
-
-            <PosInput value={orderNote} onChangeText={onOrderNoteChange} placeholder="Order notes…" style={{ marginTop: posSpacing.sm }} />
-
-            {paymentMethod === "split" ? <PosSplitPayment grandTotal={displayGrandTotal} lines={splitLines} onChange={onSplitChange} /> : null}
+            ) : null}
 
             {(canPay || canSend) && (
               <>
-                <PosSectionTitle title="Payment Method" />
+                <PosSectionTitle title="Payment" />
                 <View style={styles.payGrid}>
-                  {EXTRA_METHODS.map((m, i) => {
-                    const inCashier = CASHIER_PAYMENT_METHODS.includes(m);
-                    if (!inCashier && m !== "split") return null;
-                    const on = paymentMethod === m;
+                  {enabledPaymentOptions(posSettings).map((m) => {
+                    const on = paymentMethod === m.id;
                     return (
-                      <PressableSegment key={m} label={PAYMENT_METHOD_LABELS[m]} active={on} onPress={() => onPaymentMethod(m)} hint={String(i + 1)} />
+                      <Pressable key={m.id} onPress={() => onPaymentMethod(m.id)} style={[styles.payBtn, on && styles.payBtnOn]}>
+                        <Text style={[styles.payBtnText, on && styles.payBtnTextOn]}>{m.label}</Text>
+                      </Pressable>
                     );
                   })}
                 </View>
                 {paymentMethod === "split" ? (
-                  <Text style={styles.splitHint}>Split: primary method recorded on receipt.</Text>
+                  <PosSplitPayment grandTotal={displayGrandTotal} lines={splitLines} onChange={onSplitChange} />
+                ) : null}
+                {paymentMethod && paymentMethod !== "split" ? (
+                  <PosPaymentFlow
+                    method={paymentMethod}
+                    grandTotal={displayGrandTotal}
+                    posSettings={posSettings}
+                    cashReceived={cashReceived}
+                    onCashReceivedChange={onCashReceivedChange}
+                    onConfirmManual={mode === "new" ? onPayAndComplete : onAcceptPayment}
+                    onConfirmRazorpay={onPayRazorpay}
+                    busy={busy}
+                  />
                 ) : null}
               </>
             )}
@@ -324,13 +466,11 @@ export function BillPaymentPanel({
       {heldOrders.length > 0 ? (
         <View style={styles.heldBlock}>
           <PosSectionTitle title={`Held orders (${heldOrders.length})`} />
-          {heldOrders.slice(0, 4).map((h) => (
+          {heldOrders.slice(0, 3).map((h) => (
             <Pressable key={h.id} style={styles.heldRow} onPress={() => onResumeHeld(h)}>
               <View style={{ flex: 1 }}>
                 <Text style={posType.body}>{h.label}</Text>
-                <Text style={posType.small}>
-                  {h.cart.length} items · {h.tableLabel ?? h.orderType}
-                </Text>
+                <Text style={posType.small}>{h.cart.length} items · {h.tableLabel ?? h.orderType}</Text>
               </View>
               <Text style={styles.heldResume}>Resume</Text>
             </Pressable>
@@ -342,18 +482,16 @@ export function BillPaymentPanel({
         {mode === "existing" && selectedOrder ? (
           <>
             <View style={styles.actionRow}>
-              <PosButton label="Print" icon="print" variant="secondary" onPress={onPrint} disabled={busy} style={styles.actionHalf} />
-              <PosButton label="Kitchen" icon="kitchen" variant="secondary" onPress={onPrint} disabled={busy} style={styles.actionHalf} />
+              <ActionBtn label="Print Bill" emoji="🟣" color={posColors.purple} onPress={onPrint} disabled={busy} flex />
+              <ActionBtn label="Kitchen" emoji="🔵" color={posColors.info} onPress={onPrint} disabled={busy} flex />
             </View>
             {paid ? (
-              <PosButton label="Refund" icon="refund" variant="danger" fullWidth onPress={onRefund} disabled={busy} />
+              <ActionBtn label="Refund" emoji="🔴" color={posColors.danger} onPress={onRefund} disabled={busy} full />
             ) : (
-              <PosButton
-                label={busy ? "Processing…" : "Accept Payment"}
-                icon="pay"
-                variant="primary"
-                fullWidth
-                loading={busy}
+              <ActionBtn
+                label={busy ? "Processing…" : "Complete Payment"}
+                emoji="🟢"
+                color={posColors.success}
                 onPress={() => {
                   if (!paymentMethod) {
                     Alert.alert("Payment", "Select a payment method first.");
@@ -361,32 +499,82 @@ export function BillPaymentPanel({
                   }
                   onAcceptPayment();
                 }}
+                disabled={busy}
+                full
               />
             )}
             <View style={styles.actionRow}>
-              <PosButton label="Hold" variant="ghost" onPress={onHold} style={styles.actionHalf} />
-              <PosButton label="Void" variant="ghost" onPress={() => Alert.alert("Void", "Contact manager to void this order.")} style={styles.actionHalf} />
+              <ActionBtn label="Hold Order" emoji="🟡" color={posColors.warning} onPress={onHold} flex />
+              <ActionBtn label="Cancel Order" emoji="🔴" color={posColors.danger} onPress={onCancelOrder} flex />
             </View>
-            <PosButton label="Print Options" icon="print" variant="secondary" fullWidth onPress={() => Alert.alert("Print", "Bill · Kitchen · Bar · Customer copy · Reprint · PDF · WhatsApp · Email")} />
           </>
         ) : mode === "new" ? (
           <>
-            <PosButton label="Send to Kitchen" icon="kitchen" variant="primary" fullWidth loading={busy} disabled={busy || cartLines.length === 0} onPress={onSendToKitchen} />
-            <PosButton label="Hold Order" variant="secondary" fullWidth onPress={onHold} disabled={cartLines.length === 0} />
-            <PosButton label="Save Draft" variant="ghost" fullWidth onPress={() => Alert.alert("Draft", "Draft saved locally for this session.")} />
+            <ActionBtn
+              label={paymentMethod ? (busy ? "Processing…" : "Pay & send to kitchen") : "Select payment method"}
+              emoji="🟢"
+              color={posColors.success}
+              onPress={() => {
+                if (!paymentMethod) {
+                  Alert.alert("Payment", "Select a payment method first.");
+                  return;
+                }
+                if (paymentMethod === "split") {
+                  onPayAndComplete();
+                  return;
+                }
+                Alert.alert("Payment", "Use the payment panel above to confirm and print.");
+              }}
+              disabled={busy || cartLines.length === 0 || !paymentMethod}
+              full
+            />
+            <View style={styles.actionRow}>
+              <ActionBtn label="Save Draft" emoji="🔵" color={posColors.info} onPress={onSaveDraft} flex />
+              <ActionBtn label="Hold Order" emoji="🟡" color={posColors.warning} onPress={onHold} flex />
+            </View>
+            <ActionBtn label="Cancel Order" emoji="🔴" color={posColors.danger} onPress={onCancelOrder} full />
           </>
         ) : null}
       </View>
     </View>
-  );
-}
 
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.detailRow}>
-      <Text style={posType.small}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
+      <Modal visible={modifyLineId != null} transparent animationType="fade" onRequestClose={closeModifyModal}>
+        <Pressable style={styles.modalBackdrop} onPress={closeModifyModal}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Item modifications</Text>
+            {modifyLine ? <Text style={styles.modalSubtitle}>{modifyLine.name}</Text> : null}
+            <View style={styles.modGrid}>
+              {POS_ITEM_MODIFICATIONS.map((mod) => {
+                const on = draftMods.includes(mod);
+                return (
+                  <Pressable
+                    key={mod}
+                    onPress={() => toggleDraftMod(mod)}
+                    style={[styles.modChip, on && styles.modChipOn]}
+                  >
+                    <Text style={[styles.modChipText, on && styles.modChipTextOn]}>{mod}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <PosInput
+              value={draftNote}
+              onChangeText={setDraftNote}
+              placeholder="Other instructions (e.g. less sweet)"
+              style={styles.modalNote}
+            />
+            <View style={styles.modalActions}>
+              <Pressable onPress={closeModifyModal} style={[styles.modalBtn, styles.modalBtnGhost]}>
+                <Text style={styles.modalBtnGhostText}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={saveModifyModal} style={[styles.modalBtn, styles.modalBtnPrimary]}>
+                <Text style={styles.modalBtnPrimaryText}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -399,12 +587,36 @@ function SummaryRow({ label, value, muted }: { label: string; value: string; mut
   );
 }
 
-function PressableSegment({ label, active, onPress, hint }: { label: string; active: boolean; onPress: () => void; hint?: string }) {
+function ActionBtn({
+  label,
+  emoji,
+  color,
+  onPress,
+  disabled,
+  full,
+  flex
+}: {
+  label: string;
+  emoji: string;
+  color: string;
+  onPress: () => void;
+  disabled?: boolean;
+  full?: boolean;
+  flex?: boolean;
+}) {
   return (
-    <Pressable onPress={onPress} style={[styles.segment, active && styles.segmentOn]}>
-      <Text style={[styles.segmentText, active && styles.segmentTextOn]}>
-        {hint ? `${label} · ${hint}` : label}
-      </Text>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[
+        styles.actionBtn,
+        { backgroundColor: color, opacity: disabled ? 0.45 : 1 },
+        full && { width: "100%" },
+        flex && { flex: 1 }
+      ]}
+    >
+      <Text style={styles.actionEmoji}>{emoji}</Text>
+      <Text style={styles.actionLabel}>{label}</Text>
     </Pressable>
   );
 }
@@ -412,20 +624,32 @@ function PressableSegment({ label, active, onPress, hint }: { label: string; act
 const styles = StyleSheet.create({
   stickyPanel: { position: "relative" },
   header: {
-    padding: posSpacing.lg,
+    padding: posSpacing.md,
     borderBottomWidth: 1,
     borderBottomColor: posColors.border,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: posSpacing.sm
+    justifyContent: "space-between"
   },
-  typeRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
-  scroll: { padding: posSpacing.lg, paddingBottom: 200, gap: posSpacing.md },
-  detailCard: { padding: posSpacing.md, gap: posSpacing.xs },
-  detailRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
-  detailValue: { fontSize: 13, fontWeight: "700", color: posColors.text },
+  scroll: { padding: posSpacing.md, paddingBottom: 220, gap: posSpacing.md },
+  channelSection: { gap: posSpacing.sm },
+  channelGrid: { flexDirection: "row", flexWrap: "wrap", gap: posSpacing.xs },
+  channelBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: posRadius.md,
+    backgroundColor: posColors.card,
+    borderWidth: 1,
+    borderColor: posColors.border,
+    minWidth: "30%" as unknown as number,
+    flexGrow: 1
+  },
+  channelEmoji: { fontSize: 14 },
+  channelLabel: { fontSize: 11, fontWeight: "800", color: posColors.textSecondary },
+  channelLabelOn: { color: "#fff" },
   lineRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -434,31 +658,54 @@ const styles = StyleSheet.create({
     borderBottomColor: posColors.border,
     gap: posSpacing.sm
   },
-  lineQty: { fontSize: 13, fontWeight: "800", color: posColors.primary, width: 28 },
   lineName: { fontSize: 13, fontWeight: "700", color: posColors.text },
   lineUnit: { fontSize: 11, color: posColors.textDim, marginTop: 2 },
-  lineTotal: { fontSize: 13, fontWeight: "800", color: posColors.text, minWidth: 72, textAlign: "right" },
-  lineActions: { flexDirection: "row", gap: 4 },
-  miniBtn: { paddingVertical: 6, paddingHorizontal: 8 },
-  summary: { padding: posSpacing.md, gap: 8 },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
-  inlineField: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginVertical: 4 },
+  lineExtras: { fontSize: 10, color: posColors.primary, marginTop: 3, fontWeight: "600" },
+  lineTotal: { fontSize: 14, fontWeight: "800", color: posColors.text, minWidth: 72, textAlign: "right" },
+  lineActions: { flexDirection: "row", gap: 2 },
+  lineBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: posRadius.sm,
+    backgroundColor: posColors.card,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: posColors.border
+  },
+  lineBtnActive: { borderColor: posColors.primary, backgroundColor: posColors.primaryMuted },
+  lineBtnDel: { backgroundColor: posColors.dangerMuted, borderColor: posColors.dangerMuted },
+  lineBtnText: { fontSize: 14, fontWeight: "800", color: posColors.text },
+  lineBtnTextDel: { fontSize: 12, fontWeight: "800", color: posColors.danger },
+  summary: { padding: posSpacing.md, gap: 6 },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
+  inlineField: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   pctInput: { width: 64, paddingVertical: 8, textAlign: "center" },
+  couponRow: { flexDirection: "row", gap: posSpacing.xs, alignItems: "center" },
+  couponInput: { flex: 1 },
+  couponBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: posRadius.md,
+    backgroundColor: posColors.primary
+  },
+  couponBtnText: { fontSize: 12, fontWeight: "800", color: "#fff" },
+  couponError: { fontSize: 11, color: posColors.danger, fontWeight: "600" },
   grandRow: {
-    marginTop: posSpacing.md,
-    paddingTop: posSpacing.md,
+    marginTop: posSpacing.sm,
+    paddingTop: posSpacing.sm,
     borderTopWidth: 2,
     borderTopColor: posColors.primary,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center"
   },
-  grandLabel: { fontSize: 16, fontWeight: "800", color: posColors.text },
-  grandValue: { fontSize: 28, fontWeight: "900", color: posColors.success, letterSpacing: -0.5 },
-  payGrid: { flexDirection: "row", flexWrap: "wrap", gap: posSpacing.sm },
-  segment: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+  grandLabel: { fontSize: 15, fontWeight: "800", color: posColors.text },
+  grandValue: { fontSize: 26, fontWeight: "900", color: posColors.success, letterSpacing: -0.5 },
+  payGrid: { flexDirection: "row", flexWrap: "wrap", gap: posSpacing.xs },
+  payBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     minWidth: "30%" as unknown as number,
     flexGrow: 1,
     borderRadius: posRadius.md,
@@ -467,37 +714,35 @@ const styles = StyleSheet.create({
     borderColor: posColors.border,
     alignItems: "center"
   },
-  segmentOn: { backgroundColor: posColors.primary, borderColor: posColors.primary },
-  segmentText: { fontSize: 13, fontWeight: "800", color: posColors.text },
-  segmentTextOn: { color: "#fff" },
-  segmentHint: { fontSize: 10, fontWeight: "600", color: posColors.textDim },
-  splitHint: { fontSize: 11, color: posColors.warning, marginTop: posSpacing.sm },
-  discountModes: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: posSpacing.sm },
+  payBtnOn: { backgroundColor: posColors.primary, borderColor: posColors.primary },
+  payBtnText: { fontSize: 12, fontWeight: "800", color: posColors.text },
+  payBtnTextOn: { color: "#fff" },
+  discountModes: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   actions: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    padding: posSpacing.lg,
-    gap: posSpacing.sm,
+    padding: posSpacing.md,
+    gap: posSpacing.xs,
     backgroundColor: posColors.secondary,
     borderTopWidth: 1,
     borderTopColor: posColors.border
   },
-  actionRow: { flexDirection: "row", gap: posSpacing.sm },
-  actionHalf: { flex: 1 },
-  heldBlock: {
-    paddingHorizontal: posSpacing.lg,
-    paddingBottom: posSpacing.md,
-    gap: posSpacing.sm
-  },
-  heldRow: {
-    ...posCard,
+  actionRow: { flexDirection: "row", gap: posSpacing.xs },
+  actionBtn: {
     flexDirection: "row",
     alignItems: "center",
-    padding: posSpacing.md,
-    gap: posSpacing.sm
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: posRadius.md
   },
+  actionEmoji: { fontSize: 12 },
+  actionLabel: { fontSize: 13, fontWeight: "800", color: "#fff" },
+  heldBlock: { paddingHorizontal: posSpacing.md, paddingBottom: posSpacing.sm, gap: posSpacing.xs },
+  heldRow: { ...posCard(), flexDirection: "row", alignItems: "center", padding: posSpacing.sm, gap: posSpacing.sm },
   heldResume: { fontSize: 12, fontWeight: "800", color: posColors.primary },
   tablePicker: { padding: posSpacing.md, gap: posSpacing.sm },
   tableRow: { gap: posSpacing.sm, paddingVertical: 4 },
@@ -512,5 +757,45 @@ const styles = StyleSheet.create({
   tableChipOn: { backgroundColor: posColors.primary, borderColor: posColors.primary },
   tableChipBusy: { borderColor: posColors.warning, opacity: 0.85 },
   tableChipText: { fontSize: 12, fontWeight: "800", color: posColors.textSecondary },
-  tableChipTextOn: { color: "#fff" }
+  tableChipTextOn: { color: "#fff" },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: posSpacing.lg
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 400,
+    ...posCard(),
+    padding: posSpacing.lg,
+    gap: posSpacing.sm
+  },
+  modalTitle: { ...posType.h2, fontSize: 16 },
+  modalSubtitle: { ...posType.small, marginBottom: posSpacing.xs },
+  modGrid: { flexDirection: "row", flexWrap: "wrap", gap: posSpacing.xs },
+  modChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: posRadius.pill,
+    borderWidth: 1,
+    borderColor: posColors.border,
+    backgroundColor: posColors.bg
+  },
+  modChipOn: { backgroundColor: posColors.primaryMuted, borderColor: posColors.primary },
+  modChipText: { fontSize: 11, fontWeight: "700", color: posColors.textSecondary },
+  modChipTextOn: { color: posColors.primary },
+  modalNote: { marginTop: posSpacing.xs },
+  modalActions: { flexDirection: "row", gap: posSpacing.sm, marginTop: posSpacing.sm },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: posRadius.md,
+    alignItems: "center"
+  },
+  modalBtnGhost: { backgroundColor: posColors.card, borderWidth: 1, borderColor: posColors.border },
+  modalBtnPrimary: { backgroundColor: posColors.primary },
+  modalBtnGhostText: { fontSize: 13, fontWeight: "800", color: posColors.textSecondary },
+  modalBtnPrimaryText: { fontSize: 13, fontWeight: "800", color: "#fff" }
 });

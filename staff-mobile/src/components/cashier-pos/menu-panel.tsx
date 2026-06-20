@@ -1,19 +1,25 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
-  Image,
+  Animated,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
-  type TextInput
+  useWindowDimensions,
+  type TextInput,
+  type ViewStyle
 } from "react-native";
 import type { CartLine, MenuItemDoc, MenuQuickFilter } from "./pos-types";
 import { PosComboSection } from "./pos-combo-section";
+import { ProductCard } from "./product-card";
 import { PosIcon } from "./pos-icons";
-import { PosChip, PosEmpty, PosInput } from "./pos-ui";
-import { posCard, posColors, posPanel, posRadius, posSpacing, posType } from "./pos-theme";
+import { PosEmpty, PosInput } from "./pos-ui";
+import { posColors, posPanel, posRadius, posSpacing, posType } from "./pos-theme";
+
+const GRID_GAP = 16;
 
 type Props = {
   products: MenuItemDoc[];
@@ -35,30 +41,59 @@ type Props = {
   favoriteIds: Set<string>;
   onToggleFavorite: (id: string) => void;
   searchInputRef?: React.Ref<TextInput>;
-  /** Hide horizontal category chips when using left CategorySidebar */
   showCategoryTabs?: boolean;
-  /** Grid columns — auto if omitted */
   numColumns?: number;
   onBarcodeScan?: () => void;
   onQuickDiscount?: () => void;
+  headerAction?: React.ReactNode;
+  orderToolbar?: React.ReactNode;
 };
 
-const QUICK: { id: MenuQuickFilter; label: string; icon?: "star" | "trending" }[] = [
-  { id: "all", label: "All" },
-  { id: "favorites", label: "Favorites", icon: "star" },
-  { id: "popular", label: "Popular", icon: "trending" },
-  { id: "recent", label: "Recent" },
-  { id: "combos", label: "Combos" }
-];
+function useProductCardMetrics(containerWidth: number, windowWidth: number) {
+  return useMemo(() => {
+    const isMobile = windowWidth < 768;
+    const isTablet = windowWidth >= 768 && windowWidth < 1200;
+    const cardHeight = isMobile ? 260 : isTablet ? 250 : 260;
+    const horizontalPad = posSpacing.sm * 2;
+    const innerWidth = Math.max(0, containerWidth - horizontalPad);
 
-function formatMoney(n: number) {
-  return `₹${Number.isFinite(n) ? n.toFixed(0) : "0"}`;
+    if (isMobile) {
+      const cardWidth = Math.max(160, innerWidth);
+      return { cardWidth, cardHeight, isMobile: true as const };
+    }
+
+    const cardWidth = isTablet ? 220 : 240;
+    return { cardWidth, cardHeight, isMobile: false as const };
+  }, [containerWidth, windowWidth]);
+}
+
+function AnimatedProductCell({
+  children,
+  index
+}: {
+  children: React.ReactNode;
+  index: number;
+}) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.96)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 180, delay: Math.min(index * 20, 120), useNativeDriver: true }),
+      Animated.timing(scale, { toValue: 1, duration: 180, delay: Math.min(index * 20, 120), useNativeDriver: true })
+    ]).start();
+  }, [index, opacity, scale]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ scale }] }}>
+      {children}
+    </Animated.View>
+  );
 }
 
 export function MenuPanel({
   products,
   grouped,
-  categories,
   selectedCategory,
   quickFilter,
   search,
@@ -66,8 +101,6 @@ export function MenuPanel({
   recentProductIds,
   loading,
   error,
-  onCategorySelect,
-  onQuickFilter,
   onSearchChange,
   onAdd,
   onDec,
@@ -75,11 +108,16 @@ export function MenuPanel({
   favoriteIds,
   onToggleFavorite,
   searchInputRef,
-  showCategoryTabs = true,
-  numColumns,
   onBarcodeScan,
-  onQuickDiscount
+  onQuickDiscount,
+  headerAction,
+  orderToolbar
 }: Props) {
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [gridWidth, setGridWidth] = useState(0);
+  const { width: windowWidth } = useWindowDimensions();
+  const { cardWidth, cardHeight, isMobile } = useProductCardMetrics(gridWidth, windowWidth);
+
   const visibleProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list =
@@ -88,7 +126,11 @@ export function MenuPanel({
         : (grouped[selectedCategory] ?? []).filter((p) => p.available !== false);
 
     if (quickFilter === "favorites") list = list.filter((p) => favoriteIds.has(p.id));
-    if (quickFilter === "popular") list = [...list].sort((a, b) => b.price - a.price).slice(0, 24);
+    if (quickFilter === "popular") {
+      list = [...list]
+        .sort((a, b) => (b.isBestSeller ? 1 : 0) - (a.isBestSeller ? 1 : 0) || b.price - a.price)
+        .slice(0, 48);
+    }
     if (quickFilter === "recent") {
       const set = new Set(recentProductIds);
       list = list.filter((p) => set.has(p.id));
@@ -99,7 +141,57 @@ export function MenuPanel({
     return list;
   }, [products, grouped, selectedCategory, search, quickFilter, recentProductIds, favoriteIds]);
 
-  const cols = numColumns ?? 2;
+  const suggestions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q || q.length < 2) return [];
+    return products
+      .filter((p) => p.name.toLowerCase().includes(q))
+      .slice(0, 6)
+      .map((p) => p.name);
+  }, [products, search]);
+
+  const gridStyle = useMemo((): ViewStyle => {
+    if (Platform.OS === "web" && !isMobile && cardWidth > 0) {
+      return {
+        display: "grid",
+        gridTemplateColumns: `repeat(auto-fill, ${cardWidth}px)`,
+        gap: GRID_GAP,
+        justifyContent: "start",
+        padding: posSpacing.sm,
+        paddingBottom: posSpacing.huge
+      } as unknown as ViewStyle;
+    }
+    return {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: GRID_GAP,
+      justifyContent: "flex-start",
+      alignContent: "flex-start",
+      padding: posSpacing.sm,
+      paddingBottom: posSpacing.huge
+    };
+  }, [cardWidth, isMobile]);
+
+  const renderCard = useCallback(
+    (item: MenuItemDoc, index: number) => (
+      <AnimatedProductCell key={item.id} index={index}>
+        <View style={{ width: cardWidth, height: cardHeight }}>
+          <ProductCard
+            item={item}
+            width={cardWidth}
+            height={cardHeight}
+            qty={cartQtyById[item.id] ?? 0}
+            isFavorite={favoriteIds.has(item.id)}
+            isBestSeller={item.isBestSeller ?? item.name.length % 5 === 0}
+            onAdd={() => onAdd(item)}
+            onDec={() => onDec(item)}
+            onToggleFavorite={() => onToggleFavorite(item.id)}
+          />
+        </View>
+      </AnimatedProductCell>
+    ),
+    [cardWidth, cardHeight, cartQtyById, favoriteIds, onAdd, onDec, onToggleFavorite]
+  );
 
   if (quickFilter === "combos") {
     return (
@@ -115,60 +207,55 @@ export function MenuPanel({
 
   return (
     <View style={[posPanel(), styles.panel]}>
-      <View style={styles.header}>
-        <Text style={posType.h3}>Products</Text>
-        <Text style={posType.small}>{visibleProducts.length} items</Text>
+      <View style={styles.searchSection}>
+        <View style={styles.searchRow}>
+          <View style={[styles.searchWrap, { flex: 1 }]}>
+            <PosIcon name="search" size={18} color={posColors.textDim} />
+            <PosInput
+              ref={searchInputRef}
+              value={search}
+              onChangeText={(v) => {
+                onSearchChange(v);
+                setShowSuggestions(v.trim().length >= 2);
+              }}
+              onFocus={() => setShowSuggestions(search.trim().length >= 2)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              placeholder="Search product…  ( / )"
+              style={styles.search}
+            />
+            <Pressable onPress={onBarcodeScan} style={styles.scanBtn}>
+              <Text style={styles.scanText}>⌗</Text>
+            </Pressable>
+          </View>
+          {headerAction ? <View style={styles.headerAction}>{headerAction}</View> : null}
+        </View>
+        {orderToolbar ? <View style={styles.orderToolbar}>{orderToolbar}</View> : null}
+        {showSuggestions && suggestions.length > 0 ? (
+          <View style={styles.suggestions}>
+            {suggestions.map((name) => (
+              <Pressable
+                key={name}
+                onPress={() => {
+                  onSearchChange(name);
+                  setShowSuggestions(false);
+                }}
+                style={styles.suggestionRow}
+              >
+                <PosIcon name="search" size={12} color={posColors.textDim} />
+                <Text style={styles.suggestionText}>{name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.toolbar}>
-        <View style={styles.searchWrap}>
-          <PosIcon name="search" size={16} color={posColors.textDim} />
-          <PosInput
-            ref={searchInputRef}
-            value={search}
-            onChangeText={onSearchChange}
-            placeholder="Search products… (F1 menu /)"
-            style={styles.search}
-          />
-        </View>
-        <Pressable onPress={onBarcodeScan} style={styles.toolBtn}>
-          <Text style={styles.toolBtnText}>Scan</Text>
-        </Pressable>
-        <Pressable onPress={onQuickDiscount} style={styles.toolBtn}>
-          <Text style={styles.toolBtnText}>% Disc</Text>
+        <Text style={posType.h3}>Products</Text>
+        <Text style={posType.small}>{visibleProducts.length} items</Text>
+        <Pressable onPress={onQuickDiscount} style={styles.discBtn}>
+          <Text style={styles.discText}>F6 Discount</Text>
         </Pressable>
       </View>
-
-      {showCategoryTabs ? (
-        <>
-          <FlatList
-            horizontal
-            data={QUICK}
-            keyExtractor={(i) => i.id}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chips}
-            renderItem={({ item }) => (
-              <PosChip
-                label={item.label}
-                icon={item.icon}
-                active={quickFilter === item.id}
-                onPress={() => onQuickFilter(item.id)}
-              />
-            )}
-          />
-
-          <FlatList
-            horizontal
-            data={categories}
-            keyExtractor={(c) => c}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.chips, { paddingTop: 0 }]}
-            renderItem={({ item: cat }) => (
-              <PosChip label={cat === "all" ? "All Categories" : cat} active={selectedCategory === cat} onPress={() => onCategorySelect(cat)} />
-            )}
-          />
-        </>
-      ) : null}
 
       {loading ? (
         <View style={styles.loader}>
@@ -176,52 +263,17 @@ export function MenuPanel({
         </View>
       ) : error ? (
         <PosEmpty message="Menu unavailable" hint={error} />
+      ) : visibleProducts.length === 0 ? (
+        <PosEmpty message="No products found" hint="Try another category or search" />
       ) : (
-        <FlatList
-          data={visibleProducts}
-          keyExtractor={(item) => item.id}
-          numColumns={cols}
-          contentContainerStyle={styles.grid}
-          columnWrapperStyle={styles.gridRow}
+        <ScrollView
+          style={styles.gridScroll}
+          contentContainerStyle={gridStyle}
           showsVerticalScrollIndicator
-          ListEmptyComponent={<PosEmpty message="No products found" hint="Try another category or search" />}
-          renderItem={({ item }) => {
-            const qty = cartQtyById[item.id] ?? 0;
-            const img = item.imageUrl ?? item.image;
-            const isFav = favoriteIds.has(item.id);
-            const isBest = item.isBestSeller ?? item.name.length % 4 === 0;
-            return (
-              <Pressable onPress={() => onAdd(item)} style={[posCard(true), styles.tile]}>
-                <Pressable onPress={() => onToggleFavorite(item.id)} style={styles.favBtn} hitSlop={8}>
-                  <PosIcon name="star" size={14} color={isFav ? posColors.warning : posColors.textDim} />
-                </Pressable>
-                {isBest ? <Text style={styles.bestBadge}>Best Seller</Text> : null}
-                {img ? (
-                  <Image source={{ uri: img }} style={styles.image} resizeMode="cover" />
-                ) : (
-                  <View style={styles.imagePlaceholder}>
-                    <PosIcon name="parcel" size={24} color={posColors.textDim} />
-                  </View>
-                )}
-                <Text numberOfLines={2} style={styles.name}>
-                  {item.name}
-                </Text>
-                <Text style={styles.category}>{item.category ?? "Menu"} · Stock {item.stockQty ?? "OK"}</Text>
-                <Text style={styles.price}>{formatMoney(item.price)}</Text>
-                {item.rating ? <Text style={styles.rating}>★ {item.rating.toFixed(1)}</Text> : null}
-                <View style={styles.qtyRow}>
-                  <Pressable onPress={() => onDec(item)} disabled={qty <= 0} style={[styles.qtyBtn, qty <= 0 && styles.qtyBtnOff]}>
-                    <PosIcon name="minus" size={14} color={qty <= 0 ? posColors.textDim : posColors.text} />
-                  </Pressable>
-                  <Text style={styles.qty}>{qty}</Text>
-                  <Pressable onPress={() => onAdd(item)} style={[styles.qtyBtn, styles.qtyBtnAdd]}>
-                    <PosIcon name="plus" size={14} color="#fff" />
-                  </Pressable>
-                </View>
-              </Pressable>
-            );
-          }}
-        />
+          onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
+        >
+          {visibleProducts.map((item, index) => renderCard(item, index))}
+        </ScrollView>
       )}
     </View>
   );
@@ -230,69 +282,79 @@ export function MenuPanel({
 const styles = StyleSheet.create({
   panel: { borderRightWidth: 0 },
   header: { padding: posSpacing.lg, borderBottomWidth: 1, borderBottomColor: posColors.border },
-  toolbar: {
+  searchSection: {
+    paddingHorizontal: posSpacing.lg,
+    paddingTop: posSpacing.md,
+    paddingBottom: posSpacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: posColors.border,
+    zIndex: 10
+  },
+  searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: posSpacing.sm,
-    marginHorizontal: posSpacing.lg,
-    marginTop: posSpacing.md,
-    flexWrap: "wrap"
+    gap: posSpacing.sm
   },
-  toolBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: posRadius.md,
-    borderWidth: 1,
-    borderColor: posColors.border,
-    backgroundColor: posColors.card
-  },
-  toolBtnText: { fontSize: 11, fontWeight: "800", color: posColors.textSecondary },
+  headerAction: { flexShrink: 0 },
+  orderToolbar: { paddingTop: posSpacing.sm, alignItems: "flex-end" },
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
     gap: posSpacing.sm,
-    flex: 1,
-    minWidth: 160
+    backgroundColor: posColors.card,
+    borderRadius: posRadius.md,
+    borderWidth: 1,
+    borderColor: posColors.borderStrong,
+    paddingHorizontal: posSpacing.md,
+    minHeight: 48
   },
-  search: { flex: 1, borderWidth: 0, backgroundColor: "transparent", paddingVertical: 8 },
-  chips: { paddingHorizontal: posSpacing.lg, paddingVertical: posSpacing.sm, gap: posSpacing.sm },
-  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
-  grid: { padding: posSpacing.md, paddingBottom: posSpacing.huge },
-  gridRow: { gap: posSpacing.md },
-  tile: {
-    flex: 1,
-    margin: posSpacing.xs,
-    padding: posSpacing.md,
-    minHeight: 200
-  },
-  image: { width: "100%", height: 88, borderRadius: posRadius.sm, marginBottom: posSpacing.sm },
-  imagePlaceholder: {
-    width: "100%",
-    height: 88,
+  search: { flex: 1, borderWidth: 0, backgroundColor: "transparent", paddingVertical: 12, fontSize: 15 },
+  scanBtn: {
+    width: 36,
+    height: 36,
     borderRadius: posRadius.sm,
-    backgroundColor: posColors.bg,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: posSpacing.sm
-  },
-  name: { fontSize: 13, fontWeight: "800", color: posColors.text, minHeight: 36, lineHeight: 18 },
-  category: { fontSize: 10, color: posColors.textDim, marginTop: 2, fontWeight: "600" },
-  price: { fontSize: 16, fontWeight: "900", color: posColors.primary, marginTop: posSpacing.sm },
-  qtyRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: posSpacing.md },
-  qtyBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: posRadius.pill,
     backgroundColor: posColors.bg,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: posColors.border
   },
-  qtyBtnOff: { opacity: 0.4 },
-  qtyBtnAdd: { backgroundColor: posColors.primary, borderColor: posColors.primary },
-  qty: { fontSize: 15, fontWeight: "900", color: posColors.text, minWidth: 24, textAlign: "center" },
-  favBtn: { position: "absolute", top: 8, right: 8, zIndex: 2 },
-  bestBadge: { fontSize: 8, fontWeight: "800", color: posColors.warning, marginBottom: 4 },
-  rating: { fontSize: 10, color: posColors.textSecondary, marginTop: 2 }
+  scanText: { fontSize: 16, fontWeight: "800", color: posColors.textSecondary },
+  suggestions: {
+    marginTop: posSpacing.xs,
+    backgroundColor: posColors.card,
+    borderRadius: posRadius.md,
+    borderWidth: 1,
+    borderColor: posColors.border,
+    overflow: "hidden"
+  },
+  suggestionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: posSpacing.sm,
+    paddingHorizontal: posSpacing.md,
+    paddingVertical: posSpacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: posColors.border
+  },
+  suggestionText: { fontSize: 13, fontWeight: "600", color: posColors.text },
+  toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: posSpacing.sm,
+    paddingHorizontal: posSpacing.lg,
+    paddingVertical: posSpacing.sm
+  },
+  discBtn: {
+    marginLeft: "auto",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: posRadius.sm,
+    borderWidth: 1,
+    borderColor: posColors.border,
+    backgroundColor: posColors.card
+  },
+  discText: { fontSize: 10, fontWeight: "800", color: posColors.warning },
+  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+  gridScroll: { flex: 1, minHeight: 0 }
 });

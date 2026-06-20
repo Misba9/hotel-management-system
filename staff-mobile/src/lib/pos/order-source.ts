@@ -21,7 +21,12 @@ export type OrderStatusFilter =
   | "ready"
   | "paid"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "refunded"
+  | "picked_up"
+  | "delivered"
+  | "received"
+  | "served";
 
 export type OrderSourceMeta = {
   key: OrderSourceKey;
@@ -41,6 +46,13 @@ export const ORDER_SOURCE_META: Record<Exclude<OrderSourceKey, "all">, OrderSour
   phone: { key: "phone", label: "Phone", emoji: "📞", color: "#06B6D4" },
   online: { key: "online", label: "Online", emoji: "🌐", color: "#0EA5E9" }
 };
+
+/** Customer website / app channels — grouped under the cashier ONLINE tab. */
+const OWN_ONLINE_SOURCES = new Set<Exclude<OrderSourceKey, "all">>(["online", "website", "qr", "phone"]);
+
+export function isOwnOnlineOrder(order: StaffOrderRow): boolean {
+  return OWN_ONLINE_SOURCES.has(resolveOrderSource(order));
+}
 
 function readString(order: StaffOrderRow, ...keys: string[]): string {
   const raw = order as StaffOrderRow & Record<string, unknown>;
@@ -79,6 +91,12 @@ export function getOrderSourceMeta(order: StaffOrderRow): OrderSourceMeta {
 export function isOrderCancelled(order: StaffOrderRow): boolean {
   const s = String(order.status ?? "").toLowerCase();
   return s === "cancelled" || s === "rejected" || s === "void";
+}
+
+export function isOrderRefunded(order: StaffOrderRow): boolean {
+  const ps = String(order.paymentStatus ?? "").toLowerCase();
+  const s = String(order.status ?? "").toLowerCase();
+  return ps === "refunded" || s === "refunded";
 }
 
 export function isOrderCompleted(order: StaffOrderRow): boolean {

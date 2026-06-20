@@ -22,7 +22,10 @@ function orderCreatedAt(order: StaffOrderRow): Date | null {
   }
 }
 
-export function useCashierDashboardMetrics(orders: StaffOrderRow[]): CashierDashboardMetrics {
+export function useCashierDashboardMetrics(
+  orders: StaffOrderRow[],
+  activeTables = 0
+): CashierDashboardMetrics {
   return useMemo(() => {
     const metrics: CashierDashboardMetrics = {
       todaySales: 0,
@@ -34,6 +37,9 @@ export function useCashierDashboardMetrics(orders: StaffOrderRow[]): CashierDash
       onlineCount: 0,
       pendingCount: 0,
       kitchenCount: 0,
+      deliveryCount: 0,
+      activeTables: 0,
+      pendingBills: 0,
       cashDrawer: 0,
       upiTotal: 0,
       cardTotal: 0,
@@ -54,7 +60,16 @@ export function useCashierDashboardMetrics(orders: StaffOrderRow[]): CashierDash
       else if (src === "zomato") metrics.zomatoCount += 1;
       else metrics.onlineCount += 1;
 
-      if (isOrderPendingPayment(order.paymentStatus)) metrics.pendingCount += 1;
+      if (src === "swiggy" || src === "zomato" || src === "website" || src === "qr" || src === "phone" || src === "online") {
+        metrics.deliveryCount += 1;
+      }
+
+      if (isOrderPendingPayment(order.paymentStatus)) {
+        metrics.pendingCount += 1;
+        if (order.canonicalStatus === "ready" || order.canonicalStatus === "served") {
+          metrics.pendingBills += 1;
+        }
+      }
 
       const stage = resolveKitchenStage(order);
       if (stage === "preparing" || stage === "accepted" || stage === "received") metrics.kitchenCount += 1;
@@ -75,6 +90,7 @@ export function useCashierDashboardMetrics(orders: StaffOrderRow[]): CashierDash
     metrics.upiTotal = Math.round(metrics.upiTotal * 100) / 100;
     metrics.cardTotal = Math.round(metrics.cardTotal * 100) / 100;
     metrics.averageBill = paidCount > 0 ? Math.round((metrics.todaySales / paidCount) * 100) / 100 : 0;
+    metrics.activeTables = activeTables;
     return metrics;
-  }, [orders]);
+  }, [orders, activeTables]);
 }

@@ -15,6 +15,7 @@ export type CashierShortcutHandlers = {
   onCustomer?: () => void;
   onKitchen?: () => void;
   onShowShortcuts?: () => void;
+  onBarcodeScan?: () => void;
 };
 
 type WebKeyEvent = {
@@ -44,7 +45,7 @@ export function useCashierKeyboardShortcuts(handlers: CashierShortcutHandlers, e
 
       if (e.key === "F1") {
         e.preventDefault();
-        handlers.onFocusOrderSearch?.();
+        handlers.onFocusMenuSearch?.();
       } else if (e.key === "F2") {
         e.preventDefault();
         handlers.onNewOrder?.();
@@ -78,6 +79,9 @@ export function useCashierKeyboardShortcuts(handlers: CashierShortcutHandlers, e
       } else if (e.key === "/" && !isInput) {
         e.preventDefault();
         handlers.onFocusMenuSearch?.();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        handlers.onBarcodeScan?.();
       } else if (e.key >= "1" && e.key <= "5" && !isInput) {
         handlers.onSelectPaymentMethod?.(Number(e.key) - 1);
       }

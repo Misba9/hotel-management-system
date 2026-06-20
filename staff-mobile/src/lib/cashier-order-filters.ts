@@ -3,6 +3,8 @@ import { isWaiterPosDineInOrder } from "@shared/utils/waiter-pos-order";
 import {
   isOrderCancelled,
   isOrderCompleted,
+  isOrderRefunded,
+  isOwnOnlineOrder,
   resolveOrderSource,
   type OrderSourceKey,
   type OrderStatusFilter
@@ -37,6 +39,8 @@ export function filterCashierOrders(
   return orders.filter((order) => {
     if (opts.source === "waiter") {
       if (!isWaiterPosDineInOrder(order)) return false;
+    } else if (opts.source === "online") {
+      if (!isOwnOnlineOrder(order)) return false;
     } else {
       const src = resolveOrderSource(order);
       if (opts.source !== "all" && src !== opts.source) return false;
@@ -46,15 +50,31 @@ export function filterCashierOrders(
     const pending = isOrderPendingPayment(order.paymentStatus);
     const completed = isOrderCompleted(order);
     const cancelled = isOrderCancelled(order);
+    const refunded = isOrderRefunded(order);
     const canonical = String(order.canonicalStatus ?? order.status ?? "").toLowerCase();
 
     if (opts.status === "paid" && !paid) return false;
     if (opts.status === "pending" && (paid || cancelled)) return false;
-    if (opts.status === "accepted" && canonical !== "accepted" && canonical !== "placed" && canonical !== "pending") return false;
+    if (
+      opts.status === "accepted" &&
+      canonical !== "accepted" &&
+      canonical !== "placed" &&
+      canonical !== "pending"
+    )
+      return false;
     if (opts.status === "preparing" && canonical !== "preparing") return false;
     if (opts.status === "ready" && canonical !== "ready") return false;
+    if (opts.status === "picked_up" && canonical !== "picked_up" && canonical !== "picked") return false;
+    if (opts.status === "delivered" && canonical !== "delivered") return false;
+    if (
+      opts.status === "received" &&
+      !["placed", "pending", "accepted", "received"].includes(canonical)
+    )
+      return false;
+    if (opts.status === "served" && canonical !== "served") return false;
     if (opts.status === "completed" && !completed) return false;
     if (opts.status === "cancelled" && !cancelled) return false;
+    if (opts.status === "refunded" && !refunded) return false;
 
     if (!q) return true;
     const id = order.id.toLowerCase();

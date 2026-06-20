@@ -93,6 +93,7 @@ export type PrinterConnectionType = "wifi" | "bluetooth";
 export interface PrinterDoc {
   name: string;
   type: PrinterConnectionType;
+  role?: "counter" | "kitchen";
   /** Host/IP for Wi‑Fi printers; optional for Bluetooth. */
   ipAddress?: string;
   createdAt?: Timestamp | null;

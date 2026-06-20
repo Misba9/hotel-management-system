@@ -102,6 +102,7 @@ export const seedInitialData = onCall(async (request) => {
   batch.set(db.collection("printers").doc("kitchen_receipt_default"), {
     name: "Kitchen receipt (default)",
     type: "wifi",
+    role: "kitchen",
     ipAddress: "",
     createdAt: ts,
     updatedAt: ts
@@ -109,6 +110,7 @@ export const seedInitialData = onCall(async (request) => {
   batch.set(db.collection("printers").doc("counter_bluetooth"), {
     name: "Counter Bluetooth",
     type: "bluetooth",
+    role: "counter",
     ipAddress: "",
     createdAt: ts,
     updatedAt: ts

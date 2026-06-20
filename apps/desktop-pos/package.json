@@ -1,0 +1,40 @@
+{
+  "name": "@nausheen/desktop-pos",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "npm run build:electron && concurrently -k \"npm run dev:vite\" \"npm run dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on tcp:5173 dist-electron/main.js && electron .",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build": "npm run build:electron && vite build",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "rebuild:native": "electron-rebuild -f -w sqlite3,serialport"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "firebase": "^12.12.0",
+    "firebase-admin": "^13.8.0",
+    "node-thermal-printer": "^4.4.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "serialport": "^12.0.0",
+    "socket.io": "^4.8.1",
+    "sqlite3": "^5.1.7",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.11",
+    "wait-on": "^8.0.1"
+  }
+}
