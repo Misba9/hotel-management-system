@@ -117,3 +117,23 @@ export function staffWebHomePathForRole(role: StaffAppRole): string {
     }
   }
 }
+
+/** Electron staff-desktop routes after login. */
+export function staffDesktopHomePathForRole(role: StaffAppRole): string {
+  switch (role) {
+    case "cashier":
+      return "/cashier";
+    case "kitchen":
+      return "/kitchen";
+    case "waiter":
+    case "delivery":
+      return "/waiter";
+    case "manager":
+    case "admin":
+      return "/manager";
+    default: {
+      const _exhaustive: never = role;
+      return _exhaustive;
+    }
+  }
+}

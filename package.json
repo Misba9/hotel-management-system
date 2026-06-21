@@ -6,6 +6,8 @@
     "admin-dashboard",
     "apps/desktop-pos",
     "apps/kitchen-kds",
+    "apps/staff-web",
+    "staff-desktop",
     "customer-web",
     "staff-mobile",
     "backend/functions"
@@ -52,6 +54,7 @@
     "dev:web": "npm run dev --workspace=customer-web",
     "dev:admin": "npm run dev --workspace=admin-dashboard",
     "dev:mobile": "npm run dev --workspace=staff-mobile",
+    "dev:staff-desktop": "npm run dev --workspace=@nausheen/staff-desktop",
     "dev:customer": "npm run dev:web",
     "build:web": "npm run build --workspace @nausheen/customer-web && npm run build --workspace @nausheen/admin-dashboard",
     "build:functions": "npm run build --workspace @nausheen/functions",

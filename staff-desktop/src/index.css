@@ -1,0 +1,226 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Channel orders — full-width center workspace */
+.pos-channel-workspace {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  background: #fff;
+}
+
+.dark .pos-channel-workspace {
+  background: rgb(15 23 42);
+}
+
+/* Cashier POS — full-width 3-column workspace (no sidebar) */
+.pos-workspace-grid {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 390px;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+}
+
+/* Product grid density by viewport */
+.pos-product-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 1024px) {
+  .pos-product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .pos-product-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1536px) {
+  .pos-product-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1920px) {
+  .pos-product-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 2560px) {
+  .pos-product-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+.kds-shell {
+  @apply flex min-h-screen flex-col bg-slate-900 text-slate-100;
+}
+
+.kds-topbar {
+  @apply flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 bg-slate-950 px-6 py-4;
+}
+
+.kds-brand h1 {
+  @apply m-0 text-xl font-extrabold;
+}
+
+.kds-brand span {
+  @apply text-sm text-slate-400;
+}
+
+.kds-connect {
+  @apply flex flex-wrap items-center gap-2;
+}
+
+.kds-input {
+  @apply h-10 min-w-[220px] rounded-lg border border-slate-600 bg-slate-800 px-3 text-sm outline-none focus:border-teal-400;
+}
+
+.kds-btn {
+  @apply inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-bold;
+}
+
+.kds-btn-primary {
+  @apply bg-teal-600 text-white hover:bg-teal-500;
+}
+
+.kds-status-pill {
+  @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold;
+}
+
+.kds-status-pill.online {
+  @apply bg-emerald-900/60 text-emerald-300;
+}
+
+.kds-status-pill.offline {
+  @apply bg-orange-900/60 text-orange-300;
+}
+
+.kds-status-dot {
+  @apply h-2 w-2 rounded-full bg-current;
+}
+
+.kds-main {
+  @apply flex-1 overflow-y-auto p-5;
+}
+
+.kds-empty {
+  @apply flex min-h-[320px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-700 text-slate-400;
+}
+
+.kds-grid {
+  @apply grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3;
+}
+
+.kds-card {
+  @apply rounded-2xl border border-slate-700 bg-slate-800 p-4 shadow-lg transition;
+}
+
+.kds-card.new {
+  @apply ring-2 ring-amber-400;
+}
+
+.kds-card-header {
+  @apply mb-3 flex items-start justify-between gap-3;
+}
+
+.kds-order-number {
+  @apply text-lg font-extrabold;
+}
+
+.kds-meta-row {
+  @apply mt-1 flex flex-wrap gap-1;
+}
+
+.kds-chip {
+  @apply rounded-full bg-slate-700 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-300;
+}
+
+.kds-chip.source {
+  @apply bg-indigo-900/70 text-indigo-200;
+}
+
+.kds-chip.table {
+  @apply bg-teal-900/70 text-teal-200;
+}
+
+.kds-status-badge {
+  @apply rounded-full px-2 py-1 text-[11px] font-bold uppercase;
+}
+
+.kds-status-badge.accepted {
+  @apply bg-orange-900/70 text-orange-200;
+}
+
+.kds-status-badge.pending {
+  @apply bg-amber-900/70 text-amber-200;
+}
+
+.kds-status-badge.preparing {
+  @apply bg-sky-900/70 text-sky-200;
+}
+
+.kds-status-badge.ready {
+  @apply bg-emerald-900/70 text-emerald-200;
+}
+
+.kds-items {
+  @apply m-0 list-none space-y-2 p-0;
+}
+
+.kds-item {
+  @apply flex items-start justify-between gap-2 border-b border-slate-700/70 pb-2;
+}
+
+.kds-item-name {
+  @apply text-sm font-semibold;
+}
+
+.kds-item-note {
+  @apply text-xs text-amber-300;
+}
+
+.kds-item-qty {
+  @apply text-sm font-bold text-teal-300;
+}
+
+.kds-notes {
+  @apply mt-3 rounded-lg bg-slate-900/70 p-2 text-xs text-slate-300;
+}
+
+.kds-actions {
+  @apply mt-4 flex gap-2;
+}
+
+.kds-action-btn {
+  @apply min-h-[44px] flex-1 rounded-lg text-xs font-bold disabled:opacity-40;
+}
+
+.kds-action-btn.preparing {
+  @apply bg-sky-700 text-white hover:bg-sky-600;
+}
+
+.kds-action-btn.ready {
+  @apply bg-emerald-700 text-white hover:bg-emerald-600;
+}

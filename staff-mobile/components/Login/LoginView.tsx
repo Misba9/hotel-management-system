@@ -1,6 +1,8 @@
+declare const process: { env: Record<string, string | undefined> };
+
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { memo, useCallback, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -11,24 +13,28 @@ import {
   Text,
   TextInput,
   useWindowDimensions,
-  View
+  View,
+  type ViewStyle
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuthStore } from "../../store/useAuthStore";
 import { friendlyAuthMessage } from "./auth-messages";
 import {
+  DESKTOP_BREAKPOINT,
   loginButtonGradient,
   loginCardShadow,
   loginColors,
   loginFont,
-  loginRadius
+  loginGridLayout,
+  loginRadius,
+  loginWebText
 } from "./login-theme";
 import { validateEmail, validateLoginForm, validatePassword, type FieldErrors } from "./login-validation";
 
 const REMEMBER_EMAIL_KEY = "staff:remembered_email";
-const RESTAURANT_NAME = "Nausheen Fruits Juice Center";
-const BRANCH_NAME = "Main Branch";
+const HOTEL_NAME = process.env.EXPO_PUBLIC_HOTEL_NAME?.trim() || "Nausheen Fruits Juice Center";
+const BRANCH_NAME = process.env.EXPO_PUBLIC_BRANCH_NAME?.trim() || "Main Branch";
 const SAAS_NAME = "Fruit Hotel Platform";
 const APP_VERSION = "v1.0";
 
@@ -38,9 +44,7 @@ const FEATURES = [
   { icon: "shield-checkmark-outline" as const, label: "Role-based secure staff access" }
 ] as const;
 
-const LoginBrandPanel = memo(function LoginBrandPanel({ wide }: { wide: boolean }) {
-  if (!wide) return null;
-
+const LoginBrandPanel = memo(function LoginBrandPanel({ hotelName }: { hotelName: string }) {
   return (
     <View style={styles.brandPanel} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <View style={styles.brandTop}>
@@ -49,17 +53,19 @@ const LoginBrandPanel = memo(function LoginBrandPanel({ wide }: { wide: boolean 
             🍊
           </Text>
         </View>
-        <Text style={styles.brandRestaurant}>{RESTAURANT_NAME}</Text>
-        <Text style={styles.brandBranch}>{BRANCH_NAME}</Text>
+        <Text style={styles.brandRestaurant}>{hotelName}</Text>
+        <Text style={styles.brandTagline}>{BRANCH_NAME}</Text>
+        <Text style={styles.brandSubtitle}>Premium staff workspace for modern restaurant operations.</Text>
       </View>
 
       <View style={styles.illustrationWrap}>
-        <View style={styles.illustrationOrb} />
         <View style={styles.illustrationCard}>
-          <Ionicons name="sparkles" size={28} color={loginColors.primary} />
-          <Text style={styles.illustrationTitle}>Restaurant operations, unified</Text>
+          <View style={styles.illustrationIconWrap}>
+            <Ionicons name="sparkles" size={24} color={loginColors.primary} />
+          </View>
+          <Text style={styles.illustrationTitle}>Everything your floor team needs</Text>
           <Text style={styles.illustrationText}>
-            Manage orders, billing, and floor service from one premium staff workspace.
+            Orders, billing, kitchen, and delivery — unified in one secure login.
           </Text>
         </View>
       </View>
@@ -79,7 +85,8 @@ const LoginBrandPanel = memo(function LoginBrandPanel({ wide }: { wide: boolean 
 });
 
 type LoginFormProps = {
-  compact: boolean;
+  showMobileBrand: boolean;
+  hotelName: string;
   onSubmit: () => void;
   busy: boolean;
   phase: "idle" | "signing_in" | "loading_profile";
@@ -100,7 +107,8 @@ type LoginFormProps = {
 };
 
 const LoginFormCard = memo(function LoginFormCard({
-  compact,
+  showMobileBrand,
+  hotelName,
   onSubmit,
   busy,
   phase,
@@ -120,15 +128,17 @@ const LoginFormCard = memo(function LoginFormCard({
   onBlurPassword
 }: LoginFormProps) {
   const statusLabel =
-    phase === "signing_in" ? "Signing in..." : phase === "loading_profile" ? "Loading profile..." : "Continue";
+    phase === "signing_in" ? "Signing in…" : phase === "loading_profile" ? "Loading profile…" : "Sign in";
 
   return (
-    <View style={[styles.card, loginCardShadow(), compact && styles.cardCompact]}>
-      {!compact ? (
+    <View style={[styles.card, loginCardShadow()]}>
+      {showMobileBrand ? (
         <View style={styles.mobileBrand}>
-          <Text style={styles.logoEmojiSmall}>🍊</Text>
+          <View style={styles.logoMarkSmall}>
+            <Text style={styles.logoEmojiSmall}>🍊</Text>
+          </View>
           <View style={styles.mobileBrandText}>
-            <Text style={styles.mobileRestaurant}>{RESTAURANT_NAME}</Text>
+            <Text style={styles.mobileRestaurant}>{hotelName}</Text>
             <Text style={styles.mobileBranch}>{BRANCH_NAME}</Text>
           </View>
         </View>
@@ -138,7 +148,7 @@ const LoginFormCard = memo(function LoginFormCard({
       <Text style={styles.title} accessibilityRole="header">
         Welcome Back
       </Text>
-      <Text style={styles.subtitle}>Sign in to continue to your restaurant dashboard.</Text>
+      <Text style={styles.subtitle}>Sign in to continue managing restaurant operations.</Text>
 
       {formError ? (
         <View style={styles.formErrorBanner} accessibilityLiveRegion="polite">
@@ -164,7 +174,7 @@ const LoginFormCard = memo(function LoginFormCard({
       <View style={[styles.inputWrap, fieldErrors.email ? styles.inputWrapError : null]}>
         <Ionicons name="mail-outline" size={20} color={loginColors.textDim} style={styles.inputIcon} />
         <TextInput
-          placeholder="Enter your email"
+          placeholder="you@restaurant.com"
           placeholderTextColor={loginColors.textDim}
           autoCapitalize="none"
           keyboardType="email-address"
@@ -183,7 +193,7 @@ const LoginFormCard = memo(function LoginFormCard({
       </View>
       {fieldErrors.email ? (
         <Text style={styles.fieldError} accessibilityLiveRegion="polite">
-          ❌ {fieldErrors.email}
+          {fieldErrors.email}
         </Text>
       ) : null}
 
@@ -221,7 +231,7 @@ const LoginFormCard = memo(function LoginFormCard({
       </View>
       {fieldErrors.password ? (
         <Text style={styles.fieldError} accessibilityLiveRegion="polite">
-          ❌ {fieldErrors.password}
+          {fieldErrors.password}
         </Text>
       ) : null}
 
@@ -239,7 +249,7 @@ const LoginFormCard = memo(function LoginFormCard({
           <Text style={styles.rememberText}>Remember me</Text>
         </Pressable>
         <Pressable onPress={onForgotPassword} disabled={busy} accessibilityRole="link" hitSlop={8}>
-          <Text style={styles.forgotText}>Forgot Password</Text>
+          <Text style={styles.forgotText}>Forgot password?</Text>
         </Pressable>
       </View>
 
@@ -248,11 +258,11 @@ const LoginFormCard = memo(function LoginFormCard({
         disabled={busy}
         accessibilityRole="button"
         accessibilityState={{ disabled: busy, busy }}
-        accessibilityLabel={busy ? statusLabel : "Continue to sign in"}
+        accessibilityLabel={busy ? statusLabel : "Sign in"}
         style={({ pressed }) => [
           styles.primaryBtn,
           loginButtonGradient(),
-          pressed && !busy && styles.primaryBtnHover,
+          pressed && !busy && styles.primaryBtnPressed,
           busy && styles.primaryBtnDisabled
         ]}
       >
@@ -262,9 +272,7 @@ const LoginFormCard = memo(function LoginFormCard({
             <Text style={styles.primaryText}>{statusLabel}</Text>
           </View>
         ) : (
-          <View style={styles.btnInner}>
-            <Text style={styles.primaryText}>Continue</Text>
-          </View>
+          <Text style={styles.primaryText}>Sign in</Text>
         )}
       </Pressable>
 
@@ -278,13 +286,19 @@ const LoginFormCard = memo(function LoginFormCard({
   );
 });
 
+function horizontalPadding(width: number): number {
+  if (width >= 1440) return 64;
+  if (width >= 1024) return 48;
+  if (width >= 768) return 32;
+  return 20;
+}
+
 export function LoginView() {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const wide = width >= 900;
-  const tablet = width >= 600;
+  const isDesktop = width >= DESKTOP_BREAKPOINT;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -296,6 +310,23 @@ export function LoginView() {
   const [formError, setFormError] = useState<string | null>(null);
   const [canRetry, setCanRetry] = useState(false);
   const submitLock = useRef(false);
+
+  const padX = horizontalPadding(width);
+
+  const gridStyle = useMemo(() => loginGridLayout(isDesktop), [isDesktop]);
+
+  const webScreenStyle = useMemo(
+    (): ViewStyle =>
+      Platform.OS === "web"
+        ? ({
+            minHeight: "100vh",
+            height: "100%",
+            width: "100%",
+            overflow: "hidden"
+          } as unknown as ViewStyle)
+        : {},
+    []
+  );
 
   useEffect(() => {
     void (async () => {
@@ -324,13 +355,11 @@ export function LoginView() {
   }, []);
 
   const onBlurEmail = useCallback(() => {
-    const err = validateEmail(email);
-    setFieldErrors((prev) => ({ ...prev, email: err }));
+    setFieldErrors((prev) => ({ ...prev, email: validateEmail(email) }));
   }, [email]);
 
   const onBlurPassword = useCallback(() => {
-    const err = validatePassword(password);
-    setFieldErrors((prev) => ({ ...prev, password: err }));
+    setFieldErrors((prev) => ({ ...prev, password: validatePassword(password) }));
   }, [password]);
 
   const onForgotPassword = useCallback(() => {
@@ -356,7 +385,6 @@ export function LoginView() {
       await login(email.trim(), password);
       setPhase("loading_profile");
       await persistRememberEmail(email, rememberMe);
-      // Root layout redirects by role once authReady + isAuthenticated.
     } catch (e) {
       const message = friendlyAuthMessage(e);
       setFormError(message);
@@ -372,51 +400,62 @@ export function LoginView() {
     }
   }, [busy, email, login, logout, password, persistRememberEmail, rememberMe]);
 
+  const formProps: LoginFormProps = {
+    showMobileBrand: !isDesktop,
+    hotelName: HOTEL_NAME,
+    onSubmit: () => void onSubmit(),
+    busy,
+    phase,
+    email,
+    password,
+    showPassword,
+    rememberMe,
+    fieldErrors,
+    formError,
+    canRetry,
+    onEmailChange: (v) => {
+      setEmail(v);
+      if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: validateEmail(v) }));
+    },
+    onPasswordChange: (v) => {
+      setPassword(v);
+      if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: validatePassword(v) }));
+    },
+    onTogglePassword: () => setShowPassword((s) => !s),
+    onRememberMeChange: setRememberMe,
+    onForgotPassword,
+    onBlurEmail,
+    onBlurPassword
+  };
+
   return (
     <KeyboardAvoidingView
-      style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+      style={[styles.screen, webScreenStyle, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.bgGlowTop} pointerEvents="none" />
-      <View style={styles.bgGlowBottom} pointerEvents="none" />
+      <View style={styles.bgLayer} pointerEvents="none">
+        <View style={styles.bgGlowTop} />
+        <View style={styles.bgGlowBottom} />
+      </View>
 
       <ScrollView
+        style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          wide ? styles.scrollWide : tablet ? styles.scrollTablet : styles.scrollMobile
+          {
+            paddingHorizontal: padX,
+            minHeight: Platform.OS === "web" ? ("100%" as unknown as number) : Math.max(height - insets.top - insets.bottom, 0)
+          }
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        bounces={false}
       >
-        <View style={[styles.layout, wide && styles.layoutWide]}>
-          <LoginBrandPanel wide={wide} />
-          <View style={[styles.formColumn, wide && styles.formColumnWide, !wide && styles.formColumnCentered]}>
-            <LoginFormCard
-              compact={wide}
-              onSubmit={() => void onSubmit()}
-              busy={busy}
-              phase={phase}
-              email={email}
-              password={password}
-              showPassword={showPassword}
-              rememberMe={rememberMe}
-              fieldErrors={fieldErrors}
-              formError={formError}
-              canRetry={canRetry}
-              onEmailChange={(v) => {
-                setEmail(v);
-                if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: validateEmail(v) }));
-              }}
-              onPasswordChange={(v) => {
-                setPassword(v);
-                if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: validatePassword(v) }));
-              }}
-              onTogglePassword={() => setShowPassword((s) => !s)}
-              onRememberMeChange={setRememberMe}
-              onForgotPassword={onForgotPassword}
-              onBlurEmail={onBlurEmail}
-              onBlurPassword={onBlurPassword}
-            />
+        <View style={[styles.page, gridStyle]}>
+          {isDesktop ? <LoginBrandPanel hotelName={HOTEL_NAME} /> : null}
+
+          <View style={styles.formColumn}>
+            <LoginFormCard {...formProps} />
           </View>
         </View>
       </ScrollView>
@@ -430,64 +469,56 @@ const styles = StyleSheet.create({
     backgroundColor: loginColors.bg,
     ...loginFont
   },
+  bgLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+    overflow: "hidden"
+  },
   bgGlowTop: {
     position: "absolute",
-    top: -120,
-    right: -80,
-    width: 320,
-    height: 320,
+    top: -140,
+    right: -100,
+    width: 420,
+    height: 420,
     borderRadius: 999,
     backgroundColor: loginColors.primaryGlow,
-    opacity: 0.35
+    opacity: 0.55
   },
   bgGlowBottom: {
     position: "absolute",
-    bottom: -100,
-    left: -60,
-    width: 280,
-    height: 280,
+    bottom: -120,
+    left: -80,
+    width: 360,
+    height: 360,
     borderRadius: 999,
-    backgroundColor: "rgba(56,189,248,0.12)"
+    backgroundColor: "rgba(56,189,248,0.1)"
+  },
+  scroll: {
+    flex: 1,
+    width: "100%",
+    zIndex: 1
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: "center"
-  },
-  scrollWide: {
-    paddingHorizontal: 40,
-    paddingVertical: 48,
-    minHeight: "100%" as unknown as number
-  },
-  scrollTablet: {
-    paddingHorizontal: 32,
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
     paddingVertical: 32
   },
-  scrollMobile: {
-    paddingHorizontal: 20,
-    paddingVertical: 24
-  },
-  layout: {
+  page: {
     width: "100%",
-    maxWidth: 1080,
+    maxWidth: 1200,
     alignSelf: "center"
   },
-  layoutWide: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 32
-  },
   brandPanel: {
-    flex: 1,
-    flexShrink: 1,
-    minWidth: 300,
-    maxWidth: 480,
-    justifyContent: "center",
-    paddingVertical: 16,
-    paddingRight: 8
+    width: "100%",
+    minWidth: 0,
+    paddingVertical: 8,
+    ...(Platform.OS === "web" ? ({ overflow: "visible" } as object) : null)
   },
   brandTop: {
-    marginBottom: 40
+    marginBottom: 32,
+    width: "100%"
   },
   logoMark: {
     width: 56,
@@ -498,67 +529,88 @@ const styles = StyleSheet.create({
     borderColor: loginColors.cardBorder,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16
+    marginBottom: 20
+  },
+  logoMarkSmall: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: loginColors.bgAccent,
+    borderWidth: 1,
+    borderColor: loginColors.cardBorder,
+    alignItems: "center",
+    justifyContent: "center"
   },
   logoEmoji: {
     fontSize: 28
   },
   logoEmojiSmall: {
-    fontSize: 32
+    fontSize: 26
   },
   brandRestaurant: {
     fontSize: 32,
     fontWeight: "800",
     color: loginColors.text,
     letterSpacing: -0.5,
-    lineHeight: 38,
+    lineHeight: 40,
     marginBottom: 6,
-    ...(Platform.OS === "web" ? ({ whiteSpace: "normal" } as object) : null)
+    ...loginWebText
   },
-  brandBranch: {
+  brandTagline: {
     fontSize: 15,
     fontWeight: "600",
     color: loginColors.primary,
-    letterSpacing: 0.3,
-    ...(Platform.OS === "web" ? ({ whiteSpace: "normal" } as object) : null)
+    letterSpacing: 0.2,
+    marginBottom: 10,
+    ...loginWebText
+  },
+  brandSubtitle: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: loginColors.textSecondary,
+    maxWidth: 420,
+    ...loginWebText
   },
   illustrationWrap: {
-    marginBottom: 36,
-    position: "relative"
-  },
-  illustrationOrb: {
-    position: "absolute",
-    top: 24,
-    left: 24,
-    right: 24,
-    height: 140,
-    borderRadius: 24,
-    backgroundColor: loginColors.primaryGlow,
-    opacity: 0.25
+    marginBottom: 28,
+    width: "100%"
   },
   illustrationCard: {
     borderRadius: loginRadius.card,
     borderWidth: 1,
     borderColor: loginColors.cardBorder,
     backgroundColor: loginColors.bgAccent,
-    padding: 28,
-    gap: 10
+    padding: 24,
+    gap: 8,
+    width: "100%",
+    maxWidth: 480
+  },
+  illustrationIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,122,0,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4
   },
   illustrationTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: loginColors.text,
     lineHeight: 26,
-    ...(Platform.OS === "web" ? ({ whiteSpace: "normal" } as object) : null)
+    ...loginWebText
   },
   illustrationText: {
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 22,
     color: loginColors.textSecondary,
-    ...(Platform.OS === "web" ? ({ whiteSpace: "normal" } as object) : null)
+    ...loginWebText
   },
   featureList: {
-    gap: 14
+    gap: 12,
+    width: "100%",
+    maxWidth: 480
   },
   featureRow: {
     flexDirection: "row",
@@ -571,43 +623,37 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: "rgba(255,122,0,0.12)",
     alignItems: "center",
-    justifyContent: "center"
+    justifyContent: "center",
+    flexShrink: 0
   },
   featureLabel: {
     flex: 1,
-    flexShrink: 1,
     fontSize: 14,
     lineHeight: 20,
     color: loginColors.textSecondary,
     fontWeight: "500",
-    ...(Platform.OS === "web" ? ({ whiteSpace: "normal" } as object) : null)
+    ...loginWebText
   },
   formColumn: {
-    flexGrow: 0,
-    flexShrink: 0,
     width: "100%",
-    maxWidth: 440
-  },
-  formColumnWide: {
-    flex: 0,
-    width: 440,
-    maxWidth: 440,
-    paddingLeft: 56,
-    borderLeftWidth: 1,
-    borderLeftColor: "rgba(255,255,255,0.08)"
-  },
-  formColumnCentered: {
-    alignItems: "center",
-    alignSelf: "center"
+    minWidth: Platform.OS === "web" ? 280 : undefined,
+    maxWidth: 420,
+    alignSelf: "center",
+    ...(Platform.OS === "web"
+      ? ({
+          justifySelf: "center",
+          flexShrink: 0
+        } as object)
+      : null)
   },
   card: {
     width: "100%",
-    maxWidth: 440,
+    minWidth: 280,
     borderRadius: loginRadius.card,
     borderWidth: 1,
     borderColor: loginColors.cardBorder,
     backgroundColor: loginColors.card,
-    padding: 32,
+    padding: 28,
     ...(Platform.OS === "web"
       ? ({
           backdropFilter: "blur(20px)",
@@ -615,55 +661,58 @@ const styles = StyleSheet.create({
         } as object)
       : null)
   },
-  cardCompact: {
-    maxWidth: 440
-  },
   mobileBrand: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginBottom: 20,
-    paddingBottom: 16,
+    marginBottom: 24,
+    paddingBottom: 20,
     borderBottomWidth: 1,
     borderBottomColor: loginColors.cardBorder
   },
   mobileBrandText: {
-    flex: 1
+    flex: 1,
+    minWidth: 0
   },
   mobileRestaurant: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
-    color: loginColors.text
+    color: loginColors.text,
+    ...loginWebText
   },
   mobileBranch: {
     fontSize: 13,
     fontWeight: "600",
     color: loginColors.primary,
-    marginTop: 2
+    marginTop: 2,
+    ...loginWebText
   },
   kicker: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
     color: loginColors.primary,
-    marginBottom: 8
+    marginBottom: 8,
+    ...loginWebText
   },
   title: {
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: "800",
     color: loginColors.text,
     letterSpacing: -0.5,
-    marginBottom: 8
+    marginBottom: 8,
+    ...loginWebText
   },
   subtitle: {
     fontSize: 15,
     lineHeight: 22,
     color: loginColors.textSecondary,
-    marginBottom: 24
+    marginBottom: 24,
+    ...loginWebText
   },
   formErrorBanner: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     flexWrap: "wrap",
     gap: 8,
     backgroundColor: loginColors.errorMuted,
@@ -676,9 +725,11 @@ const styles = StyleSheet.create({
   },
   formErrorText: {
     flex: 1,
+    minWidth: 0,
     fontSize: 14,
     color: loginColors.error,
-    fontWeight: "500"
+    fontWeight: "500",
+    ...loginWebText
   },
   retryLink: {
     fontSize: 14,
@@ -689,7 +740,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: loginColors.text,
-    marginBottom: 8
+    marginBottom: 8,
+    ...loginWebText
   },
   inputWrap: {
     flexDirection: "row",
@@ -698,15 +750,17 @@ const styles = StyleSheet.create({
     borderColor: loginColors.inputBorder,
     borderRadius: loginRadius.input,
     backgroundColor: loginColors.inputBg,
-    marginBottom: 6,
-    minHeight: 52
+    marginBottom: 4,
+    minHeight: 50,
+    width: "100%"
   },
   inputWrapError: {
     borderColor: "rgba(239,68,68,0.55)",
     backgroundColor: loginColors.errorMuted
   },
   inputIcon: {
-    marginLeft: 14
+    marginLeft: 14,
+    flexShrink: 0
   },
   input: {
     flex: 1,
@@ -720,19 +774,21 @@ const styles = StyleSheet.create({
   },
   eyeBtn: {
     paddingHorizontal: 14,
-    paddingVertical: 12
+    paddingVertical: 12,
+    flexShrink: 0
   },
   fieldError: {
     fontSize: 13,
     color: loginColors.error,
     marginBottom: 12,
-    fontWeight: "500"
+    fontWeight: "500",
+    ...loginWebText
   },
   rowBetween: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 8,
+    marginTop: 12,
     marginBottom: 20,
     gap: 12,
     flexWrap: "wrap"
@@ -760,7 +816,8 @@ const styles = StyleSheet.create({
   rememberText: {
     fontSize: 14,
     color: loginColors.textSecondary,
-    fontWeight: "500"
+    fontWeight: "500",
+    ...loginWebText
   },
   forgotText: {
     fontSize: 14,
@@ -770,19 +827,18 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     width: "100%",
-    alignSelf: "stretch",
-    minHeight: 52,
+    minHeight: 50,
     borderRadius: loginRadius.button,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
     ...(Platform.OS === "web"
-      ? ({ cursor: "pointer", transition: "transform 200ms ease, opacity 200ms ease" } as object)
+      ? ({ cursor: "pointer", transition: "opacity 180ms ease, transform 180ms ease" } as object)
       : null)
   },
-  primaryBtnHover: {
+  primaryBtnPressed: {
     opacity: 0.92,
-    transform: [{ scale: 0.995 }]
+    transform: [{ scale: 0.99 }]
   },
   primaryBtnDisabled: {
     opacity: 0.85
@@ -791,9 +847,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    width: "100%",
-    paddingHorizontal: 16
+    gap: 10
   },
   primaryText: {
     color: "#fff",
@@ -802,7 +856,7 @@ const styles = StyleSheet.create({
     textAlign: "center"
   },
   footer: {
-    marginTop: 28,
+    marginTop: 24,
     paddingTop: 20,
     borderTopWidth: 1,
     borderTopColor: loginColors.cardBorder,
@@ -811,7 +865,9 @@ const styles = StyleSheet.create({
   },
   footerMuted: {
     fontSize: 13,
-    color: loginColors.textDim
+    color: loginColors.textDim,
+    textAlign: "center",
+    ...loginWebText
   },
   footerBrand: {
     color: loginColors.textSecondary,

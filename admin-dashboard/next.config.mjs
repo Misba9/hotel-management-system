@@ -58,6 +58,7 @@ const nextConfig = {
     ]
   },
   experimental: {
+    externalDir: true,
     optimizePackageImports: ["lucide-react", "recharts"]
   }
 };

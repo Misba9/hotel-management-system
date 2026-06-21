@@ -174,7 +174,6 @@ export async function persistStorefrontOrder(args: {
     address: args.body.address.trim(),
     ...(args.body.deliveryAddress ? { deliveryAddress: args.body.deliveryAddress } : {}),
     status: "preparing",
-    orderType: "online",
     createdAt: now,
     paymentMethod: args.paymentMethod,
     paymentStatus: args.paymentStatus,

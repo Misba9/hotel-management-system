@@ -77,7 +77,6 @@ export async function POST(request: Request) {
         phone: body.phone,
         items: body.items,
         couponCode: body.couponCode,
-        orderType: "online",
         address: body.address,
         ...(body.deliveryAddress ? { deliveryAddress: body.deliveryAddress } : {})
       },

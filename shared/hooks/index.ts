@@ -1,4 +1,8 @@
 export {
+  useFirebaseMenu,
+  type UseFirebaseMenuResult
+} from "./useFirebaseMenu";
+export {
   useFirestoreQuerySnapshot,
   type UseFirestoreQuerySnapshotOptions,
   type UseFirestoreQuerySnapshotResult

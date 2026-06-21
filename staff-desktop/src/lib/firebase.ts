@@ -1,0 +1,173 @@
+import { type FirebaseApp, getApp, getApps, initializeApp } from "firebase/app";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  type Auth,
+  type User
+} from "firebase/auth";
+import { doc, getDoc, getFirestore, type Firestore } from "firebase/firestore";
+import {
+  resolveStaffAppRole,
+  usersDocBlocksStaffAccess,
+  type StaffAppRole
+} from "@shared/utils/staff-access-control";
+import { isDesktopRuntime, getDesktopApi } from "./desktop-api";
+
+function trimEnv(raw: string | undefined): string | undefined {
+  if (raw == null || raw === "") return undefined;
+  return raw.trim().replace(/^["']|["']$/g, "");
+}
+
+function env(name: string): string | undefined {
+  return trimEnv(import.meta.env[name as keyof ImportMetaEnv] as string | undefined);
+}
+
+function readFirebaseConfigFromVite() {
+  return {
+    apiKey: env("NEXT_PUBLIC_FIREBASE_API_KEY") ?? env("VITE_FIREBASE_API_KEY"),
+    authDomain: env("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN") ?? env("VITE_FIREBASE_AUTH_DOMAIN"),
+    projectId: env("NEXT_PUBLIC_FIREBASE_PROJECT_ID") ?? env("VITE_FIREBASE_PROJECT_ID"),
+    storageBucket: env("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET") ?? env("VITE_FIREBASE_STORAGE_BUCKET"),
+    messagingSenderId:
+      env("NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID") ?? env("VITE_FIREBASE_MESSAGING_SENDER_ID"),
+    appId: env("NEXT_PUBLIC_FIREBASE_APP_ID") ?? env("VITE_FIREBASE_APP_ID")
+  };
+}
+
+const FIREBASE_APP_NAME = "nausheen-staff-desktop";
+
+let firebaseApp: FirebaseApp | null = null;
+let firebaseAuth: Auth | null = null;
+let firebaseDb: Firestore | null = null;
+let ipcConfigLoaded = false;
+
+async function ensureFirebaseConfigFromIpc(): Promise<void> {
+  if (ipcConfigLoaded || !isDesktopRuntime()) return;
+  const ipcConfig = await getDesktopApi().getFirebaseConfig();
+  if (!ipcConfig.apiKey || !ipcConfig.projectId || !ipcConfig.appId) return;
+
+  const hasViteConfig = Boolean(
+    env("NEXT_PUBLIC_FIREBASE_API_KEY") ?? env("VITE_FIREBASE_API_KEY")
+  );
+  if (hasViteConfig) {
+    ipcConfigLoaded = true;
+    return;
+  }
+
+  (import.meta.env as Record<string, string>).NEXT_PUBLIC_FIREBASE_API_KEY = ipcConfig.apiKey;
+  (import.meta.env as Record<string, string>).NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN = ipcConfig.authDomain;
+  (import.meta.env as Record<string, string>).NEXT_PUBLIC_FIREBASE_PROJECT_ID = ipcConfig.projectId;
+  (import.meta.env as Record<string, string>).NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET = ipcConfig.storageBucket;
+  (import.meta.env as Record<string, string>).NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID =
+    ipcConfig.messagingSenderId;
+  (import.meta.env as Record<string, string>).NEXT_PUBLIC_FIREBASE_APP_ID = ipcConfig.appId;
+  ipcConfigLoaded = true;
+}
+
+export async function getStaffDesktopFirebaseApp(): Promise<FirebaseApp | null> {
+  await ensureFirebaseConfigFromIpc();
+  const config = readFirebaseConfigFromVite();
+  if (!config.apiKey || !config.projectId || !config.appId) {
+    console.warn("[firebase] Missing Firebase config.");
+    return null;
+  }
+
+  if (firebaseApp) return firebaseApp;
+
+  try {
+    firebaseApp = getApp(FIREBASE_APP_NAME);
+  } catch {
+    firebaseApp = initializeApp(config, FIREBASE_APP_NAME);
+  }
+
+  return firebaseApp;
+}
+
+export async function getStaffDesktopFirestore(): Promise<Firestore | null> {
+  const app = await getStaffDesktopFirebaseApp();
+  if (!app) return null;
+  if (!firebaseDb) firebaseDb = getFirestore(app);
+  return firebaseDb;
+}
+
+export async function getStaffDesktopAuth(): Promise<Auth | null> {
+  const app = await getStaffDesktopFirebaseApp();
+  if (!app) return null;
+  if (!firebaseAuth) firebaseAuth = getAuth(app);
+  return firebaseAuth;
+}
+
+export type StaffProfile = {
+  uid: string;
+  email: string;
+  name: string;
+  role: StaffAppRole;
+};
+
+export async function resolveStaffProfile(user: User): Promise<StaffProfile | null> {
+  const db = await getStaffDesktopFirestore();
+  if (!db) return null;
+
+  const usersSnap = await getDoc(doc(db, "users", user.uid));
+  const usersData = usersSnap.exists() ? usersSnap.data() : null;
+
+  if (usersDocBlocksStaffAccess(usersData)) {
+    return null;
+  }
+
+  const token = await user.getIdTokenResult();
+  const role = resolveStaffAppRole(usersData, token.claims.role);
+  if (!role) return null;
+
+  const email = user.email ?? "";
+  const name =
+    (typeof usersData?.displayName === "string" && usersData.displayName.trim()) ||
+    (email.includes("@") ? email.split("@")[0] : "Staff");
+
+  return { uid: user.uid, email, name, role };
+}
+
+export async function loginStaff(email: string, password: string): Promise<StaffProfile> {
+  const auth = await getStaffDesktopAuth();
+  if (!auth) throw new Error("Firebase is not configured.");
+
+  const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+  await cred.user.getIdToken(true);
+  const profile = await resolveStaffProfile(cred.user);
+  if (!profile) {
+    await signOut(auth);
+    throw new Error("Your account is not approved or has no assigned role.");
+  }
+  return profile;
+}
+
+export async function logoutStaff(): Promise<void> {
+  const auth = await getStaffDesktopAuth();
+  if (!auth) return;
+  await signOut(auth);
+}
+
+export function subscribeAuthState(
+  onChange: (user: User | null, profile: StaffProfile | null) => void
+): () => void {
+  let unsub = () => {};
+  void (async () => {
+    const auth = await getStaffDesktopAuth();
+    if (!auth) {
+      onChange(null, null);
+      return;
+    }
+    unsub = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        onChange(null, null);
+        return;
+      }
+      void resolveStaffProfile(user)
+        .then((profile) => onChange(user, profile))
+        .catch(() => onChange(user, null));
+    });
+  })();
+  return () => unsub();
+}
