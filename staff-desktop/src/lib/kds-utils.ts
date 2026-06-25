@@ -1,4 +1,18 @@
-export type KitchenOrderStatus = "accepted" | "preparing" | "ready";
+import { normalizeOrderStatus } from "@shared/utils/canonical-order-fields";
+import type { StaffOrderRow } from "@/services/orders";
+
+export type KitchenOrderStatus = "new" | "accepted" | "preparing" | "ready";
+
+/** Kitchen queue status from Firestore `status` — payment does not remove orders from KDS. */
+export function resolveKitchenQueueStatus(order: StaffOrderRow): KitchenOrderStatus | null {
+  const canon = normalizeOrderStatus(String(order.status ?? ""));
+  if (canon === "cancelled" || canon === "completed") return null;
+  if (canon === "ready") return "ready";
+  if (canon === "preparing") return "preparing";
+  if (canon === "accepted") return "accepted";
+  if (canon === "new") return "new";
+  return null;
+}
 
 export type KitchenOrderItem = {
   productId: number | string;
@@ -17,8 +31,28 @@ export type KitchenOrder = {
   status: KitchenOrderStatus;
   createdAt: string;
   specialNotes?: string;
+  customerName?: string;
+  orderType?: string;
+  waiterName?: string;
+  acceptedAt?: string;
+  preparingAt?: string;
+  readyAt?: string;
   items: KitchenOrderItem[];
 };
+
+export function minutesSince(iso: string): number {
+  const ms = Date.now() - new Date(iso).getTime();
+  return Math.max(0, Math.floor(ms / 60000));
+}
+
+export function formatElapsed(iso: string): string {
+  const m = minutesSince(iso);
+  if (m < 1) return "Just now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
+}
 
 export function playNewOrderSound(): void {
   try {

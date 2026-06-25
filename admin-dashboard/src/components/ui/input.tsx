@@ -8,8 +8,8 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       type={type}
       className={cn(
-        "flex h-10 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/30",
-        "transition-colors focus:border-brand-primary/40 focus:outline-none focus:ring-2 focus:ring-brand-primary/20",
+        "theme-input flex h-10 w-full rounded-xl border border-theme-border bg-theme-input-bg px-3 py-2 text-sm text-theme-text-primary placeholder:text-theme-text-disabled",
+        "transition-colors focus:border-theme-primary/40 focus:outline-none focus:ring-2 focus:ring-theme-primary/20",
         "disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
@@ -24,8 +24,8 @@ export const Textarea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttrib
   ({ className, ...props }, ref) => (
     <textarea
       className={cn(
-        "flex min-h-[80px] w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/30",
-        "transition-colors focus:border-brand-primary/40 focus:outline-none focus:ring-2 focus:ring-brand-primary/20",
+        "theme-input flex min-h-[80px] w-full rounded-xl border border-theme-border bg-theme-input-bg px-3 py-2 text-sm text-theme-text-primary placeholder:text-theme-text-disabled",
+        "transition-colors focus:border-theme-primary/40 focus:outline-none focus:ring-2 focus:ring-theme-primary/20",
         className
       )}
       ref={ref}

@@ -8,6 +8,7 @@ import {
   type User
 } from "firebase/auth";
 import { doc, getDoc, getFirestore, type Firestore } from "firebase/firestore";
+import { canAccessStaffPlatform } from "@shared/constants/staff-app-access";
 import {
   resolveStaffAppRole,
   usersDocBlocksStaffAccess,
@@ -110,6 +111,9 @@ export async function resolveStaffProfile(user: User): Promise<StaffProfile | nu
   const db = await getStaffDesktopFirestore();
   if (!db) return null;
 
+  const staffSnap = await getDoc(doc(db, "staff_users", user.uid));
+  const staffData = staffSnap.exists() ? staffSnap.data() : null;
+
   const usersSnap = await getDoc(doc(db, "users", user.uid));
   const usersData = usersSnap.exists() ? usersSnap.data() : null;
 
@@ -117,12 +121,22 @@ export async function resolveStaffProfile(user: User): Promise<StaffProfile | nu
     return null;
   }
 
+  if (staffData?.isActive === false) {
+    return null;
+  }
+
   const token = await user.getIdTokenResult();
-  const role = resolveStaffAppRole(usersData, token.claims.role);
+  const role = resolveStaffAppRole(staffData ?? usersData, token.claims.role);
   if (!role) return null;
+
+  const platformDoc = staffData ?? usersData;
+  if (!canAccessStaffPlatform("desktop", platformDoc)) {
+    return null;
+  }
 
   const email = user.email ?? "";
   const name =
+    (typeof staffData?.name === "string" && staffData.name.trim()) ||
     (typeof usersData?.displayName === "string" && usersData.displayName.trim()) ||
     (email.includes("@") ? email.split("@")[0] : "Staff");
 
@@ -138,6 +152,18 @@ export async function loginStaff(email: string, password: string): Promise<Staff
   const profile = await resolveStaffProfile(cred.user);
   if (!profile) {
     await signOut(auth);
+    const db = await getStaffDesktopFirestore();
+    if (db) {
+      const staffSnap = await getDoc(doc(db, "staff_users", cred.user.uid));
+      const staffData = staffSnap.exists() ? staffSnap.data() : null;
+      const usersSnap = await getDoc(doc(db, "users", cred.user.uid));
+      const usersData = usersSnap.exists() ? usersSnap.data() : null;
+      const platformDoc = staffData ?? usersData;
+      const role = resolveStaffAppRole(staffData ?? usersData, (await cred.user.getIdTokenResult()).claims.role);
+      if (role && platformDoc && !canAccessStaffPlatform("desktop", platformDoc)) {
+        throw new Error("Your role is not permitted on the desktop app. Use the mobile app or contact an administrator.");
+      }
+    }
     throw new Error("Your account is not approved or has no assigned role.");
   }
   return profile;

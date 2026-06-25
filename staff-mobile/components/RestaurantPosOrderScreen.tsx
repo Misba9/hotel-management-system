@@ -26,8 +26,13 @@ import {
   type CartLine,
   type PlacedRestaurantOrder
 } from "../services/restaurant-orders";
+import { formatLineExtras, ItemModificationsModal } from "./ItemModificationsModal";
 
 const CAT_COL_W = 128;
+
+type ModifyTarget =
+  | { kind: "new"; id: string; name: string; price: number }
+  | { kind: "edit"; line: CartLine };
 
 export type RestaurantPosOrderScreenProps = {
   tableFirestoreId: string;
@@ -56,6 +61,7 @@ export function RestaurantPosOrderScreen({
   const [placed, setPlaced] = useState<PlacedRestaurantOrder | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [modifyTarget, setModifyTarget] = useState<ModifyTarget | null>(null);
 
   const topTitle =
     headerLabel ??
@@ -93,18 +99,51 @@ export function RestaurantPosOrderScreen({
     return grouped[selectedCategory] ?? [];
   }, [grouped, selectedCategory]);
 
-  const addToCart = useCallback((p: MenuProduct) => {
-    setPlaced(null);
-    setCart((prev) => {
-      const i = prev.findIndex((l) => l.productId === p.id);
-      if (i >= 0) {
-        const next = [...prev];
-        next[i] = { ...next[i], qty: next[i].qty + 1 };
-        return next;
+  const openProductModal = useCallback(
+    (p: MenuProduct) => {
+      setPlaced(null);
+      const existing = cart.find((l) => l.productId === p.id);
+      if (existing) {
+        setModifyTarget({ kind: "edit", line: existing });
+      } else {
+        setModifyTarget({ kind: "new", id: p.id, name: p.name, price: p.price });
       }
-      return [...prev, { productId: p.id, name: p.name, unitPrice: p.price, qty: 1 }];
-    });
-  }, []);
+    },
+    [cart]
+  );
+
+  const saveItemModifications = useCallback(
+    (mods: string[], note: string) => {
+      if (!modifyTarget) return;
+      const modList = mods.length > 0 ? mods : undefined;
+      const noteText = note || undefined;
+      setPlaced(null);
+
+      if (modifyTarget.kind === "new") {
+        setCart((prev) => [
+          ...prev,
+          {
+            productId: modifyTarget.id,
+            name: modifyTarget.name,
+            unitPrice: modifyTarget.price,
+            qty: 1,
+            modifications: modList,
+            note: noteText
+          }
+        ]);
+      } else {
+        setCart((prev) =>
+          prev.map((l) =>
+            l.productId === modifyTarget.line.productId
+              ? { ...l, modifications: modList, note: noteText }
+              : l
+          )
+        );
+      }
+      setModifyTarget(null);
+    },
+    [modifyTarget]
+  );
 
   const bumpQty = useCallback((productId: string, delta: number) => {
     setPlaced(null);
@@ -198,7 +237,7 @@ export function RestaurantPosOrderScreen({
       const line = cart.find((c) => c.productId === p.id);
       return (
         <Pressable
-          onPress={() => addToCart(p)}
+          onPress={() => openProductModal(p)}
           style={({ pressed }) => [styles.tile, { width: tileW }, pressed && styles.pressed]}
         >
           {p.image ? (
@@ -226,7 +265,7 @@ export function RestaurantPosOrderScreen({
         </Pressable>
       );
     },
-    [addToCart, bumpQty, cart, tileW]
+    [bumpQty, cart, openProductModal, tileW]
   );
 
   return (
@@ -306,16 +345,23 @@ export function RestaurantPosOrderScreen({
           {cart.length === 0 ? (
             <Text style={styles.cartEmpty}>Tap products to add.</Text>
           ) : (
-            cart.map((item) => (
+            cart.map((item) => {
+              const extras = formatLineExtras(item);
+              return (
               <View key={item.productId} style={styles.cartLine}>
-                <View style={{ flex: 1 }}>
+                <Pressable style={{ flex: 1 }} onPress={() => setModifyTarget({ kind: "edit", line: item })}>
                   <Text style={styles.cartLineText} numberOfLines={1}>
                     {item.name}
                   </Text>
                   <Text style={styles.cartLineMeta}>
                     {item.qty} × ₹{item.unitPrice.toFixed(0)}
                   </Text>
-                </View>
+                  {extras ? (
+                    <Text style={styles.cartLineExtras} numberOfLines={2}>
+                      {extras}
+                    </Text>
+                  ) : null}
+                </Pressable>
                 <Text style={styles.cartLineAmt}>₹{(item.qty * item.unitPrice).toFixed(0)}</Text>
                 <View style={styles.cartLineActions}>
                   <Pressable onPress={() => bumpQty(item.productId, -1)} style={styles.miniBtn}>
@@ -329,7 +375,8 @@ export function RestaurantPosOrderScreen({
                   </Pressable>
                 </View>
               </View>
-            ))
+            );
+            })
           )}
         </ScrollView>
         <View style={styles.totalsBlock}>
@@ -367,6 +414,19 @@ export function RestaurantPosOrderScreen({
         </View>
         <Text style={styles.hint}>{confirmHint}</Text>
       </View>
+
+      <ItemModificationsModal
+        visible={modifyTarget != null}
+        productName={
+          modifyTarget?.kind === "new" ? modifyTarget.name : (modifyTarget?.line.name ?? "")
+        }
+        initialModifications={
+          modifyTarget?.kind === "edit" ? (modifyTarget.line.modifications ?? []) : []
+        }
+        initialNote={modifyTarget?.kind === "edit" ? (modifyTarget.line.note ?? "") : ""}
+        onClose={() => setModifyTarget(null)}
+        onSave={saveItemModifications}
+      />
     </View>
   );
 }
@@ -482,6 +542,7 @@ const styles = StyleSheet.create({
   },
   cartLineText: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
   cartLineMeta: { fontSize: 12, color: "#64748b", marginTop: 2 },
+  cartLineExtras: { fontSize: 11, color: "#b45309", marginTop: 4, fontWeight: "600" },
   cartLineAmt: { fontSize: 15, fontWeight: "900", color: "#0f172a", marginHorizontal: 8 },
   cartLineActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   miniBtn: {

@@ -31,6 +31,7 @@ import { useCustomerOrders } from "@/hooks/use-customer-orders";
 import type { DeliveryAddress, DeliveryAddressInput, SavedAddressLabel } from "@/lib/delivery-address-types";
 import { formatDeliveryAddressForOrder } from "@/lib/delivery-address-types";
 import { promiseWithTimeout } from "@/lib/promise-with-timeout";
+import { ThemeSwitcher } from "../../../../shared/theme/react/ThemeSwitcher";
 
 const ADDRESS_SAVE_TIMEOUT_MS = 45_000;
 
@@ -747,19 +748,30 @@ function ProfileAuthenticatedPage() {
           ) : null}
 
           {section === "account" ? (
-            <div className="max-w-lg rounded-3xl border border-slate-200/80 bg-white p-6 shadow-md dark:border-slate-700 dark:bg-slate-900">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Account</h2>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                Sign out on this device. Your cart stays in this browser until you clear it or sign in again to sync.
-              </p>
-              <button
-                type="button"
-                onClick={() => setLogoutDialogOpen(true)}
-                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 py-3.5 text-sm font-semibold text-red-700 transition hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60"
-              >
-                <LogOut className="h-4 w-4" />
-                Log out
-              </button>
+            <div className="max-w-lg space-y-4">
+              <div className="rounded-3xl border border-theme-border bg-theme-card p-6 shadow-md">
+                <h2 className="text-lg font-semibold text-theme-text-primary">Appearance</h2>
+                <p className="mt-2 text-sm leading-relaxed text-theme-text-secondary">
+                  Choose light, dark, or match your system preference.
+                </p>
+                <div className="mt-4">
+                  <ThemeSwitcher />
+                </div>
+              </div>
+              <div className="rounded-3xl border border-theme-border bg-theme-card p-6 shadow-md">
+                <h2 className="text-lg font-semibold text-theme-text-primary">Account</h2>
+                <p className="mt-2 text-sm leading-relaxed text-theme-text-secondary">
+                  Sign out on this device. Your cart stays in this browser until you clear it or sign in again to sync.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setLogoutDialogOpen(true)}
+                  className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-theme-danger/30 bg-theme-danger-muted py-3.5 text-sm font-semibold text-theme-danger transition hover:brightness-110"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Log out
+                </button>
+              </div>
             </div>
           ) : null}
         </div>

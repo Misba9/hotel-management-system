@@ -68,3 +68,23 @@ export type OfflineSyncStatus = {
   lastError: string | null;
   syncing: boolean;
 };
+
+export type RazorpayInitiatePayload = {
+  orderId: string;
+  method: "upi" | "online" | "card";
+  amountPaise: number;
+};
+
+export type RazorpayInitiateResult = {
+  success: boolean;
+  razorpayOrderId: string;
+  keyId: string;
+  currency: string;
+};
+
+export type RazorpayVerifyPayload = {
+  orderId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+};

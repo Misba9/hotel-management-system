@@ -8,6 +8,8 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ThemeSwitcher } from "../../../../shared/theme/react/ThemeSwitcher";
+import { useTheme } from "@/components/providers/theme-provider";
 
 type SettingsPayload = {
   businessHours: string;
@@ -31,6 +33,7 @@ type PrinterRow = {
 };
 
 export function SettingsPageFeature() {
+  const { resolved, preference } = useTheme();
   const [settings, setSettings] = useState<SettingsPayload>({
     businessHours: "09:00 - 23:00",
     deliveryRadiusKm: 20,
@@ -279,8 +282,21 @@ export function SettingsPageFeature() {
           </GlassCard>
         </TabsContent>
 
+        <TabsContent value="theme">
+          <GlassCard hover>
+            <h3 className="mb-2 font-semibold text-theme-text-primary">Appearance</h3>
+            <p className="mb-6 text-sm text-theme-text-secondary">
+              Choose how the admin panel looks. Your preference is saved on this device.
+            </p>
+            <ThemeSwitcher />
+            <p className="mt-6 text-xs text-theme-text-disabled">
+              Active theme: <span className="font-semibold capitalize text-theme-text-secondary">{preference === "system" ? `System (${resolved})` : resolved}</span>
+            </p>
+          </GlassCard>
+        </TabsContent>
+
         {settingSections
-          .filter((s) => !["restaurant", "payments", "printers"].includes(s.id))
+          .filter((s) => !["restaurant", "payments", "printers", "theme"].includes(s.id))
           .map(({ id, label, icon: Icon }) => (
             <TabsContent key={id} value={id}>
               <GlassCard>

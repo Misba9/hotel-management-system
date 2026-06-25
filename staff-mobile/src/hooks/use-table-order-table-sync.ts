@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import { collection, doc, query, updateDoc, where } from "firebase/firestore";
+import { normalizeOrderStatus } from "@shared/utils/canonical-order-fields";
+import { DINE_IN_ORDER_TYPES } from "@shared/types/table";
 import { staffDb } from "../lib/firebase";
 import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 import { requireFirestoreId } from "../lib/firestore-path";
@@ -7,31 +9,12 @@ import { logWarn } from "../lib/error-logging";
 import { ORDERS_COLLECTION } from "../services/orders.js";
 import { TABLES_COLLECTION } from "./use-tables";
 
-/** Order statuses that mean the table can be marked FREE (case-insensitive). */
-const TERMINAL_ORDER_STATUSES = new Set([
-  "delivered",
-  "cancelled",
-  "canceled",
-  "rejected",
-  "completed",
-  "closed",
-  "void",
-  "done"
-]);
-
 function isTerminalOrderStatus(status: unknown): boolean {
-  const s = String(status ?? "")
-    .trim()
-    .toLowerCase();
-  return TERMINAL_ORDER_STATUSES.has(s);
+  const canon = normalizeOrderStatus(String(status ?? ""));
+  return canon === "completed" || canon === "cancelled";
 }
 
-/**
- * Realtime: `onSnapshot` on `orders` where `orderType == "table"`.
- * When any open (non-terminal) order exists for `tableId`, sets `tables/{tableId}.status` to OCCUPIED;
- * when all orders for that table are terminal (or no open orders remain), sets FREE.
- * Works with {@link useTables} so the dashboard updates as `tables` documents change.
- */
+/** Realtime dine-in orders → sync `tables/{tableId}.status`. */
 export function useTableOrderTableSync(enabled: boolean) {
   const lastDesiredOccupiedRef = useRef<Map<string, boolean>>(new Map());
 
@@ -41,7 +24,10 @@ export function useTableOrderTableSync(enabled: boolean) {
       return undefined;
     }
 
-    const q = query(collection(staffDb, ORDERS_COLLECTION), where("orderType", "==", "table"));
+    const q = query(
+      collection(staffDb, ORDERS_COLLECTION),
+      where("orderType", "in", [...DINE_IN_ORDER_TYPES])
+    );
 
     const unsub = subscribeFirestoreQuery(
       "useTableOrderTableSync",

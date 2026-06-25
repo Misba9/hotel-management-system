@@ -11,7 +11,8 @@ export type TablePosGridCardProps = {
 };
 
 export function TablePosGridCard({ table, activeOrderCount, onTakeOrder, width }: TablePosGridCardProps) {
-  const busy = table.status === "occupied";
+  /** Active dine-in tickets are the source of truth — Firestore `tables.status` can be stale. */
+  const busy = activeOrderCount > 0;
   const label =
     table.displayName?.trim() ||
     (Number.isFinite(table.number) && table.number > 0 ? `Table ${table.number}` : "Table");

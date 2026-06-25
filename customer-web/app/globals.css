@@ -1,21 +1,13 @@
+@import "../../shared/theme/css-variables.css";
+@import "../../shared/theme/components.css";
+@import "../../shared/theme/print.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 html {
   overflow-x: hidden;
-}
-
-body {
-  background: #fff8f3;
-  color: #0f172a;
-  line-height: 1.6;
-  transition: background-color 0.25s ease, color 0.25s ease;
-}
-
-.dark body {
-  background: #0b1220;
-  color: #e2e8f0;
 }
 
 h1,
@@ -47,13 +39,9 @@ h6 {
   }
 }
 
+/* Legacy alias — maps to theme glass */
 .glass-card {
-  background: rgba(255, 255, 255, 0.66);
+  background: var(--theme-glass);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.45);
-}
-
-.dark .glass-card {
-  background: rgba(15, 23, 42, 0.66);
-  border: 1px solid rgba(51, 65, 85, 0.6);
+  border: 1px solid var(--theme-divider);
 }

@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { NotificationBell, NotificationCenter } from "@/components/admin/notification-center";
 import { MobileBottomNav } from "@/components/admin/mobile-bottom-nav";
+import { ThemeSwitcher } from "../../../../shared/theme/react/ThemeSwitcher";
 
 type Props = {
   children: ReactNode;
@@ -60,7 +61,7 @@ export function AdminDashboardShell({ children }: Props) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-surface bg-mesh-dark">
+    <div className="min-h-screen bg-theme-background bg-mesh-dark">
       <AnimatePresence>
         {mobileOpen ? (
           <motion.button
@@ -78,7 +79,7 @@ export function AdminDashboardShell({ children }: Props) {
       <div className="flex min-h-screen">
         <aside
           className={cn(
-            "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-white/[0.06] bg-surface-raised/95 shadow-glass backdrop-blur-xl transition-all duration-300 md:static md:z-0",
+            "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-theme-border bg-theme-surface/95 shadow-glass backdrop-blur-xl transition-all duration-300 md:static md:z-0",
             collapsed ? "w-[4.5rem]" : "w-[min(17rem,88vw)] md:w-64",
             mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
           )}
@@ -186,6 +187,7 @@ export function AdminDashboardShell({ children }: Props) {
               </div>
 
               <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                <ThemeSwitcher variant="compact" />
                 <NotificationBell onClick={() => setNotificationsOpen(true)} count={3} />
 
                 <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] py-1 pl-1 pr-2">

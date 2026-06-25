@@ -1,5 +1,6 @@
 import { onRequest, HttpsError } from "firebase-functions/v2/https";
 import { z } from "zod";
+import { httpCorsOptions } from "../cors";
 import {
   COLLECTIONS,
   assertRole,
@@ -41,7 +42,7 @@ const assignDeliveryHttpSchema = z.object({
 });
 
 /** App Check for HTTP endpoints: enable in Firebase Console (HTTP functions do not accept `enforceAppCheck` in code like callables). */
-export const platformApiV1 = onRequest(async (request, response) => {
+export const platformApiV1 = onRequest({ ...httpCorsOptions }, async (request, response) => {
   try {
     const identity = await authenticateHttp(request);
     const path = request.path || "/";

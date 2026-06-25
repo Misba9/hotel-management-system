@@ -1,5 +1,6 @@
 import express from "express";
 import {onRequest} from "firebase-functions/v2/https";
+import {appendIntegrationSyncLog} from "../integration-sync-log.js";
 import {mapSwiggyPayload, mapZomatoPayload, persistPlatformOrder} from "../platform-order.js";
 
 function verifySecret(
@@ -45,9 +46,21 @@ async function processZomatoWebhook(
     }
 
     await persistPlatformOrder(order);
+    await appendIntegrationSyncLog({
+      integrationId: "zomato",
+      service: "Zomato",
+      event: `Order sync completed — ${order.orderNumber ?? order.id}`,
+      status: "success"
+    });
     res.status(200).json({ok: true, orderId: order.id, orderNumber: order.orderNumber});
   } catch (error) {
     console.error("[zomato-webhook] failed", error);
+    await appendIntegrationSyncLog({
+      integrationId: "zomato",
+      service: "Zomato",
+      event: "Order sync failed — webhook error",
+      status: "error"
+    }).catch(() => undefined);
     res.status(500).json({error: "Failed to process Zomato webhook"});
   }
 }
@@ -82,9 +95,21 @@ async function processSwiggyWebhook(
     }
 
     await persistPlatformOrder(order);
+    await appendIntegrationSyncLog({
+      integrationId: "swiggy",
+      service: "Swiggy",
+      event: `Order sync completed — ${order.orderNumber ?? order.id}`,
+      status: "success"
+    });
     res.status(200).json({ok: true, orderId: order.id, orderNumber: order.orderNumber});
   } catch (error) {
     console.error("[swiggy-webhook] failed", error);
+    await appendIntegrationSyncLog({
+      integrationId: "swiggy",
+      service: "Swiggy",
+      event: "Order sync failed — webhook error",
+      status: "error"
+    }).catch(() => undefined);
     res.status(500).json({error: "Failed to process Swiggy webhook"});
   }
 }

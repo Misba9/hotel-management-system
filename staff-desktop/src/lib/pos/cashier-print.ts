@@ -18,6 +18,12 @@ type PrintParams = {
   posSettings: PosSettingsDoc;
 };
 
+export type CashierPrintResult = {
+  receiptPrinted: boolean;
+  kotPrinted: boolean;
+  warnings: string[];
+};
+
 function resolvePrinterLabel(printers: PrinterRow[], id: string | undefined, role: "counter" | "kitchen") {
   const byId = id ? printers.find((p) => p.id === id) : undefined;
   const byRole = printers.find((p) => p.role === role);
@@ -26,14 +32,17 @@ function resolvePrinterLabel(printers: PrinterRow[], id: string | undefined, rol
   return p.ipAddress ? `${p.name} (${p.ipAddress})` : p.name;
 }
 
-/** Print customer receipt + kitchen KOT after payment. */
+/**
+ * Print customer receipt + kitchen KOT after payment.
+ * Never throws — order confirmation must not depend on printer availability.
+ */
 export async function printCashierOrderDocuments({
   order,
   paymentMethod,
   taxPercent,
   printers,
   posSettings
-}: PrintParams): Promise<void> {
+}: PrintParams): Promise<CashierPrintResult> {
   const lines = staffOrderItemsToCartLines(order.items);
   const { subtotal, taxAmount, grandTotal, taxPercent: tax } = calculateBillTotals(order.totalAmount, taxPercent);
   const token = typeof order.tokenNumber === "number" && order.tokenNumber > 0 ? `#${order.tokenNumber}` : "—";
@@ -42,21 +51,37 @@ export async function printCashierOrderDocuments({
   const counterLabel = resolvePrinterLabel(printers, posSettings.counterPrinterId, "counter");
   const kitchenLabel = resolvePrinterLabel(printers, posSettings.kitchenPrinterId, "kitchen");
 
-  await printFinalInvoice({
-    orderIdShort: order.id.slice(0, 10).toUpperCase(),
-    tableLabel: `${table} · ${counterLabel}`,
-    tokenLabel: token,
-    items: lines,
-    subtotal,
-    taxPercent: tax,
-    taxAmount,
-    grandTotal,
-    paymentMethodLabel: PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod
-  });
+  const warnings: string[] = [];
+  let receiptPrinted = false;
+  let kotPrinted = false;
 
-  await printKitchenKot(order, { source: "manual" });
+  try {
+    await printFinalInvoice({
+      orderIdShort: order.id.slice(0, 10).toUpperCase(),
+      tableLabel: `${table} · ${counterLabel}`,
+      tokenLabel: token,
+      items: lines,
+      subtotal,
+      taxPercent: tax,
+      taxAmount,
+      grandTotal,
+      paymentMethodLabel: PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod
+    });
+    receiptPrinted = true;
+  } catch (e) {
+    warnings.push(e instanceof Error ? e.message : "Receipt could not be printed");
+  }
 
-  if (__DEV__) {
+  try {
+    await printKitchenKot(order, { source: "manual" });
+    kotPrinted = true;
+  } catch (e) {
+    warnings.push(e instanceof Error ? e.message : "Kitchen ticket could not be printed");
+  }
+
+  if (import.meta.env.DEV && kotPrinted) {
     console.log(`[print] Kitchen copy → ${kitchenLabel}`);
   }
+
+  return { receiptPrinted, kotPrinted, warnings };
 }

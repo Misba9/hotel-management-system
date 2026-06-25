@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { adminAuth, adminDb } from "@shared/firebase/admin";
 import { requireAdmin } from "@shared/utils/admin-api-auth";
+import { defaultAppsForRole } from "../../../../../../../shared/constants/staff-app-access";
 import {
   type StaffManagementRoleId,
   staffManagementRoleToAuthClaim,
@@ -10,21 +11,24 @@ import {
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
-const staffManagementRoleSchema = z.enum(["admin", "manager", "cashier", "kitchen", "delivery", "waiter"]);
+const staffManagementRoleSchema = z.enum(["admin", "manager", "cashier", "kitchen", "waiter"]);
+const allowedAppsSchema = z.array(z.enum(["desktop", "mobile"])).min(1).max(2);
 
 const patchBody = z
   .object({
     role: staffManagementRoleSchema.optional(),
     isActive: z.boolean().optional(),
     name: z.string().min(2).max(120).optional(),
-    newPassword: z.string().min(6).max(128).optional()
+    newPassword: z.string().min(6).max(128).optional(),
+    allowedApps: allowedAppsSchema.optional()
   })
   .refine(
     (v) =>
       v.role !== undefined ||
       v.isActive !== undefined ||
       v.name !== undefined ||
-      v.newPassword !== undefined,
+      v.newPassword !== undefined ||
+      v.allowedApps !== undefined,
     { message: "Nothing to update." }
   );
 
@@ -70,6 +74,9 @@ export async function PATCH(request: Request, context: { params: { uid: string }
 
     if (body.role !== undefined) {
       updates.role = body.role;
+      if (body.allowedApps === undefined) {
+        updates.allowedApps = defaultAppsForRole(body.role as StaffManagementRoleId);
+      }
       await adminAuth.setCustomUserClaims(uid, {
         role: staffManagementRoleToAuthClaim(body.role as StaffManagementRoleId)
       });
@@ -101,6 +108,10 @@ export async function PATCH(request: Request, context: { params: { uid: string }
 
     if (body.isActive === true || body.role !== undefined) {
       updates.pendingApproval = false;
+    }
+
+    if (body.allowedApps !== undefined) {
+      updates.allowedApps = body.allowedApps;
     }
 
     if (body.newPassword !== undefined) {

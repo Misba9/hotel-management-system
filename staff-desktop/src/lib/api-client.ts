@@ -1,27 +1,6 @@
-function trimEnv(raw: string | undefined): string | undefined {
-  if (raw == null || raw === "") return undefined;
-  return raw.trim().replace(/^["']|["']$/g, "");
-}
+import { getPlatformApiBaseUrl } from "./cloud-functions-url";
 
-function env(name: string): string | undefined {
-  return trimEnv(import.meta.env[name as keyof ImportMetaEnv] as string | undefined);
-}
-
-/** Cloud Functions HTTP API (`platformApiV1`). */
-export function getPlatformApiBaseUrl(): string {
-  const explicit =
-    env("NEXT_PUBLIC_PLATFORM_API_URL") ??
-    env("VITE_PLATFORM_API_URL") ??
-    env("NEXT_PUBLIC_API_BASE_URL") ??
-    env("VITE_API_BASE_URL");
-  if (explicit) return explicit.replace(/\/$/, "");
-
-  const projectId = env("NEXT_PUBLIC_FIREBASE_PROJECT_ID") ?? env("VITE_FIREBASE_PROJECT_ID");
-  if (projectId) {
-    return `https://us-central1-${projectId}.cloudfunctions.net/platformApiV1`;
-  }
-  return "";
-}
+export { getPlatformApiBaseUrl } from "./cloud-functions-url";
 
 export async function fetchWithAuth(path: string, init: RequestInit = {}): Promise<Response> {
   const { getStaffDesktopAuth } = await import("./firebase");

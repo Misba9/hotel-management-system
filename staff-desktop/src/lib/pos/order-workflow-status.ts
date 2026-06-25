@@ -2,6 +2,7 @@ import type { StaffOrderRow } from "@/services/orders";
 import type { PlatformTab } from "@/lib/pos/cashier-pos-store";
 import { resolveOrderSource } from "@/lib/pos/order-source";
 import { isWaiterPosDineInOrder } from "@shared/utils/waiter-pos-order";
+import { normalizeOrderStatus, extractCustomerFields } from "@shared/utils/canonical-order-fields";
 
 /** Cashier order pipeline status for Swiggy / Zomato / Online / Waiter channels. */
 export type WorkflowStatus = "new" | "accepted" | "preparing" | "ready" | "completed" | "cancelled";
@@ -43,15 +44,12 @@ export function orderBelongsToPlatform(order: StaffOrderRow, platform: PlatformT
 }
 
 export function resolveWorkflowStatus(order: StaffOrderRow): WorkflowStatus {
-  const raw = String(order.status ?? "").toLowerCase().trim();
-  const ps = String(order.paymentStatus ?? "").toLowerCase();
-
-  if (["cancelled", "rejected", "void"].includes(raw)) return "cancelled";
-  if (raw === "completed" || raw === "delivered" || ps === "paid") return "completed";
-  if (raw === "ready" || raw === "done") return "ready";
-  if (raw === "preparing" || raw === "placed") return "preparing";
-  if (raw === "accepted" || raw === "confirmed") return "accepted";
-  if (["pending", "created", "new"].includes(raw)) return "new";
+  const canon = normalizeOrderStatus(String(order.status ?? ""));
+  if (canon === "cancelled") return "cancelled";
+  if (canon === "completed") return "completed";
+  if (canon === "ready") return "ready";
+  if (canon === "preparing") return "preparing";
+  if (canon === "accepted") return "accepted";
   return "new";
 }
 
@@ -90,13 +88,13 @@ export function formatOrderTime(order: StaffOrderRow): string {
 }
 
 export function orderCustomerName(order: StaffOrderRow): string {
-  const raw = order as StaffOrderRow & { customerName?: string };
-  return raw.customerName?.trim() || order.customer?.name?.trim() || "Guest";
+  const fields = extractCustomerFields(order as unknown as Record<string, unknown>);
+  return fields.customerName?.trim() || order.customer?.name?.trim() || "Guest";
 }
 
 export function orderCustomerPhone(order: StaffOrderRow): string {
-  const raw = order as StaffOrderRow & { phone?: string };
-  return raw.phone?.trim() || order.customer?.phone?.trim() || "—";
+  const fields = extractCustomerFields(order as unknown as Record<string, unknown>);
+  return fields.customerPhone?.trim() || order.customer?.phone?.trim() || "—";
 }
 
 export function orderDisplayId(order: StaffOrderRow): string {

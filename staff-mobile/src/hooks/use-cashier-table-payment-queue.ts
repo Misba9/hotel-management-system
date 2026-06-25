@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Timestamp } from "firebase/firestore";
 import { collection, limit, query, where } from "firebase/firestore";
+import { isDineInOrderType, normalizeOrderStatus, normalizePaymentStatus } from "@shared/utils/canonical-order-fields";
+import { DINE_IN_ORDER_TYPES } from "@shared/types/table";
 import { staffDb } from "../lib/firebase";
 import { subscribeFirestoreQuery } from "../lib/firestore-listener";
 import { ORDERS_COLLECTION } from "../services/orders.js";
@@ -16,6 +18,7 @@ export type CashierQueueLine = {
 export type CashierQueueOrder = {
   id: string;
   tableNumber: number;
+  tableName?: string;
   totalAmount: number;
   status: string;
   paymentStatus: string;
@@ -27,7 +30,7 @@ function parseItems(raw: unknown): CashierQueueLine[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((line: Record<string, unknown>) => ({
     name: String(line?.name ?? "Item"),
-    price: Number(line?.price ?? 0),
+    price: Number(line?.price ?? line?.unitPrice ?? 0),
     quantity: Number(line?.quantity ?? line?.qty ?? 1)
   }));
 }
@@ -38,30 +41,23 @@ function readCreatedAt(data: Record<string, unknown>): Date | null {
   return null;
 }
 
-function mapTableDoc(id: string, data: Record<string, unknown>): CashierQueueOrder | null {
-  if (String(data.orderType ?? "").toLowerCase() !== "table") return null;
-  const pay = String(data.paymentStatus ?? "").toUpperCase();
-  const st = String(data.status ?? "").toUpperCase();
-  if (pay === "PAID" || st === "COMPLETED") return null;
+function mapDineInDoc(id: string, data: Record<string, unknown>): CashierQueueOrder | null {
+  if (!isDineInOrderType(String(data.orderType ?? ""))) return null;
+  const pay = normalizePaymentStatus(String(data.paymentStatus ?? ""));
+  const st = normalizeOrderStatus(String(data.status ?? ""));
+  if (pay === "paid" || st === "completed" || st === "cancelled") return null;
+  const tn = data.tableNumber;
+  const tableName = typeof data.tableName === "string" ? data.tableName : undefined;
   return {
     id,
-    tableNumber: Number(data.tableNumber ?? 0),
+    tableNumber: typeof tn === "number" ? tn : Number(tn) || 0,
+    tableName,
     totalAmount: Number(data.totalAmount ?? data.total ?? 0),
-    status: String(data.status ?? ""),
-    paymentStatus: String(data.paymentStatus ?? "").trim(),
+    status: st,
+    paymentStatus: pay,
     items: parseItems(data.items),
     createdAt: readCreatedAt(data)
   };
-}
-
-function mergeById(
-  requested: CashierQueueOrder[],
-  served: CashierQueueOrder[]
-): CashierQueueOrder[] {
-  const map = new Map<string, CashierQueueOrder>();
-  for (const o of served) map.set(o.id, o);
-  for (const o of requested) map.set(o.id, o);
-  return [...map.values()].sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
 }
 
 export type UseCashierTablePaymentQueueResult = {
@@ -70,20 +66,14 @@ export type UseCashierTablePaymentQueueResult = {
   error: string | null;
 };
 
-/**
- * Cashier queue: table orders where `paymentStatus == REQUESTED` **or** `status == SERVED`
- * (still unpaid). Two `onSnapshot` listeners merged by order id.
- */
 export function useCashierTablePaymentQueue(enabled = true): UseCashierTablePaymentQueueResult {
-  const [requested, setRequested] = useState<CashierQueueOrder[]>([]);
-  const [served, setServed] = useState<CashierQueueOrder[]>([]);
+  const [readyUnpaid, setReadyUnpaid] = useState<CashierQueueOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!enabled) {
-      setRequested([]);
-      setServed([]);
+      setReadyUnpaid([]);
       setLoading(false);
       setError(null);
       return undefined;
@@ -92,72 +82,37 @@ export function useCashierTablePaymentQueue(enabled = true): UseCashierTablePaym
     setLoading(true);
     setError(null);
 
-    let reqReady = false;
-    let srvReady = false;
-
-    const tryDone = () => {
-      if (reqReady && srvReady) setLoading(false);
-    };
-
-    const onErr = (err: unknown) => {
-      setError(err instanceof Error ? err.message : "Could not load cashier queue.");
-      setLoading(false);
-    };
-
-    const qReq = query(
+    const q = query(
       collection(staffDb, ORDERS_COLLECTION),
-      where("paymentStatus", "==", "REQUESTED"),
-      limit(SNAPSHOT_LIMIT)
-    );
-    const qSrv = query(
-      collection(staffDb, ORDERS_COLLECTION),
-      where("status", "==", "SERVED"),
+      where("orderType", "in", [...DINE_IN_ORDER_TYPES]),
+      where("status", "==", "ready"),
       limit(SNAPSHOT_LIMIT)
     );
 
-    const unsubReq = subscribeFirestoreQuery(
-      "useCashierTablePaymentQueue:requested",
-      qReq,
+    const unsub = subscribeFirestoreQuery(
+      "useCashierTablePaymentQueue",
+      q,
       (snap) => {
         const list: CashierQueueOrder[] = [];
         snap.forEach((d) => {
-          const row = mapTableDoc(d.id, d.data() as Record<string, unknown>);
-          if (row) list.push(row);
+          const row = mapDineInDoc(d.id, d.data() as Record<string, unknown>);
+          if (row && row.paymentStatus === "pending") list.push(row);
         });
         list.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
-        setRequested(list);
-        reqReady = true;
-        tryDone();
+        setReadyUnpaid(list);
+        setLoading(false);
         setError(null);
       },
-      onErr
+      (err) => {
+        setError(err instanceof Error ? err.message : "Could not load cashier queue.");
+        setLoading(false);
+      }
     );
 
-    const unsubSrv = subscribeFirestoreQuery(
-      "useCashierTablePaymentQueue:served",
-      qSrv,
-      (snap) => {
-        const list: CashierQueueOrder[] = [];
-        snap.forEach((d) => {
-          const row = mapTableDoc(d.id, d.data() as Record<string, unknown>);
-          if (row) list.push(row);
-        });
-        list.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
-        setServed(list);
-        srvReady = true;
-        tryDone();
-        setError(null);
-      },
-      onErr
-    );
-
-    return () => {
-      unsubReq();
-      unsubSrv();
-    };
+    return () => unsub();
   }, [enabled]);
 
-  const orders = useMemo(() => mergeById(requested, served), [requested, served]);
+  const orders = useMemo(() => readyUnpaid, [readyUnpaid]);
 
   return { orders, loading, error };
 }

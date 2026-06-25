@@ -3,33 +3,32 @@ import { collection, limit, query, where } from "firebase/firestore";
 import { staffDb } from "@/lib/staff-db";
 import { subscribeFirestoreQuery } from "@/lib/firestore-listener";
 import { ORDERS_COLLECTION } from "@/services/firestore-orders-core.js";
-import { toTableOrderDisplayStatus } from "./use-table-active-orders";
+import { normalizeOrderStatus } from "@shared/utils/canonical-order-fields";
+import { DINE_IN_ORDER_TYPES } from "@shared/types/table";
 
 const SNAPSHOT_LIMIT = 250;
 
 /** Higher = more urgent for waiter (floor badge). */
 const STATUS_PRIORITY: Record<string, number> = {
-  READY: 40,
-  PREPARING: 30,
-  PLACED: 20,
-  SERVED: 10
+  ready: 40,
+  preparing: 30,
+  accepted: 25,
+  new: 20
 };
 
 function isCompletedStatus(status: unknown): boolean {
-  return String(status ?? "")
-    .trim()
-    .toUpperCase() === "COMPLETED";
+  return normalizeOrderStatus(String(status ?? "")) === "completed";
 }
 
 function pickFloorStatus(candidates: string[]): string | null {
   let best: string | null = null;
   let score = -1;
   for (const raw of candidates) {
-    const u = raw.trim().toUpperCase();
-    const p = STATUS_PRIORITY[u] ?? 0;
+    const canon = normalizeOrderStatus(raw);
+    const p = STATUS_PRIORITY[canon] ?? 0;
     if (p > score) {
       score = p;
-      best = u;
+      best = canon;
     }
   }
   return best;
@@ -64,7 +63,7 @@ export function useWaiterFloorOrders(enabled = true): UseWaiterFloorOrdersResult
 
     const q = query(
       collection(staffDb, ORDERS_COLLECTION),
-      where("orderType", "==", "table"),
+      where("orderType", "in", [...DINE_IN_ORDER_TYPES]),
       limit(SNAPSHOT_LIMIT)
     );
 
@@ -78,9 +77,9 @@ export function useWaiterFloorOrders(enabled = true): UseWaiterFloorOrdersResult
           if (isCompletedStatus(data.status)) return;
           const tn = data.tableNumber;
           if (typeof tn !== "number" || !Number.isFinite(tn)) return;
-          const display = toTableOrderDisplayStatus(data.status);
+          const canon = normalizeOrderStatus(String(data.status ?? ""));
           const list = bucket.get(tn) ?? [];
-          list.push(display);
+          list.push(canon);
           bucket.set(tn, list);
         });
         setRawByTable(bucket);

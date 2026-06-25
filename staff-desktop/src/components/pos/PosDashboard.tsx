@@ -20,6 +20,7 @@ import { getRazorpayPublicKeyId, openRazorpayCheckout } from "@/lib/pos/razorpay
 import { validateCouponCode } from "@/lib/pos/coupon-validate";
 import { useCashierPosStore } from "@/lib/pos/cashier-pos-store";
 import { saveHeldOrder, loadHeldOrders, removeHeldOrder, type HeldOrder } from "@/lib/pos/hold-orders-store";
+import { formatItemExtras } from "@/lib/pos/format-item-extras";
 import { resolveOrderSource } from "@/lib/pos/order-source";
 import {
   countWorkflowStatuses,
@@ -335,18 +336,19 @@ export const PosDashboard = forwardRef<PosDashboardHandle, PosDashboardProps>(fu
       });
 
       if (useRazorpay) {
-        const keyId = getRazorpayPublicKeyId();
-        if (!keyId) throw new Error("Razorpay key is not configured (VITE_RAZORPAY_KEY_ID).");
-
-        const { razorpayOrderId } = await initiatePosRazorpayPayment(
+        const amountPaise = Math.round(billTotals.grandTotal * 100);
+        const { razorpayOrderId, keyId: serverKeyId } = await initiatePosRazorpayPayment(
           placed.orderId,
-          paymentMethod === "card" ? "online" : "upi"
+          paymentMethod === "card" ? "online" : "upi",
+          amountPaise
         );
+        const keyId = serverKeyId || getRazorpayPublicKeyId();
+        if (!keyId) throw new Error("Razorpay key is not configured (VITE_RAZORPAY_KEY_ID).");
 
         const paid = await new Promise<boolean>((resolve) => {
           void openRazorpayCheckout({
             keyId,
-            amountPaise: Math.round(billTotals.grandTotal * 100),
+            amountPaise,
             currency: "INR",
             orderId: razorpayOrderId,
             customerName: customerName || "Walk-in",
@@ -360,7 +362,10 @@ export const PosDashboard = forwardRef<PosDashboardHandle, PosDashboardProps>(fu
                   razorpayPaymentId: response.razorpay_payment_id,
                   razorpaySignature: response.razorpay_signature
                 });
-                await markCashierOrderPaid(placed.orderId, method);
+                await markCashierOrderPaid(placed.orderId, method, {
+                  orderId: response.razorpay_order_id,
+                  paymentId: response.razorpay_payment_id
+                });
                 resolve(true);
               } catch {
                 resolve(false);
@@ -382,20 +387,23 @@ export const PosDashboard = forwardRef<PosDashboardHandle, PosDashboardProps>(fu
           id: it.productId || `line_${i}`,
           name: it.name,
           price: it.unitPrice,
-          qty: it.qty
+          qty: it.qty,
+          ...(it.note ? { note: it.note } : {}),
+          ...(it.modifications?.length ? { modifications: it.modifications } : {})
         })),
         totalAmount: billTotals.grandTotal,
-        status: "completed",
-        canonicalStatus: "served",
+        status: "accepted",
+        canonicalStatus: "accepted",
         tokenNumber: placed.tokenNumber,
         paymentStatus: "paid",
+        orderType: "parcel",
         createdAt: null,
         updatedAt: null,
         assignedTo: {},
         customer: { name: customerName || "Guest", phone: phone || "", address: "" }
       };
 
-      await printCashierOrderDocuments({
+      const printResult = await printCashierOrderDocuments({
         order: orderRow,
         paymentMethod: method,
         taxPercent,
@@ -403,7 +411,11 @@ export const PosDashboard = forwardRef<PosDashboardHandle, PosDashboardProps>(fu
         posSettings
       });
 
-      showToast(`Paid · Order #${placed.tokenNumber} · Printed`, "success");
+      if (printResult.receiptPrinted || printResult.kotPrinted) {
+        showToast(`Paid · Order #${placed.tokenNumber} sent to kitchen · Printed`, "success");
+      } else {
+        showToast(`Paid · Order #${placed.tokenNumber} sent to kitchen`, "success");
+      }
       resetNewOrder();
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Payment failed", "error");
@@ -443,14 +455,18 @@ export const PosDashboard = forwardRef<PosDashboardHandle, PosDashboardProps>(fu
     setBusy(true);
     try {
       await markCashierOrderPaid(order.id, paymentMethod === "qr" ? "cash" : paymentMethod);
-      await printCashierOrderDocuments({
+      const printResult = await printCashierOrderDocuments({
         order,
         paymentMethod,
         taxPercent,
         printers,
         posSettings
       });
-      showToast("Payment recorded & printed", "success");
+      if (printResult.receiptPrinted || printResult.kotPrinted) {
+        showToast("Payment recorded · Sent to kitchen · Printed", "success");
+      } else {
+        showToast("Payment recorded · Sent to kitchen", "success");
+      }
       closeOrderModal();
       selectOrder(null);
       setPanelMode("new");
@@ -671,16 +687,16 @@ export const PosDashboard = forwardRef<PosDashboardHandle, PosDashboardProps>(fu
             </div>
           )}
 
-          <div className="border-t p-4 dark:border-slate-800">
+          <div className="border-t border-theme-border bg-theme-surface p-4">
             <div className="mb-2 flex gap-1">
-              <input placeholder="Coupon" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} className="flex-1 rounded-lg border px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800" />
-              <button type="button" onClick={() => void handleApplyCoupon()} className="rounded-lg bg-slate-800 px-2 py-1.5 text-xs font-bold text-white">Apply</button>
+              <input placeholder="Coupon" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} className="theme-input flex-1 rounded-lg px-2 py-1.5 text-xs" />
+              <button type="button" onClick={() => void handleApplyCoupon()} className="rounded-lg bg-theme-hover px-2 py-1.5 text-xs font-bold text-theme-text-primary">Apply</button>
             </div>
-            {couponError ? <p className="mb-1 text-xs text-red-600">{couponError}</p> : null}
-            <div className="mb-3 space-y-1 text-sm">
-              <div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(billTotals.subtotal)}</span></div>
-              <div className="flex justify-between"><span>Tax ({billTotals.taxPercent}%)</span><span>{formatPrice(billTotals.taxAmount)}</span></div>
-              <div className="flex justify-between font-extrabold text-brand-teal"><span>Total</span><span>{formatPrice(billTotals.grandTotal)}</span></div>
+            {couponError ? <p className="mb-1 text-xs text-theme-danger">{couponError}</p> : null}
+            <div className="mb-3 space-y-1 text-sm text-theme-text-primary">
+              <div className="flex justify-between"><span className="text-theme-text-secondary">Subtotal</span><span>{formatPrice(billTotals.subtotal)}</span></div>
+              <div className="flex justify-between"><span className="text-theme-text-secondary">Tax ({billTotals.taxPercent}%)</span><span>{formatPrice(billTotals.taxAmount)}</span></div>
+              <div className="flex justify-between text-base font-extrabold text-theme-primary"><span>Total</span><span>{formatPrice(billTotals.grandTotal)}</span></div>
             </div>
             <div className="mb-3 flex flex-wrap gap-1">
               {CASHIER_PAYMENT_METHODS.filter(
@@ -690,14 +706,18 @@ export const PosDashboard = forwardRef<PosDashboardHandle, PosDashboardProps>(fu
                   key={m}
                   type="button"
                   onClick={() => setPaymentMethod(m)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-bold capitalize ${paymentMethod === m ? "bg-brand-teal text-white" : "bg-slate-100 dark:bg-slate-800"}`}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold capitalize transition ${
+                    paymentMethod === m
+                      ? "bg-theme-primary text-white shadow-glow-sm"
+                      : "bg-theme-hover text-theme-text-secondary hover:text-theme-text-primary"
+                  }`}
                 >
                   {m}
                 </button>
               ))}
             </div>
             {paymentMethod === "cash" ? (
-              <input placeholder="Cash received" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="mb-2 w-full rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800" />
+              <input placeholder="Cash received" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="theme-input mb-2 w-full rounded-lg px-3 py-2 text-sm" />
             ) : null}
             {paymentMethod === "upi" && !useRazorpay && posSettings.upiVpa ? (
               <div className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800">
@@ -726,7 +746,7 @@ export const PosDashboard = forwardRef<PosDashboardHandle, PosDashboardProps>(fu
                 type="button"
                 disabled={busy || cart.length === 0}
                 onClick={() => void (panelMode === "new" ? handlePayAndComplete() : handleAcceptPayment())}
-                className="col-span-2 min-h-[48px] rounded-xl bg-brand-teal font-bold text-white disabled:opacity-50"
+                className="col-span-2 min-h-[52px] rounded-xl bg-theme-primary px-4 py-3 text-sm font-bold text-white shadow-glow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy
                   ? "Processing…"
@@ -738,8 +758,20 @@ export const PosDashboard = forwardRef<PosDashboardHandle, PosDashboardProps>(fu
                         : "Payment received — print (F3)"
                     : "Accept Payment (F3)"}
               </button>
-              <button type="button" onClick={handleHold} className="min-h-[44px] rounded-xl border font-bold">Hold (F5)</button>
-              <button type="button" onClick={resetNewOrder} className="min-h-[44px] rounded-xl border font-bold">New (F2)</button>
+              <button
+                type="button"
+                onClick={handleHold}
+                className="min-h-[44px] rounded-xl border border-theme-border bg-theme-hover font-bold text-theme-text-primary transition hover:border-theme-primary/40"
+              >
+                Hold (F5)
+              </button>
+              <button
+                type="button"
+                onClick={resetNewOrder}
+                className="min-h-[44px] rounded-xl border border-theme-border bg-theme-hover font-bold text-theme-text-primary transition hover:border-theme-primary/40"
+              >
+                New (F2)
+              </button>
             </div>
             {heldOrders.length > 0 ? (
               <div className="mt-3 border-t pt-2 dark:border-slate-800">
@@ -766,12 +798,18 @@ export const PosDashboard = forwardRef<PosDashboardHandle, PosDashboardProps>(fu
               <div><span className="text-slate-500">Total</span><p className="font-bold">{formatPrice(selectedOrder.totalAmount)}</p></div>
             </div>
             <ul className="divide-y rounded-xl border dark:border-slate-700">
-              {selectedOrder.items.map((it: { qty: number; name: string; price: number }, i: number) => (
-                <li key={i} className="flex justify-between px-4 py-2 text-sm">
-                  <span>{it.qty}× {it.name}</span>
-                  <span>{formatPrice(it.price * it.qty)}</span>
+              {selectedOrder.items.map((it, i) => {
+                const extras = formatItemExtras(it);
+                return (
+                <li key={i} className="px-4 py-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>{it.qty}× {it.name}</span>
+                    <span>{formatPrice(it.price * it.qty)}</span>
+                  </div>
+                  {extras ? <p className="mt-0.5 text-xs text-brand-teal">{extras}</p> : null}
                 </li>
-              ))}
+                );
+              })}
             </ul>
             <div className="flex gap-2">
               <button type="button" disabled={busy || isOrderPaid(selectedOrder.paymentStatus)} onClick={() => void handleAcceptPayment()} className="flex-1 rounded-xl bg-brand-teal py-3 font-bold text-white disabled:opacity-50">

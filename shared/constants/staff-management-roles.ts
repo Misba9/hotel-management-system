@@ -7,7 +7,6 @@ export const STAFF_MANAGEMENT_ROLE_IDS = [
   "manager",
   "cashier",
   "kitchen",
-  "delivery",
   "waiter"
 ] as const;
 
@@ -28,8 +27,6 @@ export function staffManagementRoleToAuthClaim(role: StaffManagementRoleId): str
       return "cashier";
     case "kitchen":
       return "kitchen_staff";
-    case "delivery":
-      return "delivery_boy";
     case "waiter":
       return "waiter";
     default:
@@ -48,7 +45,6 @@ export const STAFF_ROLE_DESCRIPTIONS: Record<StaffManagementRoleId, string> = {
   manager: "Orders, analytics, and operations (no staff deletion)",
   cashier: "Billing & POS only",
   kitchen: "Kitchen order queue & preparation",
-  delivery: "Delivery tracking & assigned orders",
   waiter: "Table orders & bill requests"
 };
 

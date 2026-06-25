@@ -36,7 +36,7 @@ export function ManagerDashboard() {
     );
     const pending = orders.filter((order) => {
       const statusValue = (order.status ?? "").toLowerCase();
-      return ["pending", "preparing", "confirmed"].includes(statusValue);
+      return ["pending", "accepted", "preparing", "ready", "confirmed"].includes(statusValue);
     }).length;
     return { todayCount: todayOrders.length, revenue, pending };
   }, [orders]);
@@ -95,9 +95,14 @@ export function ManagerDashboard() {
                     </td>
                   </tr>
                 ) : (
-                  orders.map((order) => (
+                  orders.map((order) => {
+                    const token =
+                      typeof order.raw.tokenNumber === "number"
+                        ? `#${order.raw.tokenNumber}`
+                        : `#${order.id.slice(-8)}`;
+                    return (
                     <tr key={order.id} className="border-t border-slate-100">
-                      <td className="px-5 py-3 font-semibold">#{order.id.slice(-8)}</td>
+                      <td className="px-5 py-3 font-semibold">{token}</td>
                       <td className="px-5 py-3">{order.orderType ?? "—"}</td>
                       <td className="px-5 py-3">{order.status ?? "—"}</td>
                       <td className="px-5 py-3">{order.paymentStatus ?? "—"}</td>
@@ -105,7 +110,8 @@ export function ManagerDashboard() {
                         {formatPrice(order.totalAmount ?? order.total)}
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

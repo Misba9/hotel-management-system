@@ -1,5 +1,6 @@
 import { FirebaseError } from "firebase/app";
 import { doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { isDineInOrderType } from "@shared/utils/canonical-order-fields";
 import { staffDb } from "../lib/firebase";
 import { TABLES_COLLECTION } from "../hooks/use-tables";
 import { ORDERS_COLLECTION } from "./orders.js";
@@ -17,15 +18,15 @@ export async function markTableOrderServed(orderId: string): Promise<void> {
   if (!snap.exists()) throw new Error("Order not found.");
 
   const data = snap.data() as Record<string, unknown>;
-  const orderType = String(data.orderType ?? "").toLowerCase();
-  if (orderType !== "table") throw new Error("Only table orders can be marked served here.");
+  const orderType = String(data.orderType ?? "");
+  if (!isDineInOrderType(orderType)) throw new Error("Only dine-in table orders can be marked served here.");
 
   const tableId = typeof data.tableId === "string" ? data.tableId.trim() : "";
   if (!tableId) throw new Error("Order has no table.");
 
   const batch = writeBatch(staffDb);
   batch.update(orderRef, {
-    status: "served",
+    status: "completed",
     updatedAt: serverTimestamp()
   });
   batch.update(doc(staffDb, TABLES_COLLECTION, tableId), {

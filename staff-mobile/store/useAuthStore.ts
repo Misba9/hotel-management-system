@@ -107,6 +107,13 @@ async function hydrateStaffRole(user: User): Promise<{
     if (gate === "paused") {
       return { role: null, profile: null, error: "This staff account is inactive." };
     }
+    if (gate === "platform_blocked") {
+      return {
+        role: null,
+        profile: null,
+        error: "Your role is not permitted on the mobile app. Use the desktop app or contact an administrator."
+      };
+    }
     return { role: null, profile: null, error: "Unable to activate staff session from Firestore." };
   };
 

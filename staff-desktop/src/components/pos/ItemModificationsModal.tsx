@@ -83,10 +83,6 @@ export function ItemModificationsModal({
   );
 }
 
-function formatLineExtras(line: { modifications?: string[]; note?: string }): string {
-  const parts = [...(line.modifications ?? [])];
-  if (line.note?.trim()) parts.push(line.note.trim());
-  return parts.join(" · ");
-}
+import { formatItemExtras } from "@/lib/pos/format-item-extras";
 
-export { formatLineExtras };
+export { formatItemExtras as formatLineExtras };

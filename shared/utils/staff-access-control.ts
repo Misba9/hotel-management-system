@@ -6,7 +6,7 @@
  * `users/{uid}` + optional Auth custom claims.
  */
 
-export const STAFF_APP_ROLES = ["admin", "manager", "kitchen", "cashier", "waiter", "delivery"] as const;
+export const STAFF_APP_ROLES = ["admin", "manager", "kitchen", "cashier", "waiter"] as const;
 
 export type StaffAppRole = (typeof STAFF_APP_ROLES)[number];
 
@@ -25,7 +25,6 @@ export function normalizeStaffAppRole(raw: unknown): StaffAppRole | null {
   if (r === "kitchen" || r === "kitchen_staff") return "kitchen";
   if (r === "cashier" || r === "counter") return "cashier";
   if (r === "waiter") return "waiter";
-  if (r === "delivery" || r === "delivery_boy") return "delivery";
   return null;
 }
 
@@ -70,7 +69,6 @@ export type StaffMobileRootRoute =
   | "ManagerRoot"
   | "CashierRoot"
   | "KitchenRoot"
-  | "DeliveryRoot"
   | "WaiterDashboard";
 
 export function staffMobileRootRouteForRole(role: StaffAppRole): StaffMobileRootRoute {
@@ -83,8 +81,6 @@ export function staffMobileRootRouteForRole(role: StaffAppRole): StaffMobileRoot
       return "CashierRoot";
     case "kitchen":
       return "KitchenRoot";
-    case "delivery":
-      return "DeliveryRoot";
     case "waiter":
       return "WaiterDashboard";
     default: {
@@ -107,8 +103,6 @@ export function staffWebHomePathForRole(role: StaffAppRole): string {
       return "/kitchen";
     case "cashier":
       return "/counter";
-    case "delivery":
-      return "/delivery";
     case "waiter":
       return "/waiter";
     default: {
@@ -126,7 +120,6 @@ export function staffDesktopHomePathForRole(role: StaffAppRole): string {
     case "kitchen":
       return "/kitchen";
     case "waiter":
-    case "delivery":
       return "/waiter";
     case "manager":
     case "admin":

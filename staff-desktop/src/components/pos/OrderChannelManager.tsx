@@ -10,6 +10,7 @@ import {
   rejectChannelOrder
 } from "@/services/order-workflow";
 import type { PlatformTab } from "@/lib/pos/cashier-pos-store";
+import { formatItemExtras } from "@/lib/pos/format-item-extras";
 import { getOrderSourceMeta, ORDER_SOURCE_META } from "@/lib/pos/order-source";
 import {
   countWorkflowStatuses,
@@ -297,14 +298,20 @@ export function OrderChannelManager({ platform, orders, loading, onToast }: Orde
               </dl>
 
               <ul className="divide-y rounded-xl border text-sm dark:border-slate-700">
-                {selected.items.map((it, i) => (
-                  <li key={i} className="flex justify-between px-3 py-2">
-                    <span>
-                      {it.qty}× {it.name}
-                    </span>
-                    <span>{formatPrice(it.price * it.qty)}</span>
+                {selected.items.map((it, i) => {
+                  const extras = formatItemExtras(it);
+                  return (
+                  <li key={i} className="px-3 py-2">
+                    <div className="flex justify-between">
+                      <span>
+                        {it.qty}× {it.name}
+                      </span>
+                      <span>{formatPrice(it.price * it.qty)}</span>
+                    </div>
+                    {extras ? <p className="mt-0.5 text-xs text-brand-teal">{extras}</p> : null}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
 
               {(selected as StaffOrderRow & { notes?: string }).notes ? (

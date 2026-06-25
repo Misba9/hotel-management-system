@@ -3,6 +3,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { useRouter } from "expo-router";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
+import { MobileThemeSwitcher } from "../../shared/theme/react-native/MobileThemeSwitcher";
+import { useThemeColors } from "../../shared/theme/react-native/MobileThemeProvider";
 import { roleHomeHref } from "../src/lib/staff-role-home";
 import { staffAuth } from "../src/lib/firebase";
 import { logout as signOutStaff } from "../services/auth";
@@ -14,17 +16,78 @@ const ROLE_LABEL: Record<StaffRoleId, string> = {
   manager: "Manager",
   kitchen: "Kitchen",
   cashier: "Cashier",
-  delivery: "Delivery",
   waiter: "Waiter"
 };
 
 export default function ProfileScreen() {
+  const colors = useThemeColors();
   const router = useRouter();
   const [authUser, setAuthUser] = useState<User | null>(staffAuth.currentUser);
   const [loading, setLoading] = useState(true);
   const [submittingLogout, setSubmittingLogout] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [profileResult, setProfileResult] = useState<StaffProfileLoadResult | null>(null);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        screen: { flex: 1, backgroundColor: colors.background, padding: 20 },
+        centered: {
+          flex: 1,
+          backgroundColor: colors.background,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 20
+        },
+        stateTitle: { fontSize: 22, fontWeight: "800", color: colors.textPrimary, marginBottom: 8 },
+        stateText: { fontSize: 14, color: colors.textSecondary, textAlign: "center", marginTop: 10, marginBottom: 16 },
+        top: { marginBottom: 8 },
+        back: { fontSize: 16, fontWeight: "700", color: colors.primary },
+        title: { fontSize: 26, fontWeight: "800", color: colors.textPrimary, marginBottom: 20 },
+        card: {
+          backgroundColor: colors.card,
+          borderRadius: 16,
+          padding: 18,
+          borderWidth: 1,
+          borderColor: colors.border
+        },
+        badgeRow: { marginBottom: 10, flexDirection: "row" },
+        badge: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+        badgeText: { color: "#fff", fontWeight: "800", fontSize: 12, letterSpacing: 0.4 },
+        label: { fontSize: 12, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.6 },
+        value: { fontSize: 17, fontWeight: "700", color: colors.textPrimary, marginTop: 4 },
+        waiterActions: { marginTop: 16, gap: 8 },
+        waiterHint: { fontSize: 12, color: colors.textSecondary },
+        actionPrimary: {
+          marginTop: 18,
+          backgroundColor: colors.primary,
+          paddingVertical: 12,
+          borderRadius: 12,
+          alignItems: "center"
+        },
+        actionPrimaryText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+        actionSecondary: {
+          marginTop: 18,
+          backgroundColor: colors.hover,
+          paddingVertical: 12,
+          borderRadius: 12,
+          alignItems: "center",
+          borderWidth: 1,
+          borderColor: colors.border
+        },
+        actionSecondaryText: { color: colors.textPrimary, fontWeight: "800", fontSize: 14 },
+        logout: {
+          marginTop: 14,
+          backgroundColor: colors.danger,
+          paddingVertical: 14,
+          borderRadius: 14,
+          alignItems: "center"
+        },
+        logoutText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+        themeSection: { marginTop: 20 }
+      }),
+    [colors]
+  );
 
   useEffect(() => onAuthStateChanged(staffAuth, setAuthUser), []);
 
@@ -57,11 +120,15 @@ export default function ProfileScreen() {
   const phoneNumber = profile?.phoneNumber?.trim() || authUser?.phoneNumber || "Not available";
   const roleLabel = role ? ROLE_LABEL[role] : "Unassigned";
   const roleColor = useMemo(() => {
-    if (!role) return styles.badgePending;
-    if (role === "kitchen") return styles.badgeKitchen;
-    if (role === "waiter") return styles.badgeWaiter;
-    return styles.badgeDefault;
-  }, [role]);
+    const badgeKitchen = { backgroundColor: colors.warning };
+    const badgeWaiter = { backgroundColor: colors.info };
+    const badgeDefault = { backgroundColor: colors.textDisabled };
+    const badgePending = { backgroundColor: colors.textDisabled };
+    if (!role) return badgePending;
+    if (role === "kitchen") return badgeKitchen;
+    if (role === "waiter") return badgeWaiter;
+    return badgeDefault;
+  }, [role, colors]);
 
   const onLogout = async () => {
     setSubmittingLogout(true);
@@ -107,7 +174,7 @@ export default function ProfileScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#0f172a" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.stateText}>Loading profile...</Text>
       </View>
     );
@@ -162,6 +229,9 @@ export default function ProfileScreen() {
         <Text style={[styles.label, { marginTop: 16 }]}>Email</Text>
         <Text style={styles.value}>{loadedProfile.email || authUser.email || "Not available"}</Text>
       </View>
+      <View style={styles.themeSection}>
+        <MobileThemeSwitcher />
+      </View>
       {renderRoleAction()}
       <Pressable style={styles.logout} onPress={() => void onLogout()} disabled={submittingLogout}>
         <Text style={styles.logoutText}>{submittingLogout ? "Signing out..." : "Sign out"}</Text>
@@ -169,61 +239,3 @@ export default function ProfileScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#f8fafc", padding: 20 },
-  centered: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20
-  },
-  stateTitle: { fontSize: 22, fontWeight: "800", color: "#0f172a", marginBottom: 8 },
-  stateText: { fontSize: 14, color: "#475569", textAlign: "center", marginTop: 10, marginBottom: 16 },
-  top: { marginBottom: 8 },
-  back: { fontSize: 16, fontWeight: "700", color: "#2563eb" },
-  title: { fontSize: 26, fontWeight: "800", color: "#0f172a", marginBottom: 20 },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#e2e8f0"
-  },
-  badgeRow: { marginBottom: 10, flexDirection: "row" },
-  badge: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  badgeText: { color: "#fff", fontWeight: "800", fontSize: 12, letterSpacing: 0.4 },
-  badgeKitchen: { backgroundColor: "#c2410c" },
-  badgeWaiter: { backgroundColor: "#2563eb" },
-  badgeDefault: { backgroundColor: "#334155" },
-  badgePending: { backgroundColor: "#64748b" },
-  label: { fontSize: 12, fontWeight: "700", color: "#64748b", letterSpacing: 0.6 },
-  value: { fontSize: 17, fontWeight: "700", color: "#0f172a", marginTop: 4 },
-  waiterActions: { marginTop: 16, gap: 8 },
-  waiterHint: { fontSize: 12, color: "#475569" },
-  actionPrimary: {
-    marginTop: 18,
-    backgroundColor: "#0f766e",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center"
-  },
-  actionPrimaryText: { color: "#fff", fontWeight: "800", fontSize: 14 },
-  actionSecondary: {
-    marginTop: 18,
-    backgroundColor: "#e2e8f0",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center"
-  },
-  actionSecondaryText: { color: "#0f172a", fontWeight: "800", fontSize: 14 },
-  logout: {
-    marginTop: 14,
-    backgroundColor: "#b91c1c",
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center"
-  },
-  logoutText: { color: "#fff", fontWeight: "800", fontSize: 16 }
-});

@@ -63,6 +63,12 @@ export async function fetchStaffProfileAfterAuth(user: User): Promise<StaffProfi
     if (gate === "paused") {
       return { ok: false, reason: "This staff account is inactive." };
     }
+    if (gate === "platform_blocked") {
+      return {
+        ok: false,
+        reason: "Your role is not permitted on the mobile app. Use the desktop app or contact an administrator."
+      };
+    }
     return { ok: false, reason: "Unable to activate staff session from Firestore." };
   } catch (error) {
     return { ok: false, reason: mapFirestoreError(error) };
@@ -105,6 +111,13 @@ export function subscribeStaffProfile(
       }
       if (gate === "paused") {
         onChange({ ok: false, reason: "This staff account is inactive." });
+        return;
+      }
+      if (gate === "platform_blocked") {
+        onChange({
+          ok: false,
+          reason: "Your role is not permitted on the mobile app. Use the desktop app or contact an administrator."
+        });
         return;
       }
       onChange({ ok: false, reason: "Unable to activate staff session from Firestore." });

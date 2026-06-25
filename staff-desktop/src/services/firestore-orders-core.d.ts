@@ -3,6 +3,8 @@ export type MappedOrderItem = {
   name: string;
   price: number;
   qty: number;
+  note?: string;
+  modifications?: string[];
 };
 
 export type MappedOrderDoc = {

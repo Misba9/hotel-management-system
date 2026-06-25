@@ -42,7 +42,7 @@ export function Navbar() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 w-full shrink-0 border-b border-slate-200 bg-white/80 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80">
+    <header className="sticky top-0 z-40 w-full shrink-0 border-b border-theme-border bg-theme-glass backdrop-blur-xl">
       <div className="mx-auto max-w-7xl px-4 py-2 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-2 md:h-14 md:gap-3">
           <Link

@@ -8,6 +8,7 @@ import { ensureStaffFirestoreOnline } from "../src/services/firebase";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { MobileThemeProvider } from "../../shared/theme/react-native/MobileThemeProvider";
 import { StaffNotificationBootstrap } from "../src/components/staff-notification-bootstrap";
 import { OfflineBanner } from "../src/components/ux/offline-banner";
 import { isGlobalStaffRouteRoot, roleHomeHref, roleRoutePrefix } from "../src/lib/staff-role-home";
@@ -72,14 +73,16 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      {(!authReady || loading) && pathname !== "/login" && (
-        <View style={styles.boot} pointerEvents="auto">
-          <ActivityIndicator size="large" color="#FF7A00" />
-        </View>
-      )}
-      <Stack screenOptions={{ headerShown: false }} />
-      <OfflineBanner />
-      <StaffNotificationBootstrap />
+      <MobileThemeProvider>
+        {(!authReady || loading) && pathname !== "/login" && (
+          <View style={styles.boot} pointerEvents="auto">
+            <ActivityIndicator size="large" color="#4F8CFF" />
+          </View>
+        )}
+        <Stack screenOptions={{ headerShown: false }} />
+        <OfflineBanner />
+        <StaffNotificationBootstrap />
+      </MobileThemeProvider>
     </SafeAreaProvider>
   );
 }
@@ -89,7 +92,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0A0A0F",
+    backgroundColor: "#0F1115",
     zIndex: 50
   }
 });

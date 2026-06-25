@@ -2,6 +2,7 @@
  * Kitchen Order Ticket (KOT) — plain-text layout + HTML print.
  * Electron thermal printing is wired via setKitchenKotPrintHooks from the POS layer.
  */
+import { formatItemExtras, formatItemExtrasForPrint } from "@/lib/pos/format-item-extras";
 import type { StaffOrderRow } from "./orders";
 import { isDesktopRuntime, getDesktopApi } from "@/lib/desktop-api";
 
@@ -54,7 +55,14 @@ export function formatKitchenKotReceipt(order: StaffOrderRow): string {
       : "-";
   const statusRaw = String(order.status ?? order.canonicalStatus ?? "-");
   const itemsBlock = order.items.length
-    ? order.items.map((i: { qty: number; name: string }) => `${i.qty} x ${i.name}`).join("\n")
+    ? order.items
+        .map((i) => {
+          const row = i as { qty: number; name: string; note?: string; modifications?: string[] };
+          const line = `${row.qty} x ${row.name}`;
+          const extras = formatItemExtrasForPrint(row);
+          return extras ? `${line}\n   ${extras}` : line;
+        })
+        .join("\n")
     : "(no items)";
 
   return `
@@ -107,7 +115,15 @@ async function tryElectronKotPrint(order: StaffOrderRow): Promise<boolean> {
     orderNumber: order.id.slice(-8).toUpperCase(),
     source: String(order.orderType ?? "kitchen"),
     createdAt: new Date().toISOString(),
-    items: order.items.map((i: { name: string; qty: number }) => ({ name: i.name, quantity: i.qty }))
+    items: order.items.map((i) => {
+      const row = i as { name: string; qty: number; note?: string; modifications?: string[] };
+      const extras = formatItemExtras(row);
+      return {
+        name: row.name,
+        quantity: row.qty,
+        ...(extras ? { notes: extras } : {})
+      };
+    })
   });
   return result.ok;
 }

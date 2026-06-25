@@ -17,8 +17,6 @@ export function roleHomeHref(role: StaffRoleId | null): Href {
       return "/kitchen/orders";
     case "cashier":
       return "/cashier/billing";
-    case "delivery":
-      return "/delivery/deliveries";
     case "manager":
     case "admin":
       return "/manager/dashboard";
@@ -46,8 +44,6 @@ export function roleRoutePrefix(role: StaffRoleId): string {
       return "kitchen";
     case "cashier":
       return "cashier";
-    case "delivery":
-      return "delivery";
     case "manager":
     case "admin":
       return "manager";

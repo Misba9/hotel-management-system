@@ -1,0 +1,97 @@
+/**
+ * Global CSS custom properties — import in each app's globals.css.
+ * Values switch automatically via html.dark class.
+ */
+
+:root {
+  color-scheme: light;
+
+  --theme-background: #F8FAFC;
+  --theme-surface: #FFFFFF;
+  --theme-card: #FFFFFF;
+  --theme-hover: #F1F5F9;
+  --theme-border: #E2E8F0;
+  --theme-primary: #4F8CFF;
+  --theme-primary-hover: #3B7AE8;
+  --theme-primary-muted: rgba(79, 140, 255, 0.12);
+  --theme-success: #16A34A;
+  --theme-success-muted: rgba(22, 163, 74, 0.12);
+  --theme-warning: #D97706;
+  --theme-warning-muted: rgba(217, 119, 6, 0.12);
+  --theme-danger: #DC2626;
+  --theme-danger-muted: rgba(220, 38, 38, 0.12);
+  --theme-info: #0284C7;
+  --theme-info-muted: rgba(2, 132, 199, 0.12);
+  --theme-text-primary: #0F172A;
+  --theme-text-secondary: #475569;
+  --theme-text-disabled: #94A3B8;
+  --theme-divider: rgba(15, 23, 42, 0.08);
+  --theme-icon-primary: #0F172A;
+  --theme-icon-secondary: #64748B;
+  --theme-icon-disabled: #94A3B8;
+  --theme-overlay: rgba(15, 23, 42, 0.4);
+  --theme-glass: rgba(255, 255, 255, 0.72);
+  --theme-input-bg: #F8FAFC;
+  --theme-table-row-alt: #F8FAFC;
+  --theme-table-row-hover: rgba(79, 140, 255, 0.06);
+  --theme-table-row-selected: rgba(79, 140, 255, 0.12);
+  --theme-skeleton: #E2E8F0;
+  --theme-skeleton-shimmer: #F1F5F9;
+  --theme-chart-grid: rgba(15, 23, 42, 0.08);
+  --theme-chart-axis: #64748B;
+  --theme-scrollbar: rgba(15, 23, 42, 0.15);
+  --theme-scrollbar-hover: rgba(79, 140, 255, 0.35);
+  --theme-focus-ring: rgba(79, 140, 255, 0.5);
+  --theme-selection: rgba(79, 140, 255, 0.25);
+
+  --theme-transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+html.dark {
+  color-scheme: dark;
+
+  --theme-background: #0F1115;
+  --theme-surface: #181A20;
+  --theme-card: #1E2128;
+  --theme-hover: #262A33;
+  --theme-border: #343A46;
+  --theme-primary: #4F8CFF;
+  --theme-primary-hover: #6B9FFF;
+  --theme-primary-muted: rgba(79, 140, 255, 0.14);
+  --theme-success: #22C55E;
+  --theme-success-muted: rgba(34, 197, 94, 0.14);
+  --theme-warning: #F59E0B;
+  --theme-warning-muted: rgba(245, 158, 11, 0.14);
+  --theme-danger: #EF4444;
+  --theme-danger-muted: rgba(239, 68, 68, 0.14);
+  --theme-info: #38BDF8;
+  --theme-info-muted: rgba(56, 189, 248, 0.14);
+  --theme-text-primary: #FFFFFF;
+  --theme-text-secondary: #BFC7D5;
+  --theme-text-disabled: #707784;
+  --theme-divider: rgba(255, 255, 255, 0.08);
+  --theme-icon-primary: #FFFFFF;
+  --theme-icon-secondary: #BFC7D5;
+  --theme-icon-disabled: #707784;
+  --theme-overlay: rgba(0, 0, 0, 0.6);
+  --theme-glass: rgba(30, 33, 40, 0.72);
+  --theme-input-bg: rgba(255, 255, 255, 0.04);
+  --theme-table-row-alt: rgba(255, 255, 255, 0.02);
+  --theme-table-row-hover: rgba(79, 140, 255, 0.08);
+  --theme-table-row-selected: rgba(79, 140, 255, 0.14);
+  --theme-skeleton: rgba(255, 255, 255, 0.06);
+  --theme-skeleton-shimmer: rgba(255, 255, 255, 0.12);
+  --theme-chart-grid: rgba(255, 255, 255, 0.08);
+  --theme-chart-axis: #707784;
+  --theme-scrollbar: rgba(255, 255, 255, 0.12);
+  --theme-scrollbar-hover: rgba(79, 140, 255, 0.35);
+  --theme-focus-ring: rgba(79, 140, 255, 0.5);
+  --theme-selection: rgba(79, 140, 255, 0.35);
+}
+
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: var(--theme-transition) !important;
+}

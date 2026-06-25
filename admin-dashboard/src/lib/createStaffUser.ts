@@ -1,8 +1,10 @@
 import { adminApiFetch } from "@/shared/lib/admin-api";
 import { getStaffCreatePostUrl } from "@/lib/staff-create-endpoint";
+import type { StaffAppPlatform } from "../../../shared/constants/staff-app-access";
+import type { StaffManagementRoleId } from "../../../shared/constants/staff-management-roles";
 
 /** Roles allowed when provisioning staff (matches Firestore `staff_users.role`). */
-export type CreateStaffRole = "admin" | "manager" | "cashier" | "kitchen" | "delivery" | "waiter";
+export type CreateStaffRole = StaffManagementRoleId;
 
 export type CreateStaffUserInput = {
   name: string;
@@ -11,6 +13,8 @@ export type CreateStaffUserInput = {
   role: CreateStaffRole;
   /** Defaults to true — new staff can sign in immediately. */
   isActive?: boolean;
+  /** Which apps this user may sign in to (defaults from role). */
+  allowedApps?: StaffAppPlatform[];
 };
 
 /**
@@ -26,7 +30,8 @@ export async function createStaffUser(input: CreateStaffUserInput): Promise<{ ui
       email: input.email.trim(),
       password: input.password,
       role: input.role,
-      isActive: input.isActive !== false
+      isActive: input.isActive !== false,
+      ...(input.allowedApps ? { allowedApps: input.allowedApps } : {})
     })
   });
   if (!res.ok) {

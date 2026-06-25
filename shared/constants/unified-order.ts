@@ -1,11 +1,11 @@
-/** Single `orders/{orderId}` model used by POS, kitchen, delivery, admin, and customer. */
-export const UNIFIED_ORDER_STATUSES = [
-  "pending",
-  "accepted",
-  "preparing",
-  "ready",
-  "out_for_delivery",
-  "delivered"
-] as const;
+/**
+ * Single `orders/{orderId}` model used by POS, kitchen, delivery, admin, and customer.
+ * Canonical lifecycle: new → accepted → preparing → ready → completed | cancelled.
+ */
+export {
+  CANONICAL_ORDER_STATUSES,
+  type CanonicalOrderStatus,
+  type CanonicalPaymentStatus
+} from "../types/order";
 
-export type UnifiedOrderStatus = (typeof UNIFIED_ORDER_STATUSES)[number];
+export { KITCHEN_ACTIVE_STATUSES } from "../utils/canonical-order-fields";

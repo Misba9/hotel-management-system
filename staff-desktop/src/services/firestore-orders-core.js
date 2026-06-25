@@ -31,11 +31,11 @@ import { assertValidTransition, ORDER_LIFECYCLE } from "../lib/order-status-life
 export const ORDERS_COLLECTION = "orders";
 export const INVOICES_COLLECTION = "invoices";
 
-/** Kitchen realtime — active line only (no `ready`; that moves to delivery). */
-export const KITCHEN_ORDER_STATUS_IN = ["pending", "accepted", "preparing", "created", "confirmed"];
+/** Kitchen realtime — canonical pipeline statuses (legacy values normalized on read). */
+export const KITCHEN_ORDER_STATUS_IN = ["new", "accepted", "preparing", "ready"];
 
-/** Restaurant table tickets shown on the kitchen KDS (merged: new tickets `PLACED`, in-progress `PREPARING`). */
-export const RESTAURANT_KITCHEN_QUEUE_STATUS_IN = ["PLACED", "PREPARING"];
+/** @deprecated Use {@link KITCHEN_ORDER_STATUS_IN} — kept for import compatibility. */
+export const RESTAURANT_KITCHEN_QUEUE_STATUS_IN = KITCHEN_ORDER_STATUS_IN;
 
 /** Delivery realtime — online orders ready for handoff only. */
 export const DELIVERY_ORDER_STATUS_IN = ["ready"];
@@ -58,27 +58,26 @@ export function getKitchenOrdersQuery() {
 }
 
 /**
- * New table tickets (waiter “Send to Kitchen” creates `status: "PLACED"`).
- * Composite: `status` ASC + `createdAt` DESC (see `backend/firestore.indexes.json`).
+ * New table tickets (waiter creates `status: "new"`).
  * @returns {import('firebase/firestore').Query}
  */
 export function getRestaurantKitchenPlacedOrdersQuery() {
   return query(
     collection(db, ORDERS_COLLECTION),
-    where("status", "==", "PLACED"),
+    where("status", "==", "new"),
     orderBy("createdAt", "desc"),
     limit(150)
   );
 }
 
 /**
- * Tickets the kitchen has accepted but not marked ready yet.
+ * Tickets the kitchen has accepted or is preparing.
  * @returns {import('firebase/firestore').Query}
  */
 export function getRestaurantKitchenPreparingOrdersQuery() {
   return query(
     collection(db, ORDERS_COLLECTION),
-    where("status", "==", "PREPARING"),
+    where("status", "in", ["accepted", "preparing"]),
     orderBy("createdAt", "desc"),
     limit(150)
   );
@@ -232,7 +231,13 @@ export function mapOrderDoc(id, data) {
       id: typeof r.id === "string" ? r.id : typeof r.productId === "string" ? r.productId : "",
       name: typeof r.name === "string" ? r.name : "",
       price: typeof r.price === "number" ? r.price : typeof r.unitPrice === "number" ? r.unitPrice : 0,
-      qty: qty > 0 ? qty : 1
+      qty: qty > 0 ? qty : 1,
+      ...(typeof r.note === "string" && r.note.trim() ? { note: r.note.trim() } : {}),
+      ...(Array.isArray(r.modifications)
+        ? {
+            modifications: r.modifications.filter((m) => typeof m === "string" && m.trim()).map((m) => m.trim())
+          }
+        : {})
     };
   });
   const assignedRaw = data.assignedTo && typeof data.assignedTo === "object" ? data.assignedTo : {};
@@ -330,7 +335,7 @@ export async function createOrder(orderData) {
     subtotal,
     tax,
     invoiceId: id,
-    status: "preparing",
+    status: "new",
     paymentStatus: "pending",
     orderType: normalizedOrderType,
     type: normalizedType,
@@ -385,7 +390,7 @@ export async function createDineInOrder(payload) {
     tax,
     invoiceId: id,
     createdByUid: payload.userId,
-    status: "preparing",
+    status: "new",
     paymentStatus: "pending",
     orderType: "dine_in",
     createdAt: serverTimestamp(),

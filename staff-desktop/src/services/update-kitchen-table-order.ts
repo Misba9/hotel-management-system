@@ -7,7 +7,8 @@ export async function acceptKitchenTableOrder(orderId: string): Promise<void> {
   const id = orderId?.trim();
   if (!id) throw new Error("Missing order.");
   await updateDoc(doc(staffDb, ORDERS_COLLECTION, id), {
-    status: "PREPARING",
+    status: "accepted",
+    acceptedAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
 }
@@ -16,7 +17,7 @@ export async function markKitchenTableOrderReady(orderId: string): Promise<void>
   const id = orderId?.trim();
   if (!id) throw new Error("Missing order.");
   await updateDoc(doc(staffDb, ORDERS_COLLECTION, id), {
-    status: "READY",
+    status: "ready",
     updatedAt: serverTimestamp()
   });
 }

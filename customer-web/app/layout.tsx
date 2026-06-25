@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import { AppProviders } from "@/components/providers/app-providers";
 import { RAZORPAY_CHECKOUT_SCRIPT_SRC } from "@/lib/razorpay-checkout";
+import { themeInitScript } from "@/components/providers/theme-provider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -39,13 +40,14 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <link rel="preconnect" href={checkoutRzpOrigin} />
         <link rel="dns-prefetch" href={checkoutRzpOrigin} />
         <link rel="dns-prefetch" href={razorpayApiOrigin} />
       </head>
       <body
         suppressHydrationWarning
-        className={`${inter.className} ${plusJakarta.variable} overflow-x-hidden bg-brand-background transition-colors`}
+        className={`${inter.className} ${plusJakarta.variable} overflow-x-hidden bg-theme-background text-theme-text-primary transition-colors`}
       >
         <div
           id="recaptcha-container"

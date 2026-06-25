@@ -46,16 +46,23 @@ export async function acceptChannelOrder(orderId: string, acceptedByUid?: string
     throw new Error("Only new orders can be accepted.");
   }
 
+  const ts = serverTimestamp();
   await updateDoc(ref, {
     status: "accepted",
-    acceptedAt: serverTimestamp(),
+    acceptedAt: ts,
+    sentToKitchenAt: ts,
+    kitchenNotified: true,
     ...(acceptedByUid ? { acceptedBy: acceptedByUid } : {}),
-    updatedAt: serverTimestamp()
+    updatedAt: ts
   });
 
   const accepted = await loadOrder(orderId);
-  await printKitchenKot(accepted, { source: "auto" });
-  await markKitchenTicketPrinted(orderId);
+  try {
+    await printKitchenKot(accepted, { source: "auto" });
+    await markKitchenTicketPrinted(orderId);
+  } catch {
+    /* Order accepted — print failure must not roll back acceptance */
+  }
   return accepted;
 }
 
@@ -89,6 +96,7 @@ export async function markChannelOrderPreparing(orderId: string): Promise<void> 
   if (!snap.exists()) throw new Error("Order not found");
   const order = enrichFromSnap(snap.id, snap.data() as Record<string, unknown>);
   const ws = resolveWorkflowStatus(order);
+  if (ws === "preparing") return;
   if (ws !== "accepted") {
     throw new Error("Order must be accepted before preparing.");
   }

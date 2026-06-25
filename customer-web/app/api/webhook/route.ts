@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@shared/firebase/admin";
 import { enforceApiSecurity } from "@shared/utils/api-security";
+import { appendIntegrationSyncLog } from "@shared/utils/integration-sync-log";
 import { verifyRazorpayWebhookSignature } from "@shared/utils/razorpay-webhook-verify";
 
 export const dynamic = "force-dynamic";
@@ -60,8 +61,20 @@ export async function POST(request: Request) {
   try {
     if (event === "payment.captured") {
       await handlePaymentCaptured(entity);
+      await appendIntegrationSyncLog({
+        integrationId: "razorpay",
+        service: "Razorpay",
+        event: "Webhook received — payment confirmed",
+        status: "success"
+      });
     } else if (event === "payment.failed") {
       await handlePaymentFailed(entity);
+      await appendIntegrationSyncLog({
+        integrationId: "razorpay",
+        service: "Razorpay",
+        event: "Webhook received — payment failed",
+        status: "error"
+      });
     }
   } catch (e) {
     if (process.env.NODE_ENV !== "production") {

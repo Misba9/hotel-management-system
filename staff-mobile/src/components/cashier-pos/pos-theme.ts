@@ -1,43 +1,61 @@
 import { Platform, type TextStyle, type ViewStyle } from "react-native";
+import { darkColors, lightColors } from "../../../../shared/theme/colors";
+import { radius } from "../../../../shared/theme/radius";
+import { spacing } from "../../../../shared/theme/spacing";
 
-/** Enterprise POS design tokens — Toast / Square inspired */
+/** Enterprise POS design tokens — sourced from shared/theme dark palette */
 export const posColors = {
-  bg: "#0A0A0F",
-  secondary: "#12121A",
-  card: "#1A1A24",
-  cardHover: "#22222E",
-  border: "rgba(255,255,255,0.08)",
-  borderStrong: "rgba(255,255,255,0.14)",
-  primary: "#FF7A00",
-  primaryMuted: "rgba(255,122,0,0.14)",
-  success: "#22C55E",
-  successMuted: "rgba(34,197,94,0.14)",
-  warning: "#F59E0B",
-  warningMuted: "rgba(245,158,11,0.14)",
-  danger: "#EF4444",
-  dangerMuted: "rgba(239,68,68,0.14)",
-  text: "#FFFFFF",
-  textSecondary: "#A1A1AA",
-  textDim: "#71717A",
-  dineIn: "#22C55E",
-  parcel: "#FF7A00",
-  online: "#38BDF8",
-  glow: "rgba(255,122,0,0.35)",
-  glass: "rgba(18,18,26,0.85)",
-  info: "#38BDF8",
-  infoMuted: "rgba(56,189,248,0.14)",
-  purple: "#8B5CF6",
-  purpleMuted: "rgba(139,92,246,0.14)",
-  statusReady: "#22C55E",
-  statusAccepted: "#38BDF8",
-  statusPreparing: "#FF7A00",
-  statusCancelled: "#EF4444",
-  statusCompleted: "#71717A"
+  bg: darkColors.background,
+  secondary: darkColors.surface,
+  card: darkColors.card,
+  cardHover: darkColors.hover,
+  border: darkColors.divider,
+  borderStrong: darkColors.border,
+  primary: darkColors.primary,
+  primaryMuted: darkColors.primaryMuted,
+  success: darkColors.success,
+  successMuted: darkColors.successMuted,
+  warning: darkColors.warning,
+  warningMuted: darkColors.warningMuted,
+  danger: darkColors.danger,
+  dangerMuted: darkColors.dangerMuted,
+  text: darkColors.textPrimary,
+  textSecondary: darkColors.textSecondary,
+  textDim: darkColors.textDisabled,
+  dineIn: darkColors.success,
+  parcel: darkColors.primary,
+  online: darkColors.info,
+  glow: "rgba(79, 140, 255, 0.35)",
+  glass: darkColors.glass,
+  info: darkColors.info,
+  infoMuted: darkColors.infoMuted,
+  purple: "#A78BFA",
+  purpleMuted: "rgba(167, 139, 250, 0.14)",
+  statusReady: darkColors.success,
+  statusAccepted: darkColors.info,
+  statusPreparing: darkColors.primary,
+  statusCancelled: darkColors.danger,
+  statusCompleted: darkColors.textDisabled
 };
 
-export const posSpacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, huge: 48 } as const;
+export const posSpacing = {
+  xs: spacing[1],
+  sm: spacing[2],
+  md: spacing[3],
+  lg: spacing[4],
+  xl: spacing[5],
+  xxl: spacing[6],
+  xxxl: spacing[8],
+  huge: spacing[12]
+} as const;
 
-export const posRadius = { sm: 8, md: 12, lg: 16, xl: 20, pill: 999 } as const;
+export const posRadius = {
+  sm: radius.md,
+  md: radius.lg,
+  lg: radius.xl,
+  xl: radius["2xl"],
+  pill: radius.full
+} as const;
 
 export const posFont = Platform.select({
   web: { fontFamily: "Inter, Poppins, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
@@ -112,5 +130,23 @@ export function posGlass(): ViewStyle {
       web: { backdropFilter: "blur(12px)" } as ViewStyle,
       default: {}
     })
+  };
+}
+
+/** Build POS colors from resolved theme at runtime */
+export function posColorsForTheme(resolved: "light" | "dark") {
+  const c = resolved === "dark" ? darkColors : lightColors;
+  return {
+    ...posColors,
+    bg: c.background,
+    secondary: c.surface,
+    card: c.card,
+    cardHover: c.hover,
+    border: c.divider,
+    borderStrong: c.border,
+    text: c.textPrimary,
+    textSecondary: c.textSecondary,
+    textDim: c.textDisabled,
+    glass: c.glass
   };
 }

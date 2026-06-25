@@ -6,6 +6,9 @@ import type {
   PrintInvoicePayload,
   PrintKotPayload,
   PrinterDevice,
+  RazorpayInitiatePayload,
+  RazorpayInitiateResult,
+  RazorpayVerifyPayload,
   StaffDesktopSettings
 } from "./main-types";
 
@@ -47,7 +50,12 @@ const staffDesktopApi = {
     const listener = () => handler();
     ipcRenderer.on("sound:new-order", listener);
     return () => ipcRenderer.removeListener("sound:new-order", listener);
-  }
+  },
+  razorpayGetKeyId: (): Promise<string> => ipcRenderer.invoke("razorpay:getKeyId"),
+  razorpayInitiate: (payload: RazorpayInitiatePayload): Promise<RazorpayInitiateResult> =>
+    ipcRenderer.invoke("razorpay:initiate", payload),
+  razorpayVerify: (payload: RazorpayVerifyPayload): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke("razorpay:verify", payload)
 };
 
 contextBridge.exposeInMainWorld("staffDesktopApi", staffDesktopApi);

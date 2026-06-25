@@ -37,6 +37,12 @@
       ],
       "@shared/types/*": [
         "../shared/types/*"
+      ],
+      "@shared/lib/*": [
+        "../shared/lib/*"
+      ],
+      "@shared/theme/*": [
+        "../shared/theme/*"
       ]
     },
     "allowJs": true,

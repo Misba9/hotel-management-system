@@ -1,4 +1,10 @@
 import { isWaiterPosDineInOrder } from "@shared/utils/waiter-pos-order";
+import {
+  isActivePipelineStatus,
+  normalizeOrderStatus,
+  normalizePaymentStatus
+} from "@shared/utils/canonical-order-fields";
+import { formatKitchenStatusLabel, formatPaymentStatusLabel } from "@shared/utils/order-display";
 import { useRouter } from "expo-router";
 import { signOut } from "firebase/auth";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -26,7 +32,8 @@ import {
   subscribeWaiterOrders,
   type StaffOrderRow
 } from "../../services/orders";
-import { subscribeAllTables, type FloorTable } from "../../services/tables";
+import { patchWaiterTable, subscribeAllTables, type FloorTable } from "../../services/tables";
+import { useTableOrderTableSync } from "../../src/hooks/use-table-order-table-sync";
 import { staffAuth } from "../../src/lib/firebase";
 import { useAuthStore } from "../../store/useAuthStore";
 
@@ -37,11 +44,8 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 function isWaiterQueue(order: StaffOrderRow): boolean {
-  if (isWaiterPosDineInOrder(order)) {
-    return order.canonicalStatus === "preparing";
-  }
-  const c = order.canonicalStatus;
-  return c === "preparing";
+  if (!isWaiterPosDineInOrder(order)) return false;
+  return isActivePipelineStatus(order.canonicalStatus ?? order.status);
 }
 
 function orderMatchesTable(o: StaffOrderRow, t: FloorTable): boolean {
@@ -52,8 +56,9 @@ function orderMatchesTable(o: StaffOrderRow, t: FloorTable): boolean {
 }
 
 function isPendingPayment(order: StaffOrderRow): boolean {
-  const ps = String(order.paymentStatus ?? "").toLowerCase();
-  return ps === "pending";
+  const ps = normalizePaymentStatus(String(order.paymentStatus ?? ""));
+  const st = normalizeOrderStatus(String(order.status ?? ""));
+  return ps === "pending" && (st === "ready" || st === "completed");
 }
 
 function formatOrderAge(createdAt: StaffOrderRow["createdAt"]): string {
@@ -118,6 +123,9 @@ export function WaiterHomeView() {
 
   const [historyErr, setHistoryErr] = useState<string | null>(null);
 
+  /** Keep `tables/{id}.status` in sync with open dine-in orders (realtime). */
+  useTableOrderTableSync(true);
+
   useEffect(() => {
     const unsub = subscribeAllTables(
       (rows) => {
@@ -166,9 +174,9 @@ export function WaiterHomeView() {
   const historyOrders = useMemo(() => {
     const rows = orders.filter((o) => {
       if (!isWaiterPosDineInOrder(o)) return false;
-      const status = String(o.status ?? "").toLowerCase();
+      const status = normalizeOrderStatus(String(o.status ?? ""));
       const paymentStatus = String(o.paymentStatus ?? "").toLowerCase();
-      return status === "done" && paymentStatus === "paid";
+      return status === "completed" && paymentStatus === "paid";
     });
     rows.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
     return rows;
@@ -180,14 +188,26 @@ export function WaiterHomeView() {
       let c = 0;
       for (const o of orders) {
         if (!isWaiterPosDineInOrder(o)) continue;
-        const st = String(o.status ?? "").toLowerCase();
-        if (st !== "preparing") continue;
+        if (!isActivePipelineStatus(o.canonicalStatus ?? o.status)) continue;
         if (orderMatchesTable(o, t)) c++;
       }
       m.set(t.id, c);
     }
     return m;
   }, [tables, orders]);
+
+  /** Heal stale Firestore rows: occupied in DB but no open tickets on this table. */
+  useEffect(() => {
+    if (tables.length === 0 || ordersLoading) return;
+    for (const t of tables) {
+      const active = activePosCountByTableId.get(t.id) ?? 0;
+      if (active === 0 && t.status === "occupied") {
+        void patchWaiterTable(t.id, { status: "FREE", currentOrderId: null }).catch(() => {
+          /* Rules may block — UI still correct via activeOrderCount */
+        });
+      }
+    }
+  }, [tables, ordersLoading, activePosCountByTableId]);
 
   const gridColumns = winWidth >= 960 ? 4 : winWidth >= 700 ? 3 : 2;
   const gridGap = 10;
@@ -397,14 +417,17 @@ export function WaiterHomeView() {
                   const tokenLabel = fallbackTokenNumber(order);
                   const age = formatOrderAge(order.createdAt);
                   const urgent = isUrgentOrder(order.createdAt);
+                  const kitchenLabel = formatKitchenStatusLabel(order.canonicalStatus ?? order.status);
+                  const paymentLabel = formatPaymentStatusLabel(order.paymentStatus);
                   return (
                     <View key={order.id} style={[styles.cleanCard, urgent && styles.urgentCard]}>
                       <View style={styles.cleanTopRow}>
                         <Text style={styles.cleanTitle}>{tableLabel}</Text>
                         <View style={styles.preparingBadge}>
-                          <Text style={styles.preparingBadgeText}>Preparing</Text>
+                          <Text style={styles.preparingBadgeText}>{kitchenLabel}</Text>
                         </View>
                       </View>
+                      <Text style={styles.cleanMeta}>Payment: {paymentLabel}</Text>
                       <View style={styles.metaRow}>
                         <Text style={styles.cleanMeta}>Token #{tokenLabel}</Text>
                         <Text style={[styles.cleanMeta, urgent && styles.urgentMeta]}>{age}</Text>

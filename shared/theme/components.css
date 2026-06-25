@@ -1,0 +1,394 @@
+/**
+ * Shared component styles — semantic classes using CSS variables.
+ * Import after css-variables.css in each web app.
+ */
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: var(--theme-background);
+    color: var(--theme-text-primary);
+    transition: var(--theme-transition);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: var(--theme-selection);
+    color: var(--theme-text-primary);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--theme-scrollbar);
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--theme-scrollbar-hover);
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--theme-focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Cards */
+  .theme-card {
+    background-color: var(--theme-card);
+    border: 1px solid var(--theme-border);
+    border-radius: 1rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    transition: var(--theme-transition);
+  }
+
+  .theme-card-elevated {
+    background-color: var(--theme-card);
+    border: 1px solid var(--theme-border);
+    border-radius: 1rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  html.dark .theme-card-elevated {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .theme-card-hover:hover {
+    background-color: var(--theme-hover);
+    border-color: var(--theme-primary);
+  }
+
+  .theme-glass {
+    background-color: var(--theme-glass);
+    border: 1px solid var(--theme-divider);
+    backdrop-filter: blur(24px);
+    border-radius: 1rem;
+  }
+
+  /* Order cards */
+  .theme-order-card {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--theme-card);
+    border: 1px solid var(--theme-border);
+    border-radius: 1rem;
+    padding: 1rem;
+    transition: var(--theme-transition);
+  }
+
+  .theme-order-card:hover {
+    background-color: var(--theme-hover);
+    border-color: color-mix(in srgb, var(--theme-primary) 30%, var(--theme-border));
+  }
+
+  .theme-order-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--order-status-color, var(--theme-primary));
+  }
+
+  /* Buttons */
+  .theme-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    transition: var(--theme-transition);
+    cursor: pointer;
+    border: none;
+  }
+
+  .theme-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .theme-btn-primary {
+    background: linear-gradient(135deg, var(--theme-primary), var(--theme-primary-hover));
+    color: #fff;
+    box-shadow: 0 0 20px rgba(79, 140, 255, 0.12);
+  }
+
+  .theme-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+    box-shadow: 0 0 40px rgba(79, 140, 255, 0.15);
+  }
+
+  .theme-btn-secondary {
+    background-color: var(--theme-hover);
+    color: var(--theme-text-primary);
+    border: 1px solid var(--theme-border);
+  }
+
+  .theme-btn-secondary:hover:not(:disabled) {
+    border-color: var(--theme-primary);
+    background-color: var(--theme-primary-muted);
+  }
+
+  .theme-btn-outline {
+    background: transparent;
+    color: var(--theme-primary);
+    border: 1px solid color-mix(in srgb, var(--theme-primary) 40%, transparent);
+  }
+
+  .theme-btn-outline:hover:not(:disabled) {
+    background-color: var(--theme-primary-muted);
+  }
+
+  .theme-btn-ghost {
+    background: transparent;
+    color: var(--theme-text-secondary);
+  }
+
+  .theme-btn-ghost:hover:not(:disabled) {
+    background-color: var(--theme-hover);
+    color: var(--theme-text-primary);
+  }
+
+  .theme-btn-danger {
+    background-color: var(--theme-danger);
+    color: #fff;
+  }
+
+  .theme-btn-danger:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+
+  /* Inputs */
+  .theme-input {
+    width: 100%;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--theme-border);
+    background-color: var(--theme-input-bg);
+    color: var(--theme-text-primary);
+    padding: 0 0.75rem;
+    font-size: 0.875rem;
+    transition: var(--theme-transition);
+  }
+
+  .theme-input::placeholder {
+    color: var(--theme-text-disabled);
+  }
+
+  .theme-input:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--theme-primary) 50%, transparent);
+    box-shadow: 0 0 0 3px var(--theme-primary-muted);
+  }
+
+  .theme-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .theme-input:-webkit-autofill,
+  .theme-input:-webkit-autofill:hover,
+  .theme-input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px var(--theme-input-bg) inset;
+    -webkit-text-fill-color: var(--theme-text-primary);
+    caret-color: var(--theme-text-primary);
+    transition: background-color 9999s ease-out 0s;
+  }
+
+  .theme-select {
+    appearance: none;
+    width: 100%;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--theme-border);
+    background-color: var(--theme-input-bg);
+    color: var(--theme-text-primary);
+    padding: 0 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  /* Tables — POS style */
+  .theme-table-wrap {
+    overflow: auto;
+    border-radius: 0.75rem;
+    border: 1px solid var(--theme-border);
+  }
+
+  .theme-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .theme-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .theme-table th {
+    background-color: var(--theme-surface);
+    color: var(--theme-text-secondary);
+    font-weight: 600;
+    text-align: left;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--theme-border);
+    white-space: nowrap;
+  }
+
+  .theme-table td {
+    padding: 0.75rem 1rem;
+    color: var(--theme-text-primary);
+    border-bottom: 1px solid var(--theme-divider);
+  }
+
+  .theme-table tbody tr:nth-child(even) {
+    background-color: var(--theme-table-row-alt);
+  }
+
+  .theme-table tbody tr:hover {
+    background-color: var(--theme-table-row-hover);
+  }
+
+  .theme-table tbody tr.selected {
+    background-color: var(--theme-table-row-selected);
+  }
+
+  /* Dialogs */
+  .theme-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: var(--theme-overlay);
+    backdrop-filter: blur(4px);
+    z-index: 50;
+  }
+
+  .theme-dialog {
+    background-color: var(--theme-card);
+    border: 1px solid var(--theme-border);
+    border-radius: 1rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    color: var(--theme-text-primary);
+  }
+
+  /* Status chips */
+  .theme-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .theme-chip-pending { background: var(--theme-warning-muted); color: var(--theme-warning); }
+  .theme-chip-preparing { background: var(--theme-primary-muted); color: var(--theme-primary); }
+  .theme-chip-ready { background: var(--theme-success-muted); color: var(--theme-success); }
+  .theme-chip-completed { background: rgba(16, 185, 129, 0.14); color: #10B981; }
+  .theme-chip-cancelled { background: var(--theme-danger-muted); color: var(--theme-danger); }
+  .theme-chip-refund { background: rgba(139, 92, 246, 0.14); color: #A78BFA; }
+
+  /* Skeleton / loading */
+  .theme-skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--theme-skeleton) 0%,
+      var(--theme-skeleton-shimmer) 50%,
+      var(--theme-skeleton) 100%
+    );
+    background-size: 200% 100%;
+    animation: theme-shimmer 2s infinite linear;
+    border-radius: 0.5rem;
+  }
+
+  @keyframes theme-shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  /* Navigation */
+  .theme-sidebar {
+    background-color: var(--theme-surface);
+    border-right: 1px solid var(--theme-border);
+    color: var(--theme-text-primary);
+  }
+
+  .theme-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.625rem;
+    color: var(--theme-text-secondary);
+    transition: var(--theme-transition);
+  }
+
+  .theme-nav-item:hover {
+    background-color: var(--theme-hover);
+    color: var(--theme-text-primary);
+  }
+
+  .theme-nav-item.active {
+    background-color: var(--theme-primary-muted);
+    color: var(--theme-primary);
+  }
+
+  /* Toast / snackbar */
+  .theme-toast {
+    background-color: var(--theme-card);
+    border: 1px solid var(--theme-border);
+    border-radius: 0.75rem;
+    color: var(--theme-text-primary);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    padding: 0.75rem 1rem;
+  }
+
+  /* Empty states */
+  .theme-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 3rem 1.5rem;
+    text-align: center;
+    color: var(--theme-text-secondary);
+    border: 1px dashed var(--theme-border);
+    border-radius: 1rem;
+  }
+
+  /* Chart container — Recharts adapts via CSS vars */
+  .theme-chart text {
+    fill: var(--theme-chart-axis) !important;
+  }
+
+  .theme-chart .recharts-cartesian-grid line {
+    stroke: var(--theme-chart-grid) !important;
+  }
+
+  .theme-chart .recharts-tooltip-wrapper .recharts-default-tooltip {
+    background-color: var(--theme-card) !important;
+    border: 1px solid var(--theme-border) !important;
+    border-radius: 0.5rem !important;
+    color: var(--theme-text-primary) !important;
+  }
+}

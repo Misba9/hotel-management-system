@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis, YAxis, LineChart, Line, CartesianGrid } from "recharts";
+import { useChartTheme } from "@/components/providers/theme-provider";
 
 type OrdersChartProps = {
   ordersPerDay: Array<{ day: string; orders: number }>;
@@ -16,58 +17,55 @@ function formatDayLabel(day: string) {
 }
 
 function OrdersChartComponent({ ordersPerDay, revenuePerDay, showOrdersPerDay = true }: OrdersChartProps) {
+  const chart = useChartTheme();
   const ordersData = ordersPerDay.map((d) => ({ ...d, label: formatDayLabel(d.day) }));
   const revenueData = revenuePerDay.map((d) => ({ ...d, label: formatDayLabel(d.day) }));
+  const tooltipStyle = {
+    borderRadius: 8,
+    border: `1px solid ${chart.tooltip.border}`,
+    background: chart.tooltip.bg,
+    color: chart.text
+  };
 
   return (
-    <div className={`grid gap-4 ${showOrdersPerDay ? "lg:grid-cols-2" : ""}`}>
+    <div className={`theme-chart grid gap-4 ${showOrdersPerDay ? "lg:grid-cols-2" : ""}`}>
       {showOrdersPerDay ? (
-        <div className="h-72 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <h3 className="mb-4 font-semibold text-slate-900 dark:text-slate-50">Orders per day</h3>
+        <div className="theme-card-elevated h-72 rounded-2xl p-4">
+          <h3 className="mb-4 font-semibold text-theme-text-primary">Orders per day</h3>
           <ResponsiveContainer width="100%" height="85%">
             <BarChart data={ordersData}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-600" />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "currentColor" }} className="text-slate-600 dark:text-slate-400" />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "currentColor" }} className="text-slate-600 dark:text-slate-400" />
+              <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: chart.axis }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: chart.axis }} />
               <Tooltip
-                contentStyle={{
-                  borderRadius: 8,
-                  border: "1px solid rgb(226 232 240)",
-                  background: "var(--tooltip-bg, white)"
-                }}
+                contentStyle={tooltipStyle}
                 labelFormatter={(_, p) => {
                   const row = p?.[0]?.payload as { day?: string } | undefined;
                   return row?.day ?? "";
                 }}
               />
-              <Bar dataKey="orders" fill="#FF6B35" radius={[6, 6, 0, 0]} name="Orders" />
+              <Bar dataKey="orders" fill={chart.colors[0]} radius={[6, 6, 0, 0]} name="Orders" />
             </BarChart>
           </ResponsiveContainer>
         </div>
       ) : null}
-      <div
-        className={`h-72 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 ${showOrdersPerDay ? "" : "lg:col-span-2"}`}
-      >
-        <h3 className="mb-4 font-semibold text-slate-900 dark:text-slate-50">Sales over time</h3>
-        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">Daily revenue (UTC) — line chart trend.</p>
+      <div className={`theme-card-elevated h-72 rounded-2xl p-4 ${showOrdersPerDay ? "" : "lg:col-span-2"}`}>
+        <h3 className="mb-4 font-semibold text-theme-text-primary">Sales over time</h3>
+        <p className="mb-2 text-xs text-theme-text-secondary">Daily revenue (UTC) — line chart trend.</p>
         <ResponsiveContainer width="100%" height="80%">
           <LineChart data={revenueData}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-600" />
-            <XAxis dataKey="label" tick={{ fontSize: 11, fill: "currentColor" }} className="text-slate-600 dark:text-slate-400" />
-            <YAxis tick={{ fontSize: 11, fill: "currentColor" }} className="text-slate-600 dark:text-slate-400" />
+            <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: chart.axis }} />
+            <YAxis tick={{ fontSize: 11, fill: chart.axis }} />
             <Tooltip
-              contentStyle={{
-                borderRadius: 8,
-                border: "1px solid rgb(226 232 240)",
-                background: "var(--tooltip-bg, white)"
-              }}
+              contentStyle={tooltipStyle}
               formatter={(v: number) => [`Rs. ${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`, "Revenue"]}
               labelFormatter={(_, p) => {
                 const row = p?.[0]?.payload as { day?: string } | undefined;
                 return row?.day ?? "";
               }}
             />
-            <Line type="monotone" dataKey="revenue" stroke="#2EC4B6" strokeWidth={3} dot={{ r: 3 }} name="Revenue" />
+            <Line type="monotone" dataKey="revenue" stroke={chart.colors[1]} strokeWidth={3} dot={{ r: 3 }} name="Revenue" />
           </LineChart>
         </ResponsiveContainer>
       </div>

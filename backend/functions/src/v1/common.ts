@@ -6,6 +6,7 @@ import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 const enforceAppCheck = process.env.FIREBASE_FUNCTIONS_ENFORCE_APP_CHECK === "true";
 import { z, ZodError } from "zod";
 import type { Request } from "firebase-functions/v2/https";
+import { callableCorsOptions, httpCorsOptions } from "../cors";
 
 export const db = getFirestore();
 export const auth = getAuth();
@@ -148,7 +149,7 @@ export function withCallableGuard<TInput, TResult>(
   handler: (input: TInput, ctx: { uid: string; role: string }) => Promise<TResult>,
   schema: z.ZodType<TInput>
 ) {
-  return onCall({ enforceAppCheck }, async (request) => {
+  return onCall({ enforceAppCheck, ...callableCorsOptions }, async (request) => {
     try {
       const uid = assertAuthed(request.auth);
       const userRecord = await auth.getUser(uid);
@@ -180,7 +181,7 @@ export async function authenticateHttp(request: Request) {
 export function withHttpGuard(
   handler: (request: Request, identity: { uid: string; role: string }) => Promise<{ status: number; body: unknown }>
 ) {
-  return onRequest(async (request, response) => {
+  return onRequest({ ...httpCorsOptions }, async (request, response) => {
     try {
       const identity = await authenticateHttp(request);
       const result = await handler(request, identity);

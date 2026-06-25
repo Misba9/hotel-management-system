@@ -21,17 +21,37 @@ import {
 import { getFirebaseDb } from "@/lib/firebase";
 import { adminApiFetch } from "@/shared/lib/admin-api";
 import {
+  DEFAULT_ROLE_APP_ACCESS,
+  defaultAppsForRole,
+  formatAppAccessLabel,
+  parseAllowedApps,
+  type StaffAppPlatform
+} from "../../../../shared/constants/staff-app-access";
+import {
   STAFF_DIRECTORY_PLACEHOLDER_ROLE,
-  STAFF_DIRECTORY_ROLE_DESCRIPTIONS,
   STAFF_MANAGEMENT_ROLE_IDS,
   STAFF_ROLE_DESCRIPTIONS,
   type StaffDirectoryRoleId,
   type StaffManagementRoleId
 } from "../../../../shared/constants/staff-management-roles";
-import { formatAdminStaffApiError, parseCreatedAt } from "./staff-page-helpers";
-import { createStaffUser, toggleActive, updateStaffRole } from "@/lib/staffAdmin";
+import { parseCreatedAt } from "./staff-page-helpers";
+import { createStaffUser, toggleActive } from "@/lib/staffAdmin";
+import { PageShell } from "@/components/admin/page-shell";
+import { GlassCard } from "@/components/ui/glass-card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { MetricCard } from "@/components/ui/metric-card";
+import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 10;
+
+const selectClass =
+  "rounded-xl border border-theme-border bg-theme-input-bg px-3 py-2 text-sm text-theme-text-primary outline-none transition focus:border-theme-primary/40 focus:ring-2 focus:ring-theme-primary/20 disabled:cursor-not-allowed disabled:opacity-50";
+
+const modalOverlayClass = "absolute inset-0 bg-theme-overlay/80 backdrop-blur-sm";
+const modalPanelClass =
+  "relative z-10 w-full rounded-2xl border border-theme-border bg-theme-card p-6 shadow-2xl";
 
 export type StaffDisplayStatus = "active" | "pending" | "disabled";
 
@@ -44,6 +64,7 @@ export type StaffRow = {
   pendingApproval: boolean;
   isActive: boolean;
   displayStatus: StaffDisplayStatus;
+  allowedApps: StaffAppPlatform[];
   createdAt: Date | null;
   createdByEmail: string | null;
 };
@@ -64,15 +85,59 @@ export function computeDisplayStatus(row: { isActive: boolean; pendingApproval: 
   return "active";
 }
 
-const ROLE_BADGE: Record<StaffDirectoryRoleId, string> = {
-  admin: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
-  manager: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
-  cashier: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  kitchen: "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200",
-  delivery: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
-  waiter: "bg-fuchsia-100 text-fuchsia-900 ring-1 ring-fuchsia-200",
-  staff: "bg-amber-50 text-amber-900 ring-1 ring-amber-300"
-};
+function appsFromFlags(desktop: boolean, mobile: boolean): StaffAppPlatform[] {
+  const apps: StaffAppPlatform[] = [];
+  if (desktop) apps.push("desktop");
+  if (mobile) apps.push("mobile");
+  return apps;
+}
+
+function AppAccessBadges({ apps }: { apps: readonly StaffAppPlatform[] }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {apps.includes("desktop") ? <Badge variant="neutral">Desktop</Badge> : null}
+      {apps.includes("mobile") ? <Badge variant="default">Mobile</Badge> : null}
+    </div>
+  );
+}
+
+function LoginAccessFields({
+  desktop,
+  mobile,
+  onDesktop,
+  onMobile
+}: {
+  desktop: boolean;
+  mobile: boolean;
+  onDesktop: (v: boolean) => void;
+  onMobile: (v: boolean) => void;
+}) {
+  return (
+    <fieldset className="rounded-xl border border-theme-border p-3">
+      <legend className="px-1 text-sm font-medium text-theme-text-secondary">Login access</legend>
+      <div className="mt-2 flex flex-col gap-2 text-sm">
+        <label className="flex items-center gap-3 text-theme-text-primary">
+          <input
+            type="checkbox"
+            checked={desktop}
+            onChange={(e) => onDesktop(e.target.checked)}
+            className="h-4 w-4 rounded border-theme-border text-brand-primary focus:ring-brand-primary/30"
+          />
+          <span className="font-medium">Desktop app</span>
+        </label>
+        <label className="flex items-center gap-3 text-theme-text-primary">
+          <input
+            type="checkbox"
+            checked={mobile}
+            onChange={(e) => onMobile(e.target.checked)}
+            className="h-4 w-4 rounded border-theme-border text-brand-primary focus:ring-brand-primary/30"
+          />
+          <span className="font-medium">Mobile app</span>
+        </label>
+      </div>
+    </fieldset>
+  );
+}
 
 function fmtDate(d: Date | null): string {
   if (!d) return "—";
@@ -109,10 +174,14 @@ export function StaffPageFeature() {
   const [formPassword, setFormPassword] = useState("");
   const [formRole, setFormRole] = useState<StaffManagementRoleId>("cashier");
   const [formActive, setFormActive] = useState(true);
+  const [formDesktop, setFormDesktop] = useState(true);
+  const [formMobile, setFormMobile] = useState(false);
 
   const [editName, setEditName] = useState("");
   const [editRole, setEditRole] = useState<StaffManagementRoleId>("cashier");
   const [editActive, setEditActive] = useState(true);
+  const [editDesktop, setEditDesktop] = useState(true);
+  const [editMobile, setEditMobile] = useState(false);
 
   const [newPassword, setNewPassword] = useState("");
 
@@ -130,10 +199,15 @@ export function StaffPageFeature() {
             role?: unknown;
             isActive?: unknown;
             pendingApproval?: unknown;
+            allowedApps?: unknown;
             createdAt?: unknown;
             createdByEmail?: unknown;
           };
           const role = parseStaffRole(data.role);
+          const allowedApps =
+            role === STAFF_DIRECTORY_PLACEHOLDER_ROLE
+              ? []
+              : parseAllowedApps(data.allowedApps, role as StaffManagementRoleId);
           const pendingApproval = data.pendingApproval === true;
           const isActive = data.isActive !== false;
           const base = {
@@ -142,6 +216,7 @@ export function StaffPageFeature() {
             name: String(data.name ?? "—"),
             email: String(data.email ?? "—"),
             role,
+            allowedApps,
             pendingApproval,
             isActive,
             createdAt: parseCreatedAt(data.createdAt),
@@ -200,12 +275,21 @@ export function StaffPageFeature() {
     window.setTimeout(() => setToast(null), 4000);
   }, []);
 
+  useEffect(() => {
+    const defaults = defaultAppsForRole(formRole);
+    setFormDesktop(defaults.includes("desktop"));
+    setFormMobile(defaults.includes("mobile"));
+  }, [formRole]);
+
   function openAdd() {
     setFormName("");
     setFormEmail("");
     setFormPassword("");
     setFormRole("cashier");
     setFormActive(true);
+    const defaults = defaultAppsForRole("cashier");
+    setFormDesktop(defaults.includes("desktop"));
+    setFormMobile(defaults.includes("mobile"));
     setAddOpen(true);
     setError(null);
   }
@@ -213,8 +297,11 @@ export function StaffPageFeature() {
   function openEdit(row: StaffRow) {
     setEditRow(row);
     setEditName(row.name);
-    setEditRole(row.role === STAFF_DIRECTORY_PLACEHOLDER_ROLE ? "cashier" : row.role);
+    const role = row.role === STAFF_DIRECTORY_PLACEHOLDER_ROLE ? "cashier" : row.role;
+    setEditRole(role);
     setEditActive(row.isActive);
+    setEditDesktop(row.allowedApps.includes("desktop"));
+    setEditMobile(row.allowedApps.includes("mobile"));
     setError(null);
   }
 
@@ -222,6 +309,11 @@ export function StaffPageFeature() {
     e.preventDefault();
     if (formPassword.length < 6) {
       setError("Password must be at least 6 characters.");
+      return;
+    }
+    const allowedApps = appsFromFlags(formDesktop, formMobile);
+    if (allowedApps.length === 0) {
+      setError("Select at least one login platform (Desktop or Mobile).");
       return;
     }
     setCreating(true);
@@ -232,7 +324,8 @@ export function StaffPageFeature() {
         email: formEmail.trim(),
         password: formPassword,
         role: formRole,
-        isActive: formActive
+        isActive: formActive,
+        allowedApps
       });
       setAddOpen(false);
       showToast("Staff member created.");
@@ -246,6 +339,11 @@ export function StaffPageFeature() {
   async function submitEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editRow) return;
+    const allowedApps = appsFromFlags(editDesktop, editMobile);
+    if (allowedApps.length === 0) {
+      setError("Select at least one login platform (Desktop or Mobile).");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -254,7 +352,8 @@ export function StaffPageFeature() {
         body: JSON.stringify({
           name: editName.trim(),
           role: editRole,
-          isActive: editActive
+          isActive: editActive,
+          allowedApps
         })
       });
       if (!res.ok) {
@@ -322,12 +421,13 @@ export function StaffPageFeature() {
   }
 
   function exportCsv() {
-    const header = ["Name", "Email", "Role", "Status", "Active flag", "Created", "Created by"];
+    const header = ["Name", "Email", "Role", "Login access", "Status", "Active flag", "Created", "Created by"];
     const lines = filtered.map((r) =>
       [
         `"${r.name.replace(/"/g, '""')}"`,
         `"${r.email.replace(/"/g, '""')}"`,
         r.role,
+        formatAppAccessLabel(r.allowedApps),
         r.displayStatus,
         r.isActive ? "true" : "false",
         r.createdAt ? r.createdAt.toISOString() : "",
@@ -351,12 +451,28 @@ export function StaffPageFeature() {
     return { total: rows.length, active, pending, disabled };
   }, [rows]);
 
-  async function patchStaffUser(member: StaffRow, body: { role?: StaffManagementRoleId; isActive?: boolean }) {
+  async function patchStaffUser(
+    member: StaffRow,
+    body: { role?: StaffManagementRoleId; isActive?: boolean; allowedApps?: StaffAppPlatform[] }
+  ) {
     setUpdatingUid(member.uid);
     setError(null);
     try {
-      if (body.role !== undefined) {
-        await updateStaffRole(member.uid, body.role);
+      if (body.role !== undefined || body.allowedApps !== undefined) {
+        const res = await adminApiFetch(`/api/admin/staff-users/${encodeURIComponent(member.uid)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            ...(body.role !== undefined ? { role: body.role } : {}),
+            ...(body.allowedApps !== undefined ? { allowedApps: body.allowedApps } : {}),
+            ...(body.role !== undefined && body.allowedApps === undefined
+              ? { allowedApps: defaultAppsForRole(body.role) }
+              : {})
+          })
+        });
+        if (!res.ok) {
+          const j = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(j?.error ?? "Update failed.");
+        }
       } else if (body.isActive !== undefined) {
         await toggleActive(member.uid, body.isActive);
       }
@@ -385,262 +501,259 @@ export function StaffPageFeature() {
   }
 
   return (
-    <div className="space-y-6 pb-10">
+    <>
       {toast ? (
-        <div className="fixed bottom-6 right-6 z-[60] rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-lg">
+        <div className="fixed bottom-6 right-6 z-[60] rounded-2xl border border-theme-border bg-theme-card px-4 py-3 text-sm font-medium text-theme-text-primary shadow-lg">
           {toast}
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-orange-500">
-            <Shield className="h-8 w-8" aria-hidden />
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Staff management</h1>
+      <PageShell
+        badge="Team"
+        title="Staff management"
+        description="Approve self-signups, assign roles, and manage login access. Changes sync in real time from Firestore."
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="secondary" onClick={exportCsv}>
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+            <Button type="button" onClick={openAdd}>
+              <Plus className="h-4 w-4" />
+              Add staff
+            </Button>
           </div>
-          <p className="mt-1 max-w-xl text-sm text-slate-600">
-            Approve self-signups, assign roles, activate or disable accounts. Changes sync in real time from Firestore.
-            Assign <span className="font-semibold text-slate-800">waiter</span> and click <span className="font-semibold text-slate-800">Approve</span> (or use{" "}
-            <span className="font-semibold text-slate-800">Add staff</span> with role waiter) — the staff mobile app opens the{" "}
-            <span className="font-semibold text-slate-800">Waiter Dashboard</span> after sign-in.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-            {(Object.keys(STAFF_DIRECTORY_ROLE_DESCRIPTIONS) as StaffDirectoryRoleId[]).map((rid) => (
-              <span key={rid} className="rounded-lg bg-white/80 px-2 py-1 ring-1 ring-slate-200">
-                <span className="font-semibold text-slate-700">{rid}</span>
-                <span className="text-slate-500"> — {STAFF_DIRECTORY_ROLE_DESCRIPTIONS[rid]}</span>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-3">
+          <MetricCard
+            title="Active staff"
+            value={stats.active}
+            hint={`of ${stats.total} total`}
+            icon={Users}
+            accent="orange"
+            loading={loading}
+          />
+          <MetricCard
+            title="Pending approval"
+            value={stats.pending}
+            hint="awaiting role or activation"
+            icon={UserCheck}
+            accent="amber"
+            loading={loading}
+          />
+          <MetricCard title="Disabled" value={stats.disabled} icon={Shield} accent="rose" loading={loading} />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {STAFF_MANAGEMENT_ROLE_IDS.map((rid) => (
+            <span
+              key={rid}
+              className="rounded-lg border border-theme-border bg-theme-hover/40 px-2.5 py-1 text-xs text-theme-text-secondary"
+            >
+              <span className="font-semibold capitalize text-theme-text-primary">{rid}</span>
+              <span className="text-theme-text-disabled">
+                {" "}
+                — {STAFF_ROLE_DESCRIPTIONS[rid]} · {formatAppAccessLabel(DEFAULT_ROLE_APP_ACCESS[rid])}
               </span>
-            ))}
-          </div>
+            </span>
+          ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-2">
-            <div className="rounded-2xl bg-white px-4 py-2 text-sm shadow-sm ring-1 ring-slate-200/80">
-              <Users className="mb-1 inline h-4 w-4 text-orange-500" aria-hidden />
-              <div className="font-semibold text-slate-900">{stats.active} active</div>
-              <div className="text-xs text-slate-500">of {stats.total} total</div>
+
+        <GlassCard className="p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative max-w-md flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-theme-text-disabled" />
+              <Input
+                type="search"
+                placeholder="Search by name or email…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10"
+              />
             </div>
-            <div className="rounded-2xl bg-amber-50 px-4 py-2 text-sm shadow-sm ring-1 ring-amber-200/80">
-              <div className="mb-1 text-xs font-bold uppercase tracking-wide text-amber-800">Pending</div>
-              <div className="font-semibold text-amber-950">{stats.pending}</div>
-              <div className="text-xs text-amber-800/80">awaiting approval</div>
-            </div>
-            <div className="rounded-2xl bg-slate-50 px-4 py-2 text-sm shadow-sm ring-1 ring-slate-200/80">
-              <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-600">Disabled</div>
-              <div className="font-semibold text-slate-900">{stats.disabled}</div>
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value as typeof roleFilter)}
+                className={selectClass}
+              >
+                <option value="all">All roles</option>
+                <option value={STAFF_DIRECTORY_PLACEHOLDER_ROLE}>staff (pending setup)</option>
+                {STAFF_MANAGEMENT_ROLE_IDS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                className={selectClass}
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active only</option>
+                <option value="pending">Pending approval</option>
+                <option value="inactive">Disabled only</option>
+              </select>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={exportCsv}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-          >
-            <Download className="h-4 w-4" />
-            Export CSV
-          </button>
-          <button
-            type="button"
-            onClick={openAdd}
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:from-orange-600 hover:to-orange-700"
-          >
-            <Plus className="h-4 w-4" />
-            Add staff
-          </button>
-        </div>
-      </div>
+        </GlassCard>
 
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/80">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative max-w-md flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="search"
-              placeholder="Search by name or email…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as typeof roleFilter)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800"
-            >
-              <option value="all">All roles</option>
-              <option value={STAFF_DIRECTORY_PLACEHOLDER_ROLE}>staff (pending setup)</option>
-              {STAFF_MANAGEMENT_ROLE_IDS.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800"
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Active only</option>
-              <option value="pending">Pending approval</option>
-              <option value="inactive">Disabled only</option>
-            </select>
-          </div>
-        </div>
-      </div>
+        {error ? (
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">{error}</div>
+        ) : null}
 
-      {error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
-      ) : null}
-
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/80">
+        <GlassCard className="overflow-hidden p-0">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-20 text-slate-500">
-            <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+          <div className="flex items-center justify-center gap-2 py-20 text-theme-text-secondary">
+            <Loader2 className="h-6 w-6 animate-spin text-brand-primary" />
             Loading staff…
           </div>
         ) : filtered.length === 0 ? (
-          <div className="py-16 text-center text-slate-500">
-            <Users className="mx-auto h-10 w-10 text-slate-300" />
-            <p className="mt-2 font-medium">No staff match your filters</p>
-            <p className="text-sm">Try adjusting search or add a new team member.</p>
+          <div className="py-16 text-center text-theme-text-secondary">
+            <Users className="mx-auto h-10 w-10 text-theme-text-disabled" />
+            <p className="mt-2 font-medium text-theme-text-primary">No staff match your filters</p>
+            <p className="text-sm text-theme-text-disabled">Try adjusting search or add a new team member.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-100 text-sm">
-              <thead className="bg-gradient-to-r from-slate-50 to-orange-50/30">
+            <table className="theme-table min-w-full text-sm">
+              <thead>
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-600">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-600">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-600">Role</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-600">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-600">Created</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-600">Actions</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Login</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {pageSlice.map((member) => (
                   <tr
                     key={member.id}
-                    className={`transition hover:bg-orange-50/40 ${updatingUid === member.uid ? "opacity-60" : ""}`}
+                    className={cn("transition-colors", updatingUid === member.uid && "opacity-60")}
                   >
-                    <td className="px-4 py-3">
+                    <td>
                       <Link
                         href={`/admin/staff/${member.uid}`}
-                        className="font-semibold text-slate-900 hover:text-orange-600 hover:underline"
+                        className="font-semibold text-theme-text-primary hover:text-brand-primary hover:underline"
                       >
                         {member.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{member.email}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-2">
-                        <span
-                          className={`inline-flex w-fit rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${ROLE_BADGE[member.role]}`}
-                        >
-                          {member.role}
-                        </span>
-                        <select
-                          value={member.role === STAFF_DIRECTORY_PLACEHOLDER_ROLE ? "" : member.role}
-                          disabled={updatingUid === member.uid}
-                          onChange={(e) => {
-                            const v = e.target.value as StaffManagementRoleId;
-                            if (!v) return;
-                            void changeRowRole(member, v);
-                          }}
-                          className="max-w-[11rem] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 outline-none focus:border-orange-400"
-                        >
-                          {member.role === STAFF_DIRECTORY_PLACEHOLDER_ROLE ? (
-                            <option value="" disabled>
-                              Assign role…
-                            </option>
-                          ) : null}
-                          {STAFF_MANAGEMENT_ROLE_IDS.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                    <td className="text-theme-text-secondary">{member.email}</td>
+                    <td>
+                      <select
+                        value={member.role === STAFF_DIRECTORY_PLACEHOLDER_ROLE ? "" : member.role}
+                        disabled={updatingUid === member.uid}
+                        onChange={(e) => {
+                          const v = e.target.value as StaffManagementRoleId;
+                          if (!v) return;
+                          void changeRowRole(member, v);
+                        }}
+                        className={cn(selectClass, "max-w-[10rem] py-1.5 text-xs capitalize")}
+                      >
+                        {member.role === STAFF_DIRECTORY_PLACEHOLDER_ROLE ? (
+                          <option value="" disabled>
+                            Assign role…
+                          </option>
+                        ) : null}
+                        {STAFF_MANAGEMENT_ROLE_IDS.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
                     </td>
-                    <td className="px-4 py-3">
-                      {member.displayStatus === "active" ? (
-                        <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
-                          Active
-                        </span>
-                      ) : member.displayStatus === "pending" ? (
-                        <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-200">
-                          Pending
-                        </span>
+                    <td>
+                      {member.role === STAFF_DIRECTORY_PLACEHOLDER_ROLE ? (
+                        <span className="text-xs text-theme-text-disabled">—</span>
                       ) : (
-                        <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800 ring-1 ring-red-200">
-                          Disabled
-                        </span>
+                        <AppAccessBadges apps={member.allowedApps} />
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{fmtDate(member.createdAt)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex flex-col items-end gap-2">
+                    <td>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {member.displayStatus === "active" ? (
+                          <Badge variant="success">Active</Badge>
+                        ) : member.displayStatus === "pending" ? (
+                          <Badge variant="warning">Pending</Badge>
+                        ) : (
+                          <Badge variant="danger">Disabled</Badge>
+                        )}
                         {member.displayStatus === "pending" ? (
-                          <button
+                          <Button
                             type="button"
+                            size="sm"
                             title={
                               member.role === STAFF_DIRECTORY_PLACEHOLDER_ROLE
-                                ? "Choose a role above before approving"
+                                ? "Choose a role before approving"
                                 : "Activate account"
                             }
                             disabled={updatingUid === member.uid || member.role === STAFF_DIRECTORY_PLACEHOLDER_ROLE}
                             onClick={() => void approveStaffUser(member)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                            className="h-7 bg-emerald-600 px-2.5 text-xs hover:bg-emerald-700"
                           >
                             <UserCheck className="h-3.5 w-3.5" />
                             Approve
-                          </button>
+                          </Button>
                         ) : (
-                          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
-                            <span>Active</span>
+                          <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-theme-text-secondary">
                             <input
                               type="checkbox"
-                              className="h-4 w-4 rounded border-slate-300 text-orange-500"
+                              className="h-3.5 w-3.5 rounded border-theme-border text-brand-primary focus:ring-brand-primary/30"
                               checked={member.isActive}
                               disabled={updatingUid === member.uid}
                               onChange={(e) => void toggleRowActive(member, e.target.checked)}
                             />
+                            <span>{member.isActive ? "Enabled" : "Disabled"}</span>
                           </label>
                         )}
-                        <div className="flex justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => openEdit(member)}
-                            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-orange-600"
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setResetRow(member);
-                              setNewPassword("");
-                              setError(null);
-                            }}
-                            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-orange-600"
-                            title="Reset password"
-                          >
-                            <KeyRound className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteRow(member);
-                              setError(null);
-                            }}
-                            className="rounded-lg p-2 text-slate-600 hover:bg-red-50 hover:text-red-600"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap text-theme-text-secondary">{fmtDate(member.createdAt)}</td>
+                    <td>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(member)}
+                          title="Edit"
+                          className="h-8 w-8 text-theme-text-secondary hover:text-brand-primary"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setResetRow(member);
+                            setNewPassword("");
+                            setError(null);
+                          }}
+                          title="Reset password"
+                          className="h-8 w-8 text-theme-text-secondary hover:text-brand-primary"
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setDeleteRow(member);
+                            setError(null);
+                          }}
+                          title="Delete"
+                          className="h-8 w-8 text-theme-text-secondary hover:text-rose-400"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -651,234 +764,201 @@ export function StaffPageFeature() {
         )}
 
         {!loading && filtered.length > 0 ? (
-          <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 sm:flex-row">
-            <p className="text-xs text-slate-500">
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-theme-divider px-4 py-3 sm:flex-row">
+            <p className="text-xs text-theme-text-disabled">
               Showing {(pageSafe - 1) * PAGE_SIZE + 1}–{Math.min(pageSafe * PAGE_SIZE, filtered.length)} of {filtered.length}
             </p>
             <div className="flex items-center gap-2">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="icon"
                 disabled={pageSafe <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="rounded-lg border border-slate-200 p-2 text-slate-600 disabled:opacity-40"
+                className="h-8 w-8"
               >
                 <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="text-sm text-slate-600">
+              </Button>
+              <span className="text-sm text-theme-text-secondary">
                 Page {pageSafe} / {totalPages}
               </span>
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="icon"
                 disabled={pageSafe >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="rounded-lg border border-slate-200 p-2 text-slate-600 disabled:opacity-40"
+                className="h-8 w-8"
               >
                 <ChevronRight className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
-      </div>
+        </GlassCard>
+      </PageShell>
 
-      {/* Add modal */}
       {addOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button type="button" className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setAddOpen(false)} aria-label="Close" />
-          <div className="relative z-10 w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
+          <button type="button" className={modalOverlayClass} onClick={() => setAddOpen(false)} aria-label="Close" />
+          <div className={cn(modalPanelClass, "max-w-lg")}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">Add staff member</h2>
-                <p className="text-sm text-slate-500">Creates Firebase Auth user + Firestore profile.</p>
+                <h2 className="text-lg font-bold text-theme-text-primary">Add staff member</h2>
+                <p className="text-sm text-theme-text-secondary">Creates Firebase Auth user + Firestore profile.</p>
               </div>
-              <button type="button" onClick={() => setAddOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+              <Button type="button" variant="ghost" size="icon" onClick={() => setAddOpen(false)} className="h-8 w-8">
                 <X className="h-5 w-5" />
-              </button>
+              </Button>
             </div>
             <form onSubmit={(e) => void submitAdd(e)} className="mt-6 space-y-4">
               <label className="block text-sm">
-                <span className="font-medium text-slate-700">Name</span>
-                <input
-                  required
-                  minLength={2}
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
-                />
+                <span className="font-medium text-theme-text-secondary">Name</span>
+                <Input required minLength={2} value={formName} onChange={(e) => setFormName(e.target.value)} className="mt-1" />
               </label>
               <label className="block text-sm">
-                <span className="font-medium text-slate-700">Email</span>
-                <input
-                  required
-                  type="email"
-                  value={formEmail}
-                  onChange={(e) => setFormEmail(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
-                />
+                <span className="font-medium text-theme-text-secondary">Email</span>
+                <Input required type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} className="mt-1" />
               </label>
               <label className="block text-sm">
-                <span className="font-medium text-slate-700">Password (min 6 characters)</span>
-                <input
+                <span className="font-medium text-theme-text-secondary">Password (min 6 characters)</span>
+                <Input
                   required
                   type="password"
                   minLength={6}
                   value={formPassword}
                   onChange={(e) => setFormPassword(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
+                  className="mt-1"
                 />
               </label>
               <label className="block text-sm">
-                <span className="font-medium text-slate-700">Role</span>
+                <span className="font-medium text-theme-text-secondary">Role</span>
                 <select
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value as StaffManagementRoleId)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
+                  className={cn(selectClass, "mt-1 w-full")}
                 >
                   {STAFF_MANAGEMENT_ROLE_IDS.map((r) => (
                     <option key={r} value={r}>
-                      {r} — {STAFF_ROLE_DESCRIPTIONS[r]}
+                      {r} — {STAFF_ROLE_DESCRIPTIONS[r]} ({formatAppAccessLabel(DEFAULT_ROLE_APP_ACCESS[r])})
                     </option>
                   ))}
                 </select>
               </label>
-              <label className="flex items-center gap-3 text-sm">
+              <LoginAccessFields desktop={formDesktop} mobile={formMobile} onDesktop={setFormDesktop} onMobile={setFormMobile} />
+              <label className="flex items-center gap-3 text-sm text-theme-text-primary">
                 <input
                   type="checkbox"
                   checked={formActive}
                   onChange={(e) => setFormActive(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-orange-500"
+                  className="h-4 w-4 rounded border-theme-border text-brand-primary focus:ring-brand-primary/30"
                 />
-                <span className="font-medium text-slate-700">Active (can sign in)</span>
+                <span className="font-medium">Active (can sign in)</span>
               </label>
               <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAddOpen(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
+                <Button type="button" variant="secondary" onClick={() => setAddOpen(false)}>
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
-                >
+                </Button>
+                <Button type="submit" disabled={creating}>
                   {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   Create staff
-                </button>
+                </Button>
               </div>
             </form>
           </div>
         </div>
       ) : null}
 
-      {/* Edit modal */}
       {editRow ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button type="button" className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setEditRow(null)} aria-label="Close" />
-          <div className="relative z-10 w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
+          <button type="button" className={modalOverlayClass} onClick={() => setEditRow(null)} aria-label="Close" />
+          <div className={cn(modalPanelClass, "max-w-lg")}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">Edit staff</h2>
-                <p className="text-sm text-slate-500">{editRow.email}</p>
+                <h2 className="text-lg font-bold text-theme-text-primary">Edit staff</h2>
+                <p className="text-sm text-theme-text-secondary">{editRow.email}</p>
               </div>
-              <button type="button" onClick={() => setEditRow(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+              <Button type="button" variant="ghost" size="icon" onClick={() => setEditRow(null)} className="h-8 w-8">
                 <X className="h-5 w-5" />
-              </button>
+              </Button>
             </div>
             <form onSubmit={(e) => void submitEdit(e)} className="mt-6 space-y-4">
               <label className="block text-sm">
-                <span className="font-medium text-slate-700">Name</span>
-                <input
-                  required
-                  minLength={2}
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
-                />
+                <span className="font-medium text-theme-text-secondary">Name</span>
+                <Input required minLength={2} value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" />
               </label>
               <label className="block text-sm">
-                <span className="font-medium text-slate-700">Role</span>
+                <span className="font-medium text-theme-text-secondary">Role</span>
                 <select
                   value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as StaffManagementRoleId)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
+                  onChange={(e) => {
+                    const next = e.target.value as StaffManagementRoleId;
+                    setEditRole(next);
+                    const defaults = defaultAppsForRole(next);
+                    setEditDesktop(defaults.includes("desktop"));
+                    setEditMobile(defaults.includes("mobile"));
+                  }}
+                  className={cn(selectClass, "mt-1 w-full")}
                 >
                   {STAFF_MANAGEMENT_ROLE_IDS.map((r) => (
                     <option key={r} value={r}>
-                      {r} — {STAFF_ROLE_DESCRIPTIONS[r]}
+                      {r} — {STAFF_ROLE_DESCRIPTIONS[r]} ({formatAppAccessLabel(DEFAULT_ROLE_APP_ACCESS[r])})
                     </option>
                   ))}
                 </select>
               </label>
-              <label className="flex items-center gap-3 text-sm">
+              <LoginAccessFields desktop={editDesktop} mobile={editMobile} onDesktop={setEditDesktop} onMobile={setEditMobile} />
+              <label className="flex items-center gap-3 text-sm text-theme-text-primary">
                 <input
                   type="checkbox"
                   checked={editActive}
                   onChange={(e) => setEditActive(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-orange-500"
+                  className="h-4 w-4 rounded border-theme-border text-brand-primary focus:ring-brand-primary/30"
                 />
-                <span className="font-medium text-slate-700">Active</span>
+                <span className="font-medium">Active</span>
               </label>
               <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditRow(null)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
+                <Button type="button" variant="secondary" onClick={() => setEditRow(null)}>
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
-                >
+                </Button>
+                <Button type="submit" disabled={saving}>
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   Save
-                </button>
+                </Button>
               </div>
             </form>
           </div>
         </div>
       ) : null}
 
-      {/* Delete confirm */}
       {deleteRow ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button type="button" className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setDeleteRow(null)} aria-label="Close" />
-          <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-            <h2 className="text-lg font-bold text-slate-900">Delete staff member?</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              This removes <strong>{deleteRow.name}</strong> from Firestore and Firebase Authentication. This cannot be undone.
+          <button type="button" className={modalOverlayClass} onClick={() => setDeleteRow(null)} aria-label="Close" />
+          <div className={cn(modalPanelClass, "max-w-md")}>
+            <h2 className="text-lg font-bold text-theme-text-primary">Delete staff member?</h2>
+            <p className="mt-2 text-sm text-theme-text-secondary">
+              This removes <strong className="text-theme-text-primary">{deleteRow.name}</strong> from Firestore and Firebase
+              Authentication. This cannot be undone.
             </p>
             <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDeleteRow(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
+              <Button type="button" variant="secondary" onClick={() => setDeleteRow(null)}>
                 Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmDelete()}
-                disabled={deleting}
-                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
-              >
+              </Button>
+              <Button type="button" variant="destructive" onClick={() => void confirmDelete()} disabled={deleting}>
                 {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Delete
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       ) : null}
 
-      {/* Reset password */}
       {resetRow ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button type="button" className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setResetRow(null)} aria-label="Close" />
-          <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-            <h2 className="text-lg font-bold text-slate-900">Reset password</h2>
-            <p className="mt-1 text-sm text-slate-500">Set a new password for {resetRow.name}</p>
+          <button type="button" className={modalOverlayClass} onClick={() => setResetRow(null)} aria-label="Close" />
+          <div className={cn(modalPanelClass, "max-w-md")}>
+            <h2 className="text-lg font-bold text-theme-text-primary">Reset password</h2>
+            <p className="mt-1 text-sm text-theme-text-secondary">Set a new password for {resetRow.name}</p>
             <form
               className="mt-4"
               onSubmit={(e) => {
@@ -887,37 +967,29 @@ export function StaffPageFeature() {
               }}
             >
               <label className="block text-sm">
-                <span className="font-medium text-slate-700">New password (min 6)</span>
-                <input
+                <span className="font-medium text-theme-text-secondary">New password (min 6)</span>
+                <Input
                   type="password"
                   minLength={6}
                   autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20"
+                  className="mt-1"
                 />
               </label>
               <div className="mt-6 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setResetRow(null)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
+                <Button type="button" variant="secondary" onClick={() => setResetRow(null)}>
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={resetting || newPassword.length < 6}
-                  className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
-                >
+                </Button>
+                <Button type="submit" disabled={resetting || newPassword.length < 6}>
                   {resetting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   Update password
-                </button>
+                </Button>
               </div>
             </form>
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

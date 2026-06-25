@@ -40,7 +40,6 @@ const ROLE_PERMISSIONS: Record<StaffRoleId, readonly StaffPermission[]> = {
   manager: ["view_orders"],
   cashier: ["create_order"],
   kitchen: ["prepare_order"],
-  delivery: ["deliver_order"],
   waiter: ["waiter_table"]
 };
 

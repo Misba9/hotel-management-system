@@ -4,6 +4,10 @@ import { adminAuth, adminDb } from "@shared/firebase/admin";
 import { StaffEmailUnavailableError, assertStaffEmailAvailable } from "@/lib/server/assertStaffEmailAvailable";
 import { requireAdmin } from "@shared/utils/admin-api-auth";
 import {
+  defaultAppsForRole,
+  type StaffAppPlatform
+} from "../../../../../../shared/constants/staff-app-access";
+import {
   type StaffManagementRoleId,
   staffManagementRoleToAuthClaim,
   staffManagementRoleToUsersField
@@ -11,14 +15,16 @@ import {
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
-const staffManagementRoleSchema = z.enum(["admin", "manager", "cashier", "kitchen", "delivery", "waiter"]);
+const staffManagementRoleSchema = z.enum(["admin", "manager", "cashier", "kitchen", "waiter"]);
+const allowedAppsSchema = z.array(z.enum(["desktop", "mobile"])).min(1).max(2);
 
 const createBody = z.object({
   name: z.string().min(2).max(120),
   email: z.string().email(),
   password: z.string().min(6).max(128),
   role: staffManagementRoleSchema,
-  isActive: z.boolean()
+  isActive: z.boolean(),
+  allowedApps: allowedAppsSchema.optional()
 });
 
 export async function POST(request: Request) {
@@ -62,6 +68,7 @@ export async function POST(request: Request) {
         isActive: body.isActive,
         name: body.name.trim(),
         pendingApproval: false,
+        allowedApps: body.allowedApps ?? defaultAppsForRole(body.role as StaffManagementRoleId),
         createdAt: FieldValue.serverTimestamp(),
         createdByUid: auth.user.uid,
         createdByEmail: auth.user.email

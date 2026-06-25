@@ -11,6 +11,5 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<StaffRoleId, string[]> = {
   manager: ["view_orders", "update_status"],
   cashier: ["view_orders", "billing", "payments"],
   kitchen: ["view_orders", "mark_prepared"],
-  delivery: ["view_orders", "delivery"],
   waiter: ["view_orders", "waiter_table"]
 };

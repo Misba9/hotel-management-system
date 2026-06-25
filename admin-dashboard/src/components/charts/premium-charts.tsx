@@ -12,19 +12,20 @@ import {
   XAxis,
   YAxis
 } from "recharts";
+import { useChartTheme } from "@/components/providers/theme-provider";
 
 type SalesChartProps = {
   revenuePerDay: Array<{ day: string; revenue: number }>;
   ordersPerDay?: Array<{ day: string; orders: number }>;
 };
 
-const tooltipStyle = {
+const tooltipStyle = (chart: ReturnType<typeof useChartTheme>) => ({
   borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.1)",
-  background: "rgba(18, 18, 26, 0.95)",
-  color: "#fff",
+  border: `1px solid ${chart.tooltip.border}`,
+  background: chart.tooltip.bg,
+  color: chart.text,
   backdropFilter: "blur(12px)"
-};
+});
 
 function formatDayLabel(day: string) {
   if (day.length >= 10) return day.slice(5);
@@ -32,6 +33,7 @@ function formatDayLabel(day: string) {
 }
 
 function SalesChartComponent({ revenuePerDay, ordersPerDay }: SalesChartProps) {
+  const chart = useChartTheme();
   const data = revenuePerDay.map((d, i) => ({
     label: formatDayLabel(d.day),
     day: d.day,
@@ -40,20 +42,20 @@ function SalesChartComponent({ revenuePerDay, ordersPerDay }: SalesChartProps) {
   }));
 
   return (
-    <div className="h-80 w-full">
+    <div className="theme-chart h-80 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data}>
           <defs>
             <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#FF7A00" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="#FF7A00" stopOpacity={0} />
+              <stop offset="0%" stopColor={chart.colors[0]} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={chart.colors[0]} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} axisLine={false} tickLine={false} />
+          <CartesianGrid stroke={chart.grid} strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 11, fill: chart.axis }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 11, fill: chart.axis }} axisLine={false} tickLine={false} />
           <Tooltip
-            contentStyle={tooltipStyle}
+            contentStyle={tooltipStyle(chart)}
             formatter={(v: number, name: string) => [
               name === "revenue" ? `Rs. ${v.toLocaleString("en-IN")}` : v,
               name === "revenue" ? "Revenue" : "Orders"
@@ -63,7 +65,7 @@ function SalesChartComponent({ revenuePerDay, ordersPerDay }: SalesChartProps) {
               return row?.day ?? "";
             }}
           />
-          <Area type="monotone" dataKey="revenue" stroke="#FF7A00" strokeWidth={2.5} fill="url(#revenueGradient)" />
+          <Area type="monotone" dataKey="revenue" stroke={chart.colors[0]} strokeWidth={2.5} fill="url(#revenueGradient)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -71,24 +73,25 @@ function SalesChartComponent({ revenuePerDay, ordersPerDay }: SalesChartProps) {
 }
 
 function TopProductsBarComponent({ items }: { items: Array<{ name: string; sold: number }> }) {
+  const chart = useChartTheme();
   const data = items.slice(0, 6).map((p) => ({ name: p.name.length > 16 ? `${p.name.slice(0, 14)}…` : p.name, sold: p.sold }));
 
   return (
-    <div className="h-64 w-full">
+    <div className="theme-chart h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout="vertical">
-          <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
-          <XAxis type="number" tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }} axisLine={false} tickLine={false} />
+          <CartesianGrid stroke={chart.grid} horizontal={false} />
+          <XAxis type="number" tick={{ fontSize: 11, fill: chart.axis }} axisLine={false} tickLine={false} />
           <YAxis
             type="category"
             dataKey="name"
             width={100}
-            tick={{ fontSize: 11, fill: "rgba(255,255,255,0.5)" }}
+            tick={{ fontSize: 11, fill: chart.axis }}
             axisLine={false}
             tickLine={false}
           />
-          <Tooltip contentStyle={tooltipStyle} />
-          <Bar dataKey="sold" fill="#FF7A00" radius={[0, 6, 6, 0]} />
+          <Tooltip contentStyle={tooltipStyle(chart)} />
+          <Bar dataKey="sold" fill={chart.colors[0]} radius={[0, 6, 6, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

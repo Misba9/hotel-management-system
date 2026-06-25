@@ -6,7 +6,14 @@ import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { ArrowLeft, Loader2, Shield } from "lucide-react";
 import { getFirebaseDb } from "@/lib/firebase";
-import { STAFF_DIRECTORY_ROLE_DESCRIPTIONS, STAFF_ROLE_DESCRIPTIONS, type StaffDirectoryRoleId } from "../../../../shared/constants/staff-management-roles";
+import { formatAppAccessLabel, parseAllowedApps } from "../../../../shared/constants/staff-app-access";
+import {
+  STAFF_DIRECTORY_PLACEHOLDER_ROLE,
+  STAFF_DIRECTORY_ROLE_DESCRIPTIONS,
+  STAFF_ROLE_DESCRIPTIONS,
+  type StaffDirectoryRoleId,
+  type StaffManagementRoleId
+} from "../../../../shared/constants/staff-management-roles";
 import { computeDisplayStatus, parseStaffRole, type StaffRow } from "./staff-page";
 import { parseCreatedAt } from "./staff-page-helpers";
 
@@ -15,7 +22,6 @@ const ROLE_BADGE: Record<StaffDirectoryRoleId, string> = {
   manager: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
   cashier: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
   kitchen: "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200",
-  delivery: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
   waiter: "bg-fuchsia-100 text-fuchsia-900 ring-1 ring-fuchsia-200",
   staff: "bg-amber-50 text-amber-900 ring-1 ring-amber-300"
 };
@@ -51,10 +57,15 @@ export function StaffDetailFeature() {
           role?: unknown;
           isActive?: unknown;
           pendingApproval?: unknown;
+          allowedApps?: unknown;
           createdAt?: unknown;
           createdByEmail?: unknown;
         };
         const role = parseStaffRole(data.role);
+        const allowedApps =
+          role === STAFF_DIRECTORY_PLACEHOLDER_ROLE
+            ? []
+            : parseAllowedApps(data.allowedApps, role as StaffManagementRoleId);
         const pendingApproval = data.pendingApproval === true;
         const isActive = data.isActive !== false;
         const base = {
@@ -63,6 +74,7 @@ export function StaffDetailFeature() {
           name: String(data.name ?? "—"),
           email: String(data.email ?? "—"),
           role,
+          allowedApps,
           pendingApproval,
           isActive,
           createdAt: parseCreatedAt(data.createdAt),
@@ -141,6 +153,11 @@ export function StaffDetailFeature() {
         <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Role & access</h2>
           <p className="mt-2 text-slate-800">{STAFF_DIRECTORY_ROLE_DESCRIPTIONS[row.role]}</p>
+          {row.role !== STAFF_DIRECTORY_PLACEHOLDER_ROLE ? (
+            <p className="mt-2 text-sm font-semibold text-slate-700">
+              Login: {formatAppAccessLabel(row.allowedApps)}
+            </p>
+          ) : null}
         </div>
         <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Account</h2>

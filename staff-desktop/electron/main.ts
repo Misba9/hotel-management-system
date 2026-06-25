@@ -5,11 +5,15 @@ import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
 import { offlineOrderCache } from "./offline-cache";
 import { listPrinterDevices, printInvoice, printKot } from "./receipt-printer";
 import { loadSettings, saveSettings } from "./settings-store";
+import { razorpayInitiatePayment, razorpayVerifyPayment, readRazorpayPublicKey } from "./razorpay-service";
 import type {
   FirebaseClientConfig,
   OfflineSyncStatus,
   PrintInvoicePayload,
   PrintKotPayload,
+  RazorpayInitiatePayload,
+  RazorpayInitiateResult,
+  RazorpayVerifyPayload,
   StaffDesktopSettings
 } from "./main-types";
 
@@ -192,6 +196,16 @@ function registerIpcHandlers(): void {
   ipcMain.handle("sound:playNewOrder", () => {
     mainWindow?.webContents.send("sound:new-order");
     return { ok: true };
+  });
+
+  ipcMain.handle("razorpay:getKeyId", () => readRazorpayPublicKey(process.env));
+
+  ipcMain.handle("razorpay:initiate", async (_event, payload: RazorpayInitiatePayload): Promise<RazorpayInitiateResult> => {
+    return razorpayInitiatePayment(payload, process.env);
+  });
+
+  ipcMain.handle("razorpay:verify", async (_event, payload: RazorpayVerifyPayload) => {
+    return razorpayVerifyPayment(payload, process.env);
   });
 }
 

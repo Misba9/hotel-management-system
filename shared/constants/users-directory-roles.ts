@@ -8,7 +8,6 @@ export const USER_DIRECTORY_ROLE_IDS = [
   "manager",
   "kitchen",
   "cashier",
-  "delivery",
   "waiter"
 ] as const;
 
@@ -23,8 +22,6 @@ export function userDirectoryRoleToAuthClaim(role: UserDirectoryRoleId): string 
   switch (role) {
     case "kitchen":
       return "kitchen_staff";
-    case "delivery":
-      return "delivery_boy";
     default:
       return role;
   }

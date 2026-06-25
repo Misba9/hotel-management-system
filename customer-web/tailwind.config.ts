@@ -1,20 +1,18 @@
 import type { Config } from "tailwindcss";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const themePreset = require("../shared/theme/tailwind-preset.cjs");
 
 const config: Config = {
+  presets: [themePreset],
   darkMode: "class",
   content: ["./app/**/*.{js,ts,jsx,tsx,mdx}", "./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
       colors: {
         brand: {
-          primary: "#FF6B35",
-          secondary: "#FFD166",
-          background: "#FFF8F3",
-          accent: "#2EC4B6"
+          background: "var(--theme-background)",
+          accent: "var(--theme-info)"
         }
-      },
-      boxShadow: {
-        glass: "0 8px 32px rgba(255, 107, 53, 0.16)"
       }
     }
   },

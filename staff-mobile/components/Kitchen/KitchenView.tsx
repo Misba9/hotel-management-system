@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from "react-native";
+import { isActivePipelineStatus } from "@shared/utils/canonical-order-fields";
 
 import { KitchenTicketCard } from "../KitchenTicketCard";
 import { printKitchenKot } from "../../services/kitchen-kot-print";
 import {
+  kitchenAcceptOrder,
   kitchenMarkOrderReady,
+  kitchenMarkPreparing,
   markKitchenTicketPrinted,
   subscribeKitchenKdsOrders,
   type StaffOrderRow
@@ -20,7 +23,9 @@ export function KitchenView() {
   const [orders, setOrders] = useState<StaffOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [busy, setBusy] = useState<{ id: string; action: "ready" | "print" } | null>(null);
+  const [busy, setBusy] = useState<{ id: string; action: "accept" | "preparing" | "ready" | "print" } | null>(
+    null
+  );
   const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set());
 
   const prevIdsRef = useRef<Set<string>>(new Set());
@@ -30,12 +35,7 @@ export function KitchenView() {
   const highlightTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const safeOrders = useMemo(
-    () =>
-      orders.filter((o) => {
-        if (!o || !Array.isArray(o.items)) return false;
-        const c = o.canonicalStatus;
-        return c === "pending" || c === "preparing";
-      }),
+    () => orders.filter((o) => o && Array.isArray(o.items) && isActivePipelineStatus(o.status)),
     [orders]
   );
   const sorted = useMemo(() => sortKdsOrders(safeOrders), [safeOrders]);
@@ -73,22 +73,25 @@ export function KitchenView() {
     try {
       unsubscribe = subscribeKitchenKdsOrders(
         (next) => {
-          const nextIds = new Set(next.map((o) => o.id));
+          const byId = new Map<string, StaffOrderRow>();
+          for (const row of next) byId.set(row.id, row);
+          const deduped = [...byId.values()];
+          const nextIds = new Set(deduped.map((o) => o.id));
           if (!bootstrappedRef.current) {
             bootstrappedRef.current = true;
             prevIdsRef.current = nextIds;
-            setOrders(next);
+            setOrders(deduped);
             setLoading(false);
             return;
           }
-          for (const o of next) {
+          for (const o of deduped) {
             if (!prevIdsRef.current.has(o.id)) {
               markAsNew(o.id);
               pendingAutoPrintIdsRef.current.add(o.id);
             }
           }
           prevIdsRef.current = nextIds;
-          setOrders(next);
+          setOrders(deduped);
           setLoading(false);
         },
         () => {
@@ -112,7 +115,6 @@ export function KitchenView() {
     };
   }, [isOnline, markAsNew]);
 
-  /** Auto KOT once per new ticket (Firestore `printed`); never runs during render. */
   useEffect(() => {
     if (!isOnline || orders.length === 0) return;
 
@@ -120,7 +122,8 @@ export function KitchenView() {
     const run = async () => {
       for (const o of orders) {
         if (!queue.has(o.id)) continue;
-        if (o.canonicalStatus !== "preparing" || o.printed === true) {
+        const canon = o.canonicalStatus;
+        if ((canon !== "new" && canon !== "accepted" && canon !== "preparing") || o.printed === true) {
           queue.delete(o.id);
           continue;
         }
@@ -154,23 +157,43 @@ export function KitchenView() {
     }
   }, []);
 
-  const runReady = useCallback(async (order: StaffOrderRow) => {
-    setBusy({ id: order.id, action: "ready" });
+  const runAccept = useCallback(async (order: StaffOrderRow) => {
+    setBusy({ id: order.id, action: "accept" });
     try {
-      await kitchenMarkOrderReady(order);
-    } catch {
-      Alert.alert("Action failed", "Could not mark this ticket ready. Please try again.");
+      await kitchenAcceptOrder(order);
+    } catch (e) {
+      Alert.alert("Action failed", e instanceof Error ? e.message : "Could not accept order.");
     } finally {
       setBusy(null);
     }
   }, []);
 
-  if (!orders) return null;
+  const runPreparing = useCallback(async (order: StaffOrderRow) => {
+    setBusy({ id: order.id, action: "preparing" });
+    try {
+      await kitchenMarkPreparing(order);
+    } catch (e) {
+      Alert.alert("Action failed", e instanceof Error ? e.message : "Could not start preparing.");
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+
+  const runReady = useCallback(async (order: StaffOrderRow) => {
+    setBusy({ id: order.id, action: "ready" });
+    try {
+      await kitchenMarkOrderReady(order);
+    } catch (e) {
+      Alert.alert("Action failed", e instanceof Error ? e.message : "Could not mark ready.");
+    } finally {
+      setBusy(null);
+    }
+  }, []);
 
   return (
     <View style={styles.screen}>
       <Text style={styles.heading}>Kitchen</Text>
-      <Text style={styles.sub}>Live queue — new and in-progress tickets (realtime).</Text>
+      <Text style={styles.sub}>Live queue — new through ready (realtime).</Text>
       {!isOnline ? <Text style={styles.banner}>No connection</Text> : null}
       {hasError ? <Text style={styles.state}>Something went wrong</Text> : null}
       {loading ? (
@@ -188,14 +211,14 @@ export function KitchenView() {
           <KitchenTicketCard
             order={item}
             busy={busy?.id === item.id ? busy.action : null}
+            onAccept={() => void runAccept(item)}
+            onPreparing={() => void runPreparing(item)}
             onPrint={() => void runPrint(item)}
             onMarkReady={() => void runReady(item)}
             isNew={newOrderIds.has(item.id)}
           />
         )}
-        ListEmptyComponent={
-          !loading ? <Text style={styles.empty}>No tickets in queue</Text> : null
-        }
+        ListEmptyComponent={!loading ? <Text style={styles.empty}>No tickets in queue</Text> : null}
       />
     </View>
   );

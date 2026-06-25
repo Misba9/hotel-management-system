@@ -1,13 +1,17 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+const themePreset = require("../shared/theme/tailwind-preset.cjs");
+
+module.exports = {
+  presets: [themePreset],
   darkMode: "class",
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
       colors: {
+        /** Legacy POS aliases — map to centralized theme tokens */
         brand: {
-          teal: "#0F766E",
-          emerald: "#059669"
+          teal: "var(--theme-primary)",
+          emerald: "var(--theme-success)"
         }
       }
     }

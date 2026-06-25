@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { normalizeOrderStatus } from "@shared/utils/canonical-order-fields";
+import { formatItemExtras } from "@shared/lib/format-item-extras";
 import { motion } from "framer-motion";
 import { Clock, Maximize2, Package, Volume2 } from "lucide-react";
 import { getFirebaseDb } from "@/lib/firebase";
@@ -14,17 +16,20 @@ import { Button } from "@/components/ui/button";
 type KitchenOrder = {
   id: string;
   table?: string;
-  items: number;
+  items: Array<{ name: string; qty: number; extras?: string }>;
   status: string;
+  canonicalStatus: string;
   createdAt?: string;
   orderType?: string;
+  source?: string;
 };
 
 const COLUMNS = [
-  { key: "new", label: "New", statuses: ["pending", "accepted", "placed"] },
-  { key: "preparing", label: "Preparing", statuses: ["preparing"] },
-  { key: "ready", label: "Ready", statuses: ["ready"] },
-  { key: "served", label: "Served", statuses: ["done", "delivered", "served"] }
+  { key: "new", label: "New", statuses: ["new"] as const },
+  { key: "accepted", label: "Accepted", statuses: ["accepted"] as const },
+  { key: "preparing", label: "Preparing", statuses: ["preparing"] as const },
+  { key: "ready", label: "Ready", statuses: ["ready"] as const },
+  { key: "completed", label: "Completed", statuses: ["completed"] as const }
 ] as const;
 
 function orderMinutes(createdAt?: string) {
@@ -45,14 +50,25 @@ export function KitchenDisplayPageFeature() {
       setOrders(
         snap.docs.map((d) => {
           const data = d.data();
-          const items = Array.isArray(data.items) ? data.items.length : 0;
+          const rawItems = Array.isArray(data.items) ? data.items : [];
+          const items = rawItems.map((row: Record<string, unknown>) => ({
+            name: String(row.name ?? "Item"),
+            qty: Number(row.qty ?? row.quantity ?? 1),
+            extras: formatItemExtras({
+              modifications: Array.isArray(row.modifications) ? (row.modifications as string[]) : undefined,
+              note: typeof row.note === "string" ? row.note : undefined
+            })
+          }));
+          const canon = normalizeOrderStatus(String(data.status ?? ""));
           return {
             id: d.id.slice(-6).toUpperCase(),
             table: data.tableName ?? (data.tableNumber ? `T-${data.tableNumber}` : data.orderType ?? "—"),
             items,
-            status: String(data.status ?? "pending"),
+            status: String(data.status ?? "new"),
+            canonicalStatus: canon,
             createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt ?? undefined,
-            orderType: data.orderType
+            orderType: data.orderType,
+            source: typeof data.source === "string" ? data.source : undefined
           };
         })
       );
@@ -61,10 +77,10 @@ export function KitchenDisplayPageFeature() {
   }, [user]);
 
   const content = (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
       {COLUMNS.map((col) => {
         const colOrders = orders.filter((o) =>
-          (col.statuses as readonly string[]).includes(o.status.toLowerCase())
+          (col.statuses as readonly string[]).includes(o.canonicalStatus)
         );
         return (
           <GlassCard key={col.key} hover={false} className="flex flex-col p-3">
@@ -91,10 +107,13 @@ export function KitchenDisplayPageFeature() {
                       {order.orderType === "delivery" ? <Badge variant="default">Delivery</Badge> : null}
                     </div>
                     <p className="mt-1 text-sm text-white/70">{order.table}</p>
+                    {order.source ? (
+                      <p className="mt-0.5 text-xs uppercase tracking-wide text-white/40">{order.source}</p>
+                    ) : null}
                     <div className="mt-2 flex items-center justify-between">
                       <span className="flex items-center gap-1 text-xs text-white/40">
                         <Package className="h-3 w-3" />
-                        {order.items} items
+                        {order.items.length} items
                       </span>
                       <span className={`flex items-center gap-1 text-xs font-semibold ${urgent ? "text-rose-400" : "text-white/50"}`}>
                         <Clock className="h-3 w-3" />

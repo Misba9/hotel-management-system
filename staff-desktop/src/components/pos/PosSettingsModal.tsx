@@ -44,7 +44,7 @@ export function PosSettingsModal({
   onLogout
 }: PosSettingsModalProps) {
   const { profile } = useAuth();
-  const { mode, setMode } = useTheme();
+  const { mode, setMode, preference, setPreference } = useTheme();
   const { status, syncNow } = useOfflineSync();
   const { settings: posSettings, taxPercent } = usePosSettings();
   const { printers: firestorePrinters } = usePrinters();
@@ -235,21 +235,22 @@ export function PosSettingsModal({
 
           {section === "theme" ? (
             <Section title="Theme">
+              <p className="mb-4 text-sm text-theme-text-secondary">Choose appearance for the POS workspace. System follows your OS setting.</p>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMode("light")}
-                  className={`flex-1 rounded-xl border py-3 text-sm font-bold ${mode === "light" ? "border-brand-teal bg-brand-teal/10 text-brand-teal" : ""}`}
-                >
-                  ☀ Light
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("dark")}
-                  className={`flex-1 rounded-xl border py-3 text-sm font-bold ${mode === "dark" ? "border-brand-teal bg-brand-teal/10 text-brand-teal" : ""}`}
-                >
-                  🌙 Dark
-                </button>
+                {(["light", "dark", "system"] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => (opt === "system" ? setPreference("system") : setMode(opt))}
+                    className={`flex-1 rounded-xl border border-theme-border py-3 text-sm font-bold capitalize transition ${
+                      (opt === "system" ? preference === "system" : mode === opt)
+                        ? "border-theme-primary bg-theme-primary-muted text-theme-primary"
+                        : "text-theme-text-secondary hover:bg-theme-hover"
+                    }`}
+                  >
+                    {opt === "light" ? "☀ Light" : opt === "dark" ? "🌙 Dark" : "💻 System"}
+                  </button>
+                ))}
               </div>
             </Section>
           ) : null}

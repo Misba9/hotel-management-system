@@ -1,6 +1,11 @@
 import type { User } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import {
+  canAccessStaffPlatform,
+  formatAppAccessLabel,
+  parseAllowedApps
+} from "@shared/constants/staff-app-access";
+import {
   normalizeStaffAppRole,
   normalizeStaffUsersRowRole,
   usersDocBlocksStaffAccess
@@ -95,7 +100,9 @@ export type StaffSessionGate =
   /** Assigned role but not active */
   | "paused"
   /** Role string not recognized — wait for admin */
-  | "needs_assignment";
+  | "needs_assignment"
+  /** Role is valid but not permitted on the mobile app */
+  | "platform_blocked";
 
 /**
  * Maps Firestore data → navigation gate. Never returns "access denied" — unknowns go to needs_assignment or pending.
@@ -128,6 +135,10 @@ export function resolveStaffSession(
     return { gate: "paused", profile: null };
   }
 
+  if (!canAccessStaffPlatform("mobile", data)) {
+    return { gate: "platform_blocked", profile: null };
+  }
+
   const email =
     typeof data.email === "string" && data.email.trim() ? data.email.trim() : authEmail ?? "";
   const name =
@@ -154,7 +165,7 @@ export function resolveStaffSession(
 }
 
 const USERS_COLLECTION = "users" as const;
-export { USERS_COLLECTION };
+export { USERS_COLLECTION, formatAppAccessLabel, parseAllowedApps };
 
 /**
  * Normalized role from `users/{uid}.role` for staff RBAC (null if missing or not assignable).

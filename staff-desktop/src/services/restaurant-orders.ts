@@ -1,7 +1,10 @@
-import { collection, doc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 
+import { formatItemExtrasHtml } from "@/lib/pos/format-item-extras";
 import { staffDb } from "@/lib/staff-db";
-import { ORDERS_COLLECTION } from "@/services/firestore-orders-core.js";
+import { mapOrderDoc as mapOrderDocFromCore, ORDERS_COLLECTION } from "@/services/firestore-orders-core.js";
+import { printKitchenKot } from "@/services/kitchen-kot-print";
+import type { StaffOrderRow } from "@/services/orders";
 import { patchWaiterTable } from "./tables";
 
 export const APP_META_COLLECTION = "appMeta";
@@ -54,6 +57,27 @@ async function allocateNextTokenNumber(): Promise<number> {
   return next;
 }
 
+async function printKitchenKotForOrderRef(orderRef: ReturnType<typeof doc>): Promise<void> {
+  try {
+    const snap = await getDoc(orderRef);
+    if (!snap.exists()) return;
+    const data = snap.data() as Record<string, unknown>;
+    const base = mapOrderDocFromCore(snap.id, data);
+    const row = {
+      ...base,
+      orderType: typeof data.orderType === "string" ? data.orderType : undefined,
+      tableNumber: typeof data.tableNumber === "number" ? data.tableNumber : undefined,
+      tableName: typeof data.tableName === "string" ? data.tableName : undefined,
+      paymentStatus: typeof data.paymentStatus === "string" ? data.paymentStatus : undefined,
+      tokenNumber: typeof data.tokenNumber === "number" ? data.tokenNumber : undefined,
+      canonicalStatus: String(base.status ?? "preparing").toLowerCase()
+    } as StaffOrderRow;
+    await printKitchenKot(row, { source: "auto" });
+  } catch {
+    /* Kitchen still receives the order via Firestore even if print fails */
+  }
+}
+
 export type PlacedRestaurantOrder = {
   orderId: string;
   tokenNumber: number;
@@ -94,12 +118,17 @@ export async function confirmRestaurantOrder(params: {
     orderType: "dine_in",
     items,
     total,
-    status: "preparing",
+    status: "new",
     paymentStatus: "pending",
     tokenNumber,
+    source: "waiter",
+    sentToKitchenAt: ts,
+    kitchenNotified: true,
     createdAt: ts,
     updatedAt: ts
   });
+
+  void printKitchenKotForOrderRef(orderRef);
 
   if (params.linkTable) {
     try {
@@ -166,19 +195,24 @@ export async function confirmCashierPosOrder(params: {
     tableName: tableLabel,
     orderType: params.orderType,
     customerName: params.customerName?.trim() || null,
-    phone: params.phone?.trim() || null,
+    customerPhone: params.phone?.trim() || null,
     items,
     total,
     totalAmount: total,
     subtotal,
     ...(params.taxAmount != null ? { tax: params.taxAmount } : {}),
     ...(params.taxPercent != null ? { taxPercent: params.taxPercent } : {}),
-    status: params.markPaid ? "completed" : "preparing",
+    status: params.markPaid ? "accepted" : "new",
     paymentStatus: params.markPaid ? "paid" : "pending",
     tokenNumber,
     createdAt: ts,
     updatedAt: ts,
-    ...(params.source ? { source: params.source } : {}),
+    ...(params.source
+      ? { source: params.source }
+      : params.orderType === "parcel"
+        ? { source: "parcel" }
+        : {}),
+    ...(params.markPaid ? { sentToKitchenAt: ts, kitchenNotified: true } : {}),
     ...(params.markPaid && params.paymentMethod ? { paymentMethod: params.paymentMethod, paidAt: ts } : {}),
     ...(params.couponCode ? { couponCode: params.couponCode } : {}),
     ...(params.discountAmount && params.discountAmount > 0 ? { discountAmount: params.discountAmount } : {})
@@ -239,6 +273,37 @@ export function computePosBillTotals(
   };
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderReceiptItemRows(items: CartLine[]): string {
+  return items
+    .map((l) => {
+      const extrasHtml = formatItemExtrasHtml(l);
+      return `<tr>
+          <td>${escapeHtml(l.name)}${extrasHtml}</td>
+          <td style="text-align:center">${l.qty}</td>
+          <td style="text-align:right">₹${l.unitPrice.toFixed(2)}</td>
+          <td style="text-align:right">₹${(l.qty * l.unitPrice).toFixed(2)}</td>
+        </tr>`;
+    })
+    .join("");
+}
+
+function renderSimpleReceiptItemRows(items: CartLine[]): string {
+  return items
+    .map((l) => {
+      const extrasHtml = formatItemExtrasHtml(l);
+      return `<tr><td>${escapeHtml(l.name)}${extrasHtml}</td><td style="text-align:center">${l.qty}</td><td style="text-align:right">₹${l.unitPrice.toFixed(0)}</td><td style="text-align:right">₹${(l.qty * l.unitPrice).toFixed(0)}</td></tr>`;
+    })
+    .join("");
+}
+
 export function buildReceiptHtml(p: {
   tokenNumber: number;
   tableNumber: number;
@@ -249,12 +314,7 @@ export function buildReceiptHtml(p: {
   /** Overrides default receipt title (e.g. KDS chit). */
   title?: string;
 }): string {
-  const rows = p.items
-    .map(
-      (l) =>
-        `<tr><td>${escapeHtml(l.name)}</td><td style="text-align:center">${l.qty}</td><td style="text-align:right">₹${l.unitPrice.toFixed(0)}</td><td style="text-align:right">₹${(l.qty * l.unitPrice).toFixed(0)}</td></tr>`
-    )
-    .join("");
+  const rows = renderSimpleReceiptItemRows(p.items);
   const draftNote = p.draft ? `<p style="color:#64748b;font-size:12px">Draft — not saved</p>` : "";
   const heading = p.title ?? (p.draft ? "Receipt (draft)" : "NAUSHEEN JUICE CENTER");
   const tokenLabel =
@@ -286,14 +346,6 @@ export function buildReceiptHtml(p: {
     <p class="total">Total: ₹${p.total.toFixed(0)}</p>
     <hr class="rule"/>
   </body></html>`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 async function printHtmlDocument(html: string): Promise<void> {
@@ -357,17 +409,7 @@ export function buildFinalInvoiceHtml(p: {
   grandTotal: number;
   paymentMethodLabel: string;
 }): string {
-  const rows = p.items
-    .map(
-      (l) =>
-        `<tr>
-          <td>${escapeHtml(l.name)}</td>
-          <td style="text-align:center">${l.qty}</td>
-          <td style="text-align:right">₹${l.unitPrice.toFixed(2)}</td>
-          <td style="text-align:right">₹${(l.qty * l.unitPrice).toFixed(2)}</td>
-        </tr>`
-    )
-    .join("");
+  const rows = renderReceiptItemRows(p.items);
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
   <style>
     * { box-sizing: border-box; }
@@ -423,13 +465,22 @@ export async function printFinalInvoice(p: {
 }
 
 export function staffOrderItemsToCartLines(
-  items: Array<{ id?: string; name: string; price: number; qty: number }>
+  items: Array<{
+    id?: string;
+    name: string;
+    price: number;
+    qty: number;
+    note?: string;
+    modifications?: string[];
+  }>
 ): CartLine[] {
   return items.map((it, i) => ({
     productId: typeof it.id === "string" && it.id ? it.id : `line_${i}`,
     name: it.name,
     unitPrice: it.price,
-    qty: it.qty > 0 ? it.qty : 1
+    qty: it.qty > 0 ? it.qty : 1,
+    ...(it.note ? { note: it.note } : {}),
+    ...(it.modifications?.length ? { modifications: it.modifications } : {})
   }));
 }
 

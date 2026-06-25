@@ -1,0 +1,66 @@
+/**
+ * Print styles — invoices and receipts always render on white.
+ * Dark mode must NEVER affect printed output.
+ */
+
+@media print {
+  *,
+  *::before,
+  *::after {
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    border-color: #cccccc !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .theme-card,
+  .theme-order-card,
+  .theme-dialog,
+  .theme-glass,
+  .glass-panel,
+  .glass-card {
+    background: #ffffff !important;
+    border: 1px solid #cccccc !important;
+    box-shadow: none !important;
+  }
+
+  .no-print,
+  .theme-sidebar,
+  nav,
+  header,
+  footer,
+  .theme-btn,
+  button:not(.print-keep) {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  table {
+    border-collapse: collapse !important;
+  }
+
+  table th,
+  table td {
+    border: 1px solid #cccccc !important;
+    padding: 4px 8px !important;
+  }
+
+  a {
+    text-decoration: none !important;
+    color: #000000 !important;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}
