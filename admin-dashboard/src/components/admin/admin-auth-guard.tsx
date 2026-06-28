@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { routeForRole, type StaffAppRole, useAuth } from "@/context/AuthContext";
 import { FirebaseConfigErrorPanel } from "@/components/auth/firebase-config-error-panel";
 import { Loader2 } from "lucide-react";
+import { isAdminRole } from "@shared/utils/manager-permissions";
 
 type Props = {
   children: ReactNode;
@@ -14,7 +15,8 @@ type Props = {
 export function AdminAuthGuard({ children, allowedRoles }: Props) {
   const { user, role, initializing, authClaimsResolved, firebaseConfigError } = useAuth();
   const router = useRouter();
-  const roleAllowed = !allowedRoles || (role != null && allowedRoles.includes(role));
+  const effectiveAllowedRoles = allowedRoles ?? (["admin"] as StaffAppRole[]);
+  const roleAllowed = role != null && effectiveAllowedRoles.includes(role) && isAdminRole(role);
 
   useEffect(() => {
     if (initializing || !authClaimsResolved || firebaseConfigError) return;

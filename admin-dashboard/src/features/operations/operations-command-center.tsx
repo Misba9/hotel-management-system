@@ -33,7 +33,7 @@ export function OperationsCommandCenter() {
       <div className="grid gap-6 xl:grid-cols-3">
         <GlassCard hover className="xl:col-span-2">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-base font-semibold text-white">Delivery Status</h3>
+            <h3 className="text-base font-semibold text-theme-text-primary">Delivery Status</h3>
             <Badge variant="success">3 en route</Badge>
           </div>
           <div className="space-y-2">
@@ -42,11 +42,11 @@ export function OperationsCommandCenter() {
               { id: "#1034", partner: "Swiggy", eta: "14 min", status: "Picked up" },
               { id: "#1031", partner: "Zomato", eta: "22 min", status: "Preparing" }
             ].map((d) => (
-              <div key={d.id} className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+              <div key={d.id} className="flex items-center justify-between rounded-xl border border-theme-border bg-theme-card p-3">
                 <div className="flex items-center gap-3">
                   <Truck className="h-4 w-4 text-brand-primary" />
                   <span className="font-mono text-sm text-brand-primary">{d.id}</span>
-                  <span className="text-sm text-white/50">{d.partner}</span>
+                  <span className="text-sm text-theme-text-secondary">{d.partner}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="neutral">{d.eta}</Badge>
@@ -60,13 +60,13 @@ export function OperationsCommandCenter() {
         <GlassCard hover>
           <div className="mb-4 flex items-center gap-2">
             <Zap className="h-4 w-4 text-brand-primary" />
-            <h3 className="text-base font-semibold text-white">Recent Events</h3>
+            <h3 className="text-base font-semibold text-theme-text-primary">Recent Events</h3>
           </div>
           <div className="space-y-3">
             {liveEvents.map((e, i) => (
               <div key={i} className="border-l-2 border-brand-primary/30 pl-3">
-                <p className="text-sm text-white/75">{e.event}</p>
-                <p className="text-[10px] text-white/35">{e.time}</p>
+                <p className="text-sm text-theme-text-primary/75">{e.event}</p>
+                <p className="text-[10px] text-theme-text-disabled">{e.time}</p>
               </div>
             ))}
           </div>
@@ -74,9 +74,9 @@ export function OperationsCommandCenter() {
       </div>
 
       <GlassCard className="overflow-hidden p-0">
-        <div className="border-b border-white/[0.06] px-5 py-4">
-          <h3 className="text-base font-semibold text-white">Live Orders Feed</h3>
-          <p className="text-xs text-white/40">Realtime Firestore sync · status overrides enabled</p>
+        <div className="border-b border-theme-border px-5 py-4">
+          <h3 className="text-base font-semibold text-theme-text-primary">Live Orders Feed</h3>
+          <p className="text-xs text-theme-text-secondary">Realtime Firestore sync · status overrides enabled</p>
         </div>
         <div className="p-4 sm:p-5">
           <ManagerOrdersPageFeature />

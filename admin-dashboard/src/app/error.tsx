@@ -18,7 +18,7 @@ export default function RootError({
       <button
         type="button"
         onClick={() => reset()}
-        className="rounded-xl bg-brand-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95"
+        className="rounded-xl bg-brand-primary px-4 py-2 text-sm font-medium text-theme-text-primary shadow-sm hover:opacity-95"
       >
         Try again
       </button>

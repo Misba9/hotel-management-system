@@ -214,8 +214,8 @@ export function MenuPageFeature() {
     <section className="space-y-8 animate-fade-in">
       <div>
         <p className="text-xs font-semibold uppercase tracking-widest text-brand-primary">Menu Catalog</p>
-        <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Menu Management</h2>
-        <p className="mt-1 text-sm text-white/45">Categories, products, images, and availability — synced to Firebase.</p>
+        <h2 className="mt-1 text-2xl font-bold tracking-tight text-theme-text-primary sm:text-3xl">Menu Management</h2>
+        <p className="mt-1 text-sm text-theme-text-secondary">Categories, products, images, and availability — synced to Firebase.</p>
       </div>
 
       {catError ? (

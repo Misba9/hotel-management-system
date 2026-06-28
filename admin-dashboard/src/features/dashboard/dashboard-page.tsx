@@ -139,8 +139,8 @@ export function DashboardPageFeature() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-brand-primary">Executive Overview</p>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Operations Command Center</h2>
-          <p className="mt-1 text-sm text-white/45">Live metrics · refreshes every 45s</p>
+          <h2 className="mt-1 text-2xl font-bold tracking-tight text-theme-text-primary sm:text-3xl">Operations Command Center</h2>
+          <p className="mt-1 text-sm text-theme-text-secondary">Live metrics · refreshes every 45s</p>
         </div>
         <Button
           variant="secondary"
@@ -159,7 +159,7 @@ export function DashboardPageFeature() {
         <div className="flex flex-col gap-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-3">
             <AlertCircle className="h-5 w-5 shrink-0 text-rose-400" />
-            <p className="text-sm text-rose-200">{error}</p>
+            <p className="text-sm text-rose-700 dark:text-rose-200">{error}</p>
           </div>
           <Button variant="destructive" size="sm" onClick={() => void summaryQuery.refetch()}>
             Retry
@@ -171,8 +171,8 @@ export function DashboardPageFeature() {
         <div className="flex gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
           <AlertCircle className="h-5 w-5 shrink-0 text-amber-400" />
           <div>
-            <p className="font-semibold text-amber-200">High order volume</p>
-            <p className="text-sm text-amber-200/70">
+            <p className="font-semibold text-amber-800 dark:text-amber-200">High order volume</p>
+            <p className="text-sm text-amber-700 dark:text-amber-200/70">
               {highVolumeAlert.message} (threshold: {highVolumeAlert.threshold})
             </p>
           </div>
@@ -227,18 +227,18 @@ export function DashboardPageFeature() {
             {kitchenQueue.map((order) => (
               <div
                 key={order.id}
-                className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition hover:border-brand-primary/20"
+                className="flex items-center justify-between rounded-xl border border-theme-border bg-theme-card p-3 transition hover:border-brand-primary/20"
               >
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-sm font-semibold text-brand-primary">{order.id}</span>
-                  <span className="text-sm text-white/60">{order.table}</span>
+                  <span className="text-sm text-theme-text-secondary">{order.table}</span>
                   <Badge variant="neutral">{order.items} items</Badge>
                 </div>
                 <div className="flex items-center gap-3">
                   <Badge variant={order.stage === "Ready" ? "success" : order.stage === "New" ? "default" : "warning"}>
                     {order.stage}
                   </Badge>
-                  <span className="flex items-center gap-1 text-xs text-white/40">
+                  <span className="flex items-center gap-1 text-xs text-theme-text-secondary">
                     <Clock className="h-3 w-3" />
                     {order.time}
                   </span>
@@ -254,11 +254,11 @@ export function DashboardPageFeature() {
             {inventoryAlerts.map((alert) => (
               <div
                 key={alert.item}
-                className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-3"
+                className="flex items-center justify-between rounded-xl border border-theme-border bg-theme-card p-3"
               >
                 <div>
-                  <p className="text-sm font-medium text-white">{alert.item}</p>
-                  <p className="text-xs text-white/40">{alert.stock} remaining</p>
+                  <p className="text-sm font-medium text-theme-text-primary">{alert.item}</p>
+                  <p className="text-xs text-theme-text-secondary">{alert.stock} remaining</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant={alert.level === "Critical" ? "danger" : "warning"}>{alert.level}</Badge>
@@ -290,8 +290,8 @@ export function DashboardPageFeature() {
             {recentActivities.map((a, i) => (
               <div key={i} className="flex gap-3 border-l-2 border-brand-primary/30 pl-3">
                 <div>
-                  <p className="text-sm text-white/80">{a.event}</p>
-                  <p className="text-[10px] text-white/35">{a.time}</p>
+                  <p className="text-sm text-theme-text-primary">{a.event}</p>
+                  <p className="text-[10px] text-theme-text-disabled">{a.time}</p>
                 </div>
               </div>
             ))}
@@ -304,14 +304,14 @@ export function DashboardPageFeature() {
           <SectionHeader title="Staff Online" description="Currently on shift" />
           <div className="mt-4 space-y-2">
             {staffOnline.map((s) => (
-              <div key={s.name} className="flex items-center justify-between rounded-xl border border-white/[0.06] p-3">
+              <div key={s.name} className="flex items-center justify-between rounded-xl border border-theme-border p-3">
                 <div className="flex items-center gap-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-full accent-gradient text-xs font-bold text-white">
                     {s.name.charAt(0)}
                   </span>
                   <div>
-                    <p className="text-sm font-medium text-white">{s.name}</p>
-                    <p className="text-xs text-white/40">
+                    <p className="text-sm font-medium text-theme-text-primary">{s.name}</p>
+                    <p className="text-xs text-theme-text-secondary">
                       {s.role} · {s.shift}
                     </p>
                   </div>
@@ -332,9 +332,9 @@ export function DashboardPageFeature() {
               { label: "COGS (est.)", value: (summary?.revenueToday ?? 0) * 0.38 },
               { label: "Net Profit (est.)", value: (summary?.revenueToday ?? 0) * 0.22 }
             ].map((row) => (
-              <div key={row.label} className="flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-2.5">
-                <span className="text-sm text-white/50">{row.label}</span>
-                <span className="text-sm font-semibold tabular-nums text-white">{formatCurrency(row.value)}</span>
+              <div key={row.label} className="flex items-center justify-between rounded-xl bg-theme-hover px-3 py-2.5">
+                <span className="text-sm text-theme-text-secondary">{row.label}</span>
+                <span className="text-sm font-semibold tabular-nums text-theme-text-primary">{formatCurrency(row.value)}</span>
               </div>
             ))}
           </div>
@@ -346,7 +346,7 @@ export function DashboardPageFeature() {
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[480px] text-left text-sm">
             <thead>
-              <tr className="border-b border-white/[0.06] text-[11px] uppercase tracking-wider text-white/35">
+              <tr className="border-b border-theme-border text-[11px] uppercase tracking-wider text-theme-text-disabled">
                 <th className="pb-3 pr-4 font-semibold">Branch</th>
                 <th className="pb-3 pr-4 font-semibold">Revenue</th>
                 <th className="pb-3 pr-4 font-semibold">Orders</th>
@@ -355,16 +355,16 @@ export function DashboardPageFeature() {
             </thead>
             <tbody>
               {branchPerformance.map((b) => (
-                <tr key={b.branch} className="border-b border-white/[0.04] last:border-0">
-                  <td className="py-3 pr-4 font-medium text-white">{b.branch}</td>
-                  <td className="py-3 pr-4 tabular-nums text-white/70">{formatCurrency(b.revenue)}</td>
-                  <td className="py-3 pr-4 tabular-nums text-white/70">{b.orders}</td>
+                <tr key={b.branch} className="border-b border-theme-border last:border-0">
+                  <td className="py-3 pr-4 font-medium text-theme-text-primary">{b.branch}</td>
+                  <td className="py-3 pr-4 tabular-nums text-theme-text-secondary">{formatCurrency(b.revenue)}</td>
+                  <td className="py-3 pr-4 tabular-nums text-theme-text-secondary">{b.orders}</td>
                   <td className="py-3">
                     <div className="flex items-center gap-2">
-                      <div className="h-1.5 flex-1 max-w-[80px] overflow-hidden rounded-full bg-white/10">
+                      <div className="h-1.5 flex-1 max-w-[80px] overflow-hidden rounded-full bg-theme-hover">
                         <div className="h-full rounded-full accent-gradient" style={{ width: `${b.occupancy}%` }} />
                       </div>
-                      <span className="text-xs text-white/50">{b.occupancy}%</span>
+                      <span className="text-xs text-theme-text-secondary">{b.occupancy}%</span>
                     </div>
                   </td>
                 </tr>

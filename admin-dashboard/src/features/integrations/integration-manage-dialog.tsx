@@ -53,12 +53,12 @@ export function IntegrationManageDialog({ integration, open, onOpenChange, onTog
             >
               {integration.status}
             </Badge>
-            <span className="text-white/45">Sync: {integration.lastSyncLabel}</span>
+            <span className="text-theme-text-secondary">Sync: {integration.lastSyncLabel}</span>
           </div>
 
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-            <p className="text-xs font-medium text-white/50">Credentials</p>
-            <p className="mt-1 text-white/80">
+          <div className="rounded-xl border border-theme-border bg-theme-card p-3">
+            <p className="text-xs font-medium text-theme-text-secondary">Credentials</p>
+            <p className="mt-1 text-theme-text-primary">
               {integration.credentialsReady ? "Server environment configured" : "Missing required environment variables"}
             </p>
             {!integration.credentialsReady && integration.missingEnv.length > 0 ? (
@@ -71,9 +71,9 @@ export function IntegrationManageDialog({ integration, open, onOpenChange, onTog
           </div>
 
           {integration.webhookUrl ? (
-            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-              <p className="text-xs font-medium text-white/50">Webhook URL</p>
-              <p className="mt-1 break-all font-mono text-[11px] text-white/70">{integration.webhookUrl}</p>
+            <div className="rounded-xl border border-theme-border bg-theme-card p-3">
+              <p className="text-xs font-medium text-theme-text-secondary">Webhook URL</p>
+              <p className="mt-1 break-all font-mono text-[11px] text-theme-text-secondary">{integration.webhookUrl}</p>
               <div className="mt-2 flex gap-2">
                 <Button type="button" variant="secondary" size="sm" onClick={() => void copyWebhook()}>
                   <Copy className="h-3 w-3" />

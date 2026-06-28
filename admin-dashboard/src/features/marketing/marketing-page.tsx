@@ -107,13 +107,13 @@ export function MarketingPageFeature() {
         <TabsContent value="coupons">
           <div className="grid gap-6 lg:grid-cols-3">
             <GlassCard hover className="lg:col-span-2">
-              <h3 className="mb-4 font-semibold text-white">Active Coupons</h3>
+              <h3 className="mb-4 font-semibold text-theme-text-primary">Active Coupons</h3>
               <div className="space-y-2">
                 {coupons.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between rounded-xl border border-white/[0.06] p-3">
+                  <div key={c.id} className="flex items-center justify-between rounded-xl border border-theme-border p-3">
                     <div>
                       <p className="font-mono font-semibold text-brand-primary">{c.code}</p>
-                      <p className="text-xs text-white/40">
+                      <p className="text-xs text-theme-text-secondary">
                         {c.discountValue ?? 0}
                         {c.discountType === "flat" ? " Rs off" : "% off"} · Used {c.usedCount}/{c.usageLimit}
                       </p>
@@ -121,11 +121,11 @@ export function MarketingPageFeature() {
                     <Badge variant={c.active !== false ? "success" : "neutral"}>{c.active !== false ? "Active" : "Inactive"}</Badge>
                   </div>
                 ))}
-                {!loading && coupons.length === 0 ? <p className="py-8 text-center text-sm text-white/40">No coupons yet.</p> : null}
+                {!loading && coupons.length === 0 ? <p className="py-8 text-center text-sm text-theme-text-secondary">No coupons yet.</p> : null}
               </div>
             </GlassCard>
             <GlassCard hover>
-              <h3 className="mb-4 font-semibold text-white">Create Coupon</h3>
+              <h3 className="mb-4 font-semibold text-theme-text-primary">Create Coupon</h3>
               <div className="space-y-3">
                 <Input placeholder="Code (e.g. SAVE20)" value={code} onChange={(e) => setCode(e.target.value)} />
                 <Input placeholder="Discount %" value={discount} onChange={(e) => setDiscount(e.target.value)} />
@@ -139,13 +139,13 @@ export function MarketingPageFeature() {
 
         <TabsContent value="campaigns">
           <GlassCard hover>
-            <h3 className="mb-4 font-semibold text-white">Campaign Analytics</h3>
+            <h3 className="mb-4 font-semibold text-theme-text-primary">Campaign Analytics</h3>
             <div className="space-y-2">
               {campaigns.map((c) => (
-                <div key={c.name} className="flex items-center justify-between rounded-xl border border-white/[0.06] p-3">
+                <div key={c.name} className="flex items-center justify-between rounded-xl border border-theme-border p-3">
                   <div>
-                    <p className="font-medium text-white">{c.name}</p>
-                    <p className="text-xs text-white/40">
+                    <p className="font-medium text-theme-text-primary">{c.name}</p>
+                    <p className="text-xs text-theme-text-secondary">
                       {c.channel} · Reach {c.reach}
                     </p>
                   </div>
@@ -159,7 +159,7 @@ export function MarketingPageFeature() {
         {["offers", "push", "sms", "email", "referral", "giftcards"].map((tab) => (
           <TabsContent key={tab} value={tab}>
             <GlassCard>
-              <p className="py-12 text-center text-sm capitalize text-white/40">{tab} — configure channels and audience segments.</p>
+              <p className="py-12 text-center text-sm capitalize text-theme-text-secondary">{tab} — configure channels and audience segments.</p>
               <div className="flex justify-center">
                 <Button>Create {tab.replace("cards", " Card")}</Button>
               </div>

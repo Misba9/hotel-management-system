@@ -85,7 +85,7 @@ export function KitchenDisplayPageFeature() {
         return (
           <GlassCard key={col.key} hover={false} className="flex flex-col p-3">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-semibold text-white">{col.label}</h3>
+              <h3 className="font-semibold text-theme-text-primary">{col.label}</h3>
               <Badge variant="neutral">{colOrders.length}</Badge>
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto">
@@ -99,23 +99,23 @@ export function KitchenDisplayPageFeature() {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.05 }}
                     className={`rounded-xl border p-3 ${
-                      urgent ? "border-rose-500/30 bg-rose-500/5" : "border-white/[0.06] bg-white/[0.02]"
+                      urgent ? "border-rose-500/30 bg-rose-500/5" : "border-theme-border bg-theme-card"
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-sm font-bold text-brand-primary">#{order.id}</span>
                       {order.orderType === "delivery" ? <Badge variant="default">Delivery</Badge> : null}
                     </div>
-                    <p className="mt-1 text-sm text-white/70">{order.table}</p>
+                    <p className="mt-1 text-sm text-theme-text-secondary">{order.table}</p>
                     {order.source ? (
-                      <p className="mt-0.5 text-xs uppercase tracking-wide text-white/40">{order.source}</p>
+                      <p className="mt-0.5 text-xs uppercase tracking-wide text-theme-text-secondary">{order.source}</p>
                     ) : null}
                     <div className="mt-2 flex items-center justify-between">
-                      <span className="flex items-center gap-1 text-xs text-white/40">
+                      <span className="flex items-center gap-1 text-xs text-theme-text-secondary">
                         <Package className="h-3 w-3" />
                         {order.items.length} items
                       </span>
-                      <span className={`flex items-center gap-1 text-xs font-semibold ${urgent ? "text-rose-400" : "text-white/50"}`}>
+                      <span className={`flex items-center gap-1 text-xs font-semibold ${urgent ? "text-rose-400" : "text-theme-text-secondary"}`}>
                         <Clock className="h-3 w-3" />
                         {mins}m
                       </span>
@@ -124,7 +124,7 @@ export function KitchenDisplayPageFeature() {
                   </motion.div>
                 );
               })}
-              {colOrders.length === 0 ? <p className="py-6 text-center text-xs text-white/25">No orders</p> : null}
+              {colOrders.length === 0 ? <p className="py-6 text-center text-xs text-theme-text-disabled">No orders</p> : null}
             </div>
           </GlassCard>
         );
@@ -136,7 +136,7 @@ export function KitchenDisplayPageFeature() {
     return (
       <div className="fixed inset-0 z-50 bg-surface p-4">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-white">Kitchen Display</h2>
+          <h2 className="text-xl font-bold text-theme-text-primary">Kitchen Display</h2>
           <div className="flex gap-2">
             <Button variant="secondary" size="sm">
               <Volume2 className="h-4 w-4" />

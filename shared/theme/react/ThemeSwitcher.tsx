@@ -22,7 +22,7 @@ export function ThemeSwitcher({ variant = "segmented", className = "" }: ThemeSw
       <button
         type="button"
         onClick={toggle}
-        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-theme-border bg-theme-hover text-theme-text-secondary transition hover:text-theme-primary ${className}`}
+        className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border border-theme-border bg-theme-card text-theme-text-secondary shadow-glass transition duration-200 hover:bg-theme-hover hover:text-theme-primary ${className}`}
         aria-label={`Switch to ${resolved === "dark" ? "light" : "dark"} mode`}
       >
         {resolved === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

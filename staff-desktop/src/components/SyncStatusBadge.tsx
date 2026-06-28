@@ -56,10 +56,7 @@ export function RoleBadge() {
   const labels: Record<string, string> = {
     cashier: "Cashier",
     kitchen: "Kitchen",
-    waiter: "Waiter",
-    manager: "Manager",
-    admin: "Admin",
-    delivery: "Delivery"
+    manager: "Manager"
   };
   return (
     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">

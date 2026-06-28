@@ -128,7 +128,7 @@ export function CloudConnectionProvider({ children }: { children: ReactNode }) {
             if (knownOrderIdsRef.current.has(change.doc.id)) continue;
             knownOrderIdsRef.current.add(change.doc.id);
 
-            if (profile.role === "kitchen" || profile.role === "manager" || profile.role === "admin" || profile.role === "cashier") {
+            if (profile.role === "kitchen" || profile.role === "manager" || profile.role === "cashier") {
               const playSound = () => {
                 if (isDesktopRuntime()) {
                   void getDesktopApi()

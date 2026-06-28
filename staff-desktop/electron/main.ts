@@ -18,10 +18,10 @@ import type {
 } from "./main-types";
 
 const repoRoot = path.resolve(__dirname, "../../..");
-const adminEnvDir = path.join(repoRoot, "admin-dashboard");
+const webPanelEnvDir = path.join(repoRoot, "admin-dashboard");
 
-loadDotenv({ path: path.join(adminEnvDir, ".env.local") });
-loadDotenv({ path: path.join(adminEnvDir, ".env") });
+loadDotenv({ path: path.join(webPanelEnvDir, ".env.local") });
+loadDotenv({ path: path.join(webPanelEnvDir, ".env") });
 loadDotenv({ path: path.join(repoRoot, ".env") });
 
 const isDev = !app.isPackaged;

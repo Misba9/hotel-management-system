@@ -19,6 +19,7 @@ import {
   KITCHEN_ACTIVE_STATUSES
 } from "@shared/utils/canonical-order-fields";
 import { DINE_IN_ORDER_TYPES } from "@shared/types/table";
+import { hasManagerOperationalAccess } from "@shared/utils/manager-permissions";
 import type { StaffRoleId } from "../src/constants/staff-roles";
 import { assertValidTransition, type OrderLifecycleStatus } from "../src/lib/order-status-lifecycle";
 import { staffDb } from "../src/lib/firebase";
@@ -340,7 +341,7 @@ export async function applyOrderRowAction(
   action: "ready" | "served",
   role: StaffRoleId
 ): Promise<void> {
-  const isPrivileged = role === "admin" || role === "manager";
+  const isPrivileged = hasManagerOperationalAccess(role);
 
   if (order.orderType === "table" || order.orderType === "dine_in") {
     const canon = canonicalOrderStatus(String(order.status ?? ""));

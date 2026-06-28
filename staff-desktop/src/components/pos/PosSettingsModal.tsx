@@ -195,7 +195,7 @@ export function PosSettingsModal({
                   <dd className="font-bold">{posSettings.enabledPaymentMethods?.join(", ") ?? "—"}</dd>
                 </div>
               </dl>
-              <p className="mt-4 text-xs text-slate-500">Billing rules are managed in admin dashboard → POS settings.</p>
+              <p className="mt-4 text-xs text-slate-500">Billing rules are managed in the web control panel → POS settings.</p>
             </Section>
           ) : null}
 

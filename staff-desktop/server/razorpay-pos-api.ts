@@ -35,7 +35,7 @@ async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
 function credentialsFromEnv(env: Record<string, string | undefined>): RazorpayCredentials {
   const creds = readRazorpayCredentials(env);
   if (!creds) {
-    throw new Error("Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in admin-dashboard/.env.local");
+    throw new Error("Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your web panel environment file.");
   }
   return creds;
 }

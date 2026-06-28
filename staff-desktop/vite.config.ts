@@ -4,14 +4,14 @@ import react from "@vitejs/plugin-react";
 import { razorpayPosApiPlugin } from "./vite-plugin-razorpay-api";
 
 const repoRoot = path.resolve(__dirname, "..");
-const adminEnvDir = path.join(repoRoot, "admin-dashboard");
+const webPanelEnvDir = path.join(repoRoot, "admin-dashboard");
 /** Must match `DEV_FUNCTIONS_PROXY_PREFIX` in src/lib/cloud-functions-url.ts */
 const DEV_FUNCTIONS_PROXY_PREFIX = "/api/cloud-fn";
 
 export default defineConfig(({ mode }) => {
-  const adminEnv = loadEnv(mode, adminEnvDir, ["VITE_", "NEXT_PUBLIC_"]);
+  const webPanelEnv = loadEnv(mode, webPanelEnvDir, ["VITE_", "NEXT_PUBLIC_"]);
   const rootEnv = loadEnv(mode, repoRoot, ["VITE_", "NEXT_PUBLIC_"]);
-  const mergedEnv = { ...adminEnv, ...rootEnv };
+  const mergedEnv = { ...webPanelEnv, ...rootEnv };
 
   const projectId =
     mergedEnv.VITE_FIREBASE_PROJECT_ID ??

@@ -42,7 +42,7 @@ export function AiInsightsPanel() {
             className={`flex items-start gap-3 rounded-xl border p-3 ${typeStyles[insight.type]}`}
           >
             <span className="text-lg leading-none">{insight.emoji}</span>
-            <p className="text-sm text-white/80">{insight.text}</p>
+            <p className="text-sm text-theme-text-primary">{insight.text}</p>
           </motion.div>
         ))}
       </div>

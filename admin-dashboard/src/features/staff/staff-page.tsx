@@ -147,6 +147,12 @@ function fmtDate(d: Date | null): string {
   });
 }
 
+function normalizeUid(rawUid: unknown, fallbackUid: string): string {
+  const primary = typeof rawUid === "string" ? rawUid.trim() : "";
+  if (primary) return primary;
+  return fallbackUid.trim();
+}
+
 export function StaffPageFeature() {
   const [rows, setRows] = useState<StaffRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -212,7 +218,7 @@ export function StaffPageFeature() {
           const isActive = data.isActive !== false;
           const base = {
             id: d.id,
-            uid: String(data.uid ?? d.id),
+            uid: normalizeUid(data.uid, d.id),
             name: String(data.name ?? "—"),
             email: String(data.email ?? "—"),
             role,

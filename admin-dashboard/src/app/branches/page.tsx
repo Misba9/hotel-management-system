@@ -110,7 +110,7 @@ export default function BranchesPage() {
             placeholder="Radius (km)"
             className="w-28 rounded border px-3 py-2 text-sm"
           />
-          <button onClick={saveBranch} className="rounded bg-orange-500 px-3 py-2 text-sm text-white">
+          <button onClick={saveBranch} className="rounded bg-orange-500 px-3 py-2 text-sm text-theme-text-primary">
             {saving ? "Saving..." : editingId ? "Save Branch" : "Add Branch"}
           </button>
           {editingId ? (

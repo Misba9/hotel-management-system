@@ -61,7 +61,7 @@ export function AdminDashboardShell({ children }: Props) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-theme-background bg-mesh-dark">
+    <div className="min-h-screen bg-theme-background">
       <AnimatePresence>
         {mobileOpen ? (
           <motion.button
@@ -70,7 +70,7 @@ export function AdminDashboardShell({ children }: Props) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             aria-label="Close navigation"
-            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-40 bg-theme-overlay backdrop-blur-sm md:hidden"
             onClick={() => setMobileOpen(false)}
           />
         ) : null}
@@ -79,12 +79,12 @@ export function AdminDashboardShell({ children }: Props) {
       <div className="flex min-h-screen">
         <aside
           className={cn(
-            "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-theme-border bg-theme-surface/95 shadow-glass backdrop-blur-xl transition-all duration-300 md:static md:z-0",
+            "theme-sidebar fixed inset-y-0 left-0 z-50 flex flex-col shadow-glass backdrop-blur-xl transition-all duration-200 md:static md:z-0",
             collapsed ? "w-[4.5rem]" : "w-[min(17rem,88vw)] md:w-64",
             mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
           )}
         >
-          <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.06] px-4">
+          <div className="flex h-16 shrink-0 items-center justify-between border-b border-theme-border px-4">
             <Link href="/admin" className="flex items-center gap-3" onClick={() => setMobileOpen(false)}>
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl accent-gradient shadow-glow-sm">
                 <Sparkles className="h-4 w-4 text-white" />
@@ -92,13 +92,13 @@ export function AdminDashboardShell({ children }: Props) {
               {!collapsed ? (
                 <div className="leading-tight">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-primary">NFJC</span>
-                  <span className="block text-base font-bold text-white">Command Center</span>
+                  <span className="block text-base font-bold text-theme-text-primary">Command Center</span>
                 </div>
               ) : null}
             </Link>
             <button
               type="button"
-              className="rounded-lg p-2 text-white/40 hover:bg-white/10 hover:text-white md:hidden"
+              className="rounded-lg p-2 text-theme-text-secondary transition hover:bg-theme-hover hover:text-theme-text-primary md:hidden"
               onClick={() => setMobileOpen(false)}
               aria-label="Close menu"
             >
@@ -106,14 +106,14 @@ export function AdminDashboardShell({ children }: Props) {
             </button>
           </div>
 
-          <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+          <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-4">
             {navGroups.map((group) => {
               const items = visibleNav.filter((n) => n.group === group.key);
               if (items.length === 0) return null;
               return (
-                <div key={group.key} className="mb-2">
+                <div key={group.key} className="mb-3">
                   {!collapsed ? (
-                    <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-white/25">
+                    <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-theme-text-disabled">
                       {group.label}
                     </p>
                   ) : null}
@@ -126,22 +126,9 @@ export function AdminDashboardShell({ children }: Props) {
                         href={item.href}
                         onClick={() => setMobileOpen(false)}
                         title={item.label}
-                        className={cn(
-                          "group relative mb-0.5 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                          active
-                            ? "bg-brand-muted text-brand-primary shadow-glow-sm"
-                            : "text-white/55 hover:bg-white/[0.04] hover:text-white"
-                        )}
+                        className={cn("theme-nav-item mb-1", active && "active")}
                       >
-                        {active ? (
-                          <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-brand-primary" />
-                        ) : null}
-                        <Icon
-                          className={cn(
-                            "h-5 w-5 shrink-0 transition-transform group-hover:scale-110",
-                            active ? "text-brand-primary" : "text-white/50"
-                          )}
-                        />
+                        <Icon className="transition-transform duration-200 group-hover:scale-105" />
                         {!collapsed ? <span className="truncate">{item.label}</span> : null}
                       </Link>
                     );
@@ -151,11 +138,11 @@ export function AdminDashboardShell({ children }: Props) {
             })}
           </nav>
 
-          <div className="hidden border-t border-white/[0.06] p-3 md:block">
+          <div className="hidden border-t border-theme-border p-4 md:block">
             <button
               type="button"
               onClick={() => setCollapsed((c) => !c)}
-              className="flex w-full items-center justify-center rounded-xl border border-white/[0.08] py-2 text-xs text-white/40 hover:bg-white/[0.04] hover:text-white/70"
+              className="flex w-full items-center justify-center rounded-xl border border-theme-border py-2.5 text-xs text-theme-text-secondary transition hover:bg-theme-hover hover:text-theme-text-primary"
             >
               {collapsed ? "→" : "← Collapse"}
             </button>
@@ -163,11 +150,11 @@ export function AdminDashboardShell({ children }: Props) {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col md:min-h-screen">
-          <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-surface/80 backdrop-blur-xl">
+          <header className="sticky top-0 z-30 border-b border-theme-border bg-theme-surface/95 shadow-glass backdrop-blur-xl">
             <div className="flex h-14 items-center gap-3 px-4 sm:h-16 sm:gap-4 sm:px-6">
               <button
                 type="button"
-                className="inline-flex shrink-0 rounded-xl p-2 text-white/60 transition hover:bg-white/5 hover:text-white md:hidden"
+                className="inline-flex shrink-0 rounded-xl p-2 text-theme-text-secondary transition hover:bg-theme-hover hover:text-theme-text-primary md:hidden"
                 onClick={() => setMobileOpen(true)}
                 aria-label="Open menu"
               >
@@ -175,14 +162,16 @@ export function AdminDashboardShell({ children }: Props) {
               </button>
 
               <div className="min-w-0 flex-1">
-                <h1 className="truncate text-base font-semibold text-white sm:text-lg">{title}</h1>
-                <p className="hidden truncate text-xs text-white/40 sm:block">Operations command center · Realtime</p>
+                <h1 className="truncate text-base font-bold text-theme-text-primary sm:text-lg">{title}</h1>
+                <p className="hidden truncate text-xs text-theme-text-secondary sm:block">
+                  Operations command center · Realtime
+                </p>
               </div>
 
               <div className="hidden max-w-sm flex-1 lg:block">
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
-                  <Input placeholder="Search orders, customers, menu…" className="pl-9" readOnly />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-theme-text-disabled" />
+                  <Input placeholder="Search orders, customers, menu…" className="admin-search-input pl-9" readOnly />
                 </div>
               </div>
 
@@ -190,15 +179,15 @@ export function AdminDashboardShell({ children }: Props) {
                 <ThemeSwitcher variant="compact" />
                 <NotificationBell onClick={() => setNotificationsOpen(true)} count={3} />
 
-                <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] py-1 pl-1 pr-2">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg accent-gradient text-sm font-bold text-white shadow-glow-sm">
+                <div className="flex items-center gap-2 rounded-xl border border-theme-border bg-theme-card py-1 pl-1 pr-2 shadow-glass transition hover:shadow-card">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg accent-gradient text-sm font-bold text-theme-text-primary shadow-glow-sm">
                     {initial}
                   </span>
                   <div className="hidden min-w-0 max-w-[140px] lg:block">
-                    <p className="truncate text-xs font-semibold text-white" title={email || undefined}>
+                    <p className="truncate text-xs font-semibold text-theme-text-primary" title={email || undefined}>
                       {email || "Admin"}
                     </p>
-                    <p className="text-[10px] capitalize text-white/40">{role ?? "Administrator"}</p>
+                    <p className="text-[10px] capitalize text-theme-text-secondary">{role ?? "Administrator"}</p>
                   </div>
                 </div>
 
@@ -206,7 +195,7 @@ export function AdminDashboardShell({ children }: Props) {
                   type="button"
                   disabled={loggingOut}
                   onClick={() => void handleLogout()}
-                  className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white/60 transition hover:bg-white/5 disabled:opacity-50 sm:text-sm"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-theme-border bg-theme-card px-3 py-2 text-xs font-semibold text-theme-text-secondary shadow-glass transition hover:bg-theme-hover hover:text-theme-text-primary disabled:opacity-50 sm:text-sm"
                 >
                   {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
                   <span className="hidden lg:inline">{loggingOut ? "…" : "Log out"}</span>
@@ -215,7 +204,7 @@ export function AdminDashboardShell({ children }: Props) {
             </div>
           </header>
 
-          <main className="flex-1 p-4 pb-24 sm:p-6 lg:p-8 md:pb-8">{children}</main>
+          <main className="flex-1 space-y-6 p-4 pb-24 sm:p-6 lg:p-8 md:pb-8">{children}</main>
         </div>
       </div>
 

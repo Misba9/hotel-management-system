@@ -97,8 +97,9 @@ export function staffMobileRootRouteForRole(role: StaffAppRole): StaffMobileRoot
 export function staffWebHomePathForRole(role: StaffAppRole): string {
   switch (role) {
     case "admin":
-    case "manager":
       return "/admin";
+    case "manager":
+      return "/login";
     case "kitchen":
       return "/kitchen";
     case "cashier":
@@ -122,8 +123,9 @@ export function staffDesktopHomePathForRole(role: StaffAppRole): string {
     case "waiter":
       return "/waiter";
     case "manager":
-    case "admin":
       return "/manager";
+    case "admin":
+      return "/login";
     default: {
       const _exhaustive: never = role;
       return _exhaustive;

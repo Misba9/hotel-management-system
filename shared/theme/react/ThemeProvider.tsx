@@ -103,14 +103,16 @@ export function useChartTheme() {
   const { resolved } = useTheme();
   return useMemo(
     () => ({
-      grid: resolved === "dark" ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.08)",
-      axis: resolved === "dark" ? "#707784" : "#64748B",
-      text: resolved === "dark" ? "#BFC7D5" : "#475569",
+      grid: resolved === "dark" ? "rgba(255,255,255,0.08)" : "#E5E7EB",
+      axis: resolved === "dark" ? "#707784" : "#6B7280",
+      text: resolved === "dark" ? "#BFC7D5" : "#6B7280",
       tooltip: {
         bg: resolved === "dark" ? "#1E2128" : "#FFFFFF",
-        border: resolved === "dark" ? "#343A46" : "#E2E8F0"
+        border: resolved === "dark" ? "#343A46" : "#E5E7EB"
       },
-      colors: ["#4F8CFF", "#22C55E", "#F59E0B", "#EF4444", "#38BDF8", "#A78BFA"]
+      colors: resolved === "dark"
+        ? ["#4F8CFF", "#22C55E", "#F59E0B", "#EF4444", "#38BDF8", "#A78BFA"]
+        : ["#2563EB", "#16A34A", "#F59E0B", "#DC2626", "#0284C7", "#7C3AED"]
     }),
     [resolved]
   );

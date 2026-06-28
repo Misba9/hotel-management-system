@@ -2,9 +2,10 @@ import type { StaffRoleId } from "@/constants/staff-roles";
 import { resolveOrderSource } from "@/lib/pos/order-source";
 import type { WorkflowStatus } from "@/lib/pos/order-workflow-status";
 import type { StaffOrderRow } from "@/services/orders";
+import { hasManagerOperationalAccess } from "@shared/utils/manager-permissions";
 
 function isPrivileged(role: StaffRoleId): boolean {
-  return role === "admin" || role === "manager";
+  return hasManagerOperationalAccess(role);
 }
 
 export function canAcceptOrder(role: StaffRoleId): boolean {

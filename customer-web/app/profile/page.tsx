@@ -31,7 +31,7 @@ import { useCustomerOrders } from "@/hooks/use-customer-orders";
 import type { DeliveryAddress, DeliveryAddressInput, SavedAddressLabel } from "@/lib/delivery-address-types";
 import { formatDeliveryAddressForOrder } from "@/lib/delivery-address-types";
 import { promiseWithTimeout } from "@/lib/promise-with-timeout";
-import { ThemeSwitcher } from "../../../../shared/theme/react/ThemeSwitcher";
+import { ThemeSwitcher } from "../../../shared/theme/react/ThemeSwitcher";
 
 const ADDRESS_SAVE_TIMEOUT_MS = 45_000;
 

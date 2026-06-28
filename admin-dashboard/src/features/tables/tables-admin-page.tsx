@@ -135,7 +135,7 @@ export function TablesAdminPage() {
             type="button"
             disabled={adding || !name.trim()}
             onClick={() => void addTable()}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-semibold text-theme-text-primary shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {adding ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
             Add

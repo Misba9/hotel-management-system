@@ -20,6 +20,7 @@ import {
   KITCHEN_ACTIVE_STATUSES
 } from "@shared/utils/canonical-order-fields";
 import { DINE_IN_ORDER_TYPES } from "@shared/types/table";
+import { hasManagerOperationalAccess } from "@shared/utils/manager-permissions";
 import type { StaffRoleId } from "@/constants/staff-roles";
 import { assertValidTransition, type OrderLifecycleStatus } from "@/lib/order-status-lifecycle";
 import { staffDb } from "@/lib/staff-db";
@@ -408,7 +409,7 @@ export async function markSimpleOrderPaid(orderId: string): Promise<void> {
 
 /**
  * Table tickets (`orderType === "table"`): transitions enforced by Firestore rules
- * (kitchen: PLACED→PREPARING→READY; waiter: READY→SERVED).
+ * (kitchen: PLACED→PREPARING→READY; manager: READY→SERVED).
  */
 export async function applyTableTicketAction(
   orderId: string,
@@ -454,11 +455,11 @@ export async function applyOrderRowAction(
   action: "ready" | "served",
   role: StaffRoleId
 ): Promise<void> {
-  const isPrivileged = role === "admin" || role === "manager";
+  const isPrivileged = hasManagerOperationalAccess(role);
 
   if (order.orderType === "table" || order.orderType === "dine_in") {
     const canon = canonicalOrderStatus(String(order.status ?? ""));
-    if (action === "served" && (role === "waiter" || isPrivileged) && canon === "ready") {
+    if (action === "served" && isPrivileged && canon === "ready") {
       await applyTableTicketAction(order.id, "served");
       return;
     }
@@ -479,7 +480,7 @@ export async function applyOrderRowAction(
     }
   }
 
-  if ((role === "waiter" || isPrivileged) && action === "served") {
+  if (isPrivileged && action === "served") {
     if (cur === "ready") {
       await advanceOrderLifecycle(order.id, "out_for_delivery");
       return;

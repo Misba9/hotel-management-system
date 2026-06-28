@@ -253,7 +253,7 @@ export function CategoryFormModal({
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-theme-text-primary shadow-sm hover:bg-orange-600 disabled:opacity-50"
             >
               {submitting ? (
                 <>

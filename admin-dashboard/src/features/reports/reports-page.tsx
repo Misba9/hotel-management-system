@@ -90,20 +90,20 @@ export function ReportsPageFeature() {
 
         <TabsContent value="sales">
           <GlassCard hover>
-            <h3 className="mb-4 font-semibold text-white">Sales Report</h3>
+            <h3 className="mb-4 font-semibold text-theme-text-primary">Sales Report</h3>
             {data?.revenuePerDay ? <SalesChart revenuePerDay={data.revenuePerDay} ordersPerDay={data.ordersPerDay} /> : <ChartSkeleton />}
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl bg-white/[0.03] p-3">
-                <p className="text-xs text-white/40">Revenue today</p>
-                <p className="text-lg font-bold text-white">{formatCurrency(data?.revenueToday ?? 0)}</p>
+              <div className="rounded-xl bg-theme-hover p-3">
+                <p className="text-xs text-theme-text-secondary">Revenue today</p>
+                <p className="text-lg font-bold text-theme-text-primary">{formatCurrency(data?.revenueToday ?? 0)}</p>
               </div>
-              <div className="rounded-xl bg-white/[0.03] p-3">
-                <p className="text-xs text-white/40">Delivered (all time)</p>
-                <p className="text-lg font-bold text-white">{data?.deliveredOrders ?? 0}</p>
+              <div className="rounded-xl bg-theme-hover p-3">
+                <p className="text-xs text-theme-text-secondary">Delivered (all time)</p>
+                <p className="text-lg font-bold text-theme-text-primary">{data?.deliveredOrders ?? 0}</p>
               </div>
-              <div className="rounded-xl bg-white/[0.03] p-3">
-                <p className="text-xs text-white/40">Chart window</p>
-                <p className="text-lg font-bold text-white">{data?.chartDays ?? 30} days</p>
+              <div className="rounded-xl bg-theme-hover p-3">
+                <p className="text-xs text-theme-text-secondary">Chart window</p>
+                <p className="text-lg font-bold text-theme-text-primary">{data?.chartDays ?? 30} days</p>
               </div>
             </div>
           </GlassCard>
@@ -111,7 +111,7 @@ export function ReportsPageFeature() {
 
         <TabsContent value="products">
           <GlassCard hover>
-            <h3 className="mb-4 font-semibold text-white">Top Products</h3>
+            <h3 className="mb-4 font-semibold text-theme-text-primary">Top Products</h3>
             {data?.topProducts?.length ? <TopProductsBar items={data.topProducts} /> : <ChartSkeleton />}
           </GlassCard>
         </TabsContent>
@@ -119,7 +119,7 @@ export function ReportsPageFeature() {
         {["inventory", "customers", "staff", "finance"].map((tab) => (
           <TabsContent key={tab} value={tab}>
             <GlassCard>
-              <p className="py-12 text-center text-sm capitalize text-white/40">
+              <p className="py-12 text-center text-sm capitalize text-theme-text-secondary">
                 {tab} reports — schedule automated exports from Settings.
               </p>
               <div className="flex justify-center">

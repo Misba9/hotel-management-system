@@ -14,8 +14,8 @@ export function SectionHeader({ title, description, action, className }: Section
   return (
     <div className={cn("flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between", className)}>
       <div>
-        <h2 className="text-lg font-semibold tracking-tight text-white sm:text-xl">{title}</h2>
-        {description ? <p className="mt-1 text-sm text-white/45">{description}</p> : null}
+        <h2 className="text-lg font-semibold tracking-tight text-theme-text-primary sm:text-xl">{title}</h2>
+        {description ? <p className="mt-1 text-sm font-normal text-theme-text-secondary">{description}</p> : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>

@@ -84,13 +84,13 @@ export function PosPageFeature() {
         <div className="grid gap-4 lg:grid-cols-12 lg:gap-5">
           {/* Categories */}
           <GlassCard className="lg:col-span-2 p-3" hover={false}>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">Categories</p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-theme-text-secondary">Categories</p>
             <div className="space-y-1">
               <button
                 type="button"
                 onClick={() => setActiveCategory("all")}
                 className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
-                  activeCategory === "all" ? "bg-brand-muted text-brand-primary" : "text-white/60 hover:bg-white/5"
+                  activeCategory === "all" ? "bg-brand-muted text-brand-primary" : "text-theme-text-secondary hover:bg-theme-hover"
                 }`}
               >
                 All Items
@@ -101,7 +101,7 @@ export function PosPageFeature() {
                   type="button"
                   onClick={() => setActiveCategory(c.id)}
                   className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
-                    activeCategory === c.id ? "bg-brand-muted text-brand-primary" : "text-white/60 hover:bg-white/5"
+                    activeCategory === c.id ? "bg-brand-muted text-brand-primary" : "text-theme-text-secondary hover:bg-theme-hover"
                   }`}
                 >
                   {c.name}
@@ -114,7 +114,7 @@ export function PosPageFeature() {
           <GlassCard className="lg:col-span-7 p-4" hover={false}>
             <div className="mb-4 flex flex-wrap gap-2">
               <div className="relative min-w-[200px] flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-theme-text-disabled" />
                 <Input placeholder="Search products…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
               </div>
               <Button variant="secondary" size="sm">
@@ -137,19 +137,19 @@ export function PosPageFeature() {
                     transition={{ delay: i * 0.02 }}
                     type="button"
                     onClick={() => addToCart(p.id, p.name, p.price)}
-                    className="group rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left transition hover:border-brand-primary/30 hover:bg-brand-muted/30"
+                    className="group rounded-xl border border-theme-border bg-theme-card p-3 text-left transition hover:border-brand-primary/30 hover:bg-brand-muted/30"
                   >
-                    <div className="mb-2 aspect-square overflow-hidden rounded-lg bg-white/5">
+                    <div className="mb-2 aspect-square overflow-hidden rounded-lg bg-theme-hover">
                       {p.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={p.imageUrl} alt="" className="h-full w-full object-cover transition group-hover:scale-105" />
                       ) : (
-                        <div className="flex h-full items-center justify-center text-white/20">
+                        <div className="flex h-full items-center justify-center text-theme-text-disabled">
                           <ShoppingCart className="h-8 w-8" />
                         </div>
                       )}
                     </div>
-                    <p className="truncate text-sm font-medium text-white">{p.name}</p>
+                    <p className="truncate text-sm font-medium text-theme-text-primary">{p.name}</p>
                     <p className="mt-0.5 text-sm font-semibold text-brand-primary">{formatCurrency(p.price)}</p>
                   </motion.button>
                 ))}
@@ -160,7 +160,7 @@ export function PosPageFeature() {
           {/* Cart */}
           <GlassCard className="lg:col-span-3 flex flex-col p-4" hover={false}>
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-semibold text-white">Current Bill</h3>
+              <h3 className="font-semibold text-theme-text-primary">Current Bill</h3>
               <Badge variant="neutral">{cart.length} items</Badge>
             </div>
 
@@ -179,20 +179,20 @@ export function PosPageFeature() {
 
             <div className="flex-1 space-y-2 overflow-y-auto">
               {cart.length === 0 ? (
-                <p className="py-8 text-center text-sm text-white/30">Tap products to add</p>
+                <p className="py-8 text-center text-sm text-theme-text-disabled">Tap products to add</p>
               ) : (
                 cart.map((item) => (
-                  <div key={item.id} className="flex items-center gap-2 rounded-xl border border-white/[0.06] p-2">
+                  <div key={item.id} className="flex items-center gap-2 rounded-xl border border-theme-border p-2">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-white">{item.name}</p>
-                      <p className="text-xs text-white/40">{formatCurrency(item.price)}</p>
+                      <p className="truncate text-sm text-theme-text-primary">{item.name}</p>
+                      <p className="text-xs text-theme-text-secondary">{formatCurrency(item.price)}</p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => updateQty(item.id, -1)} className="rounded-lg p-1 hover:bg-white/10">
+                      <button type="button" onClick={() => updateQty(item.id, -1)} className="rounded-lg p-1 hover:bg-theme-hover">
                         <Minus className="h-3 w-3" />
                       </button>
                       <span className="w-6 text-center text-sm tabular-nums">{item.qty}</span>
-                      <button type="button" onClick={() => updateQty(item.id, 1)} className="rounded-lg p-1 hover:bg-white/10">
+                      <button type="button" onClick={() => updateQty(item.id, 1)} className="rounded-lg p-1 hover:bg-theme-hover">
                         <Plus className="h-3 w-3" />
                       </button>
                     </div>
@@ -205,7 +205,7 @@ export function PosPageFeature() {
               <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-2">
                 <p className="text-[10px] font-semibold uppercase text-amber-400">Held Bills</p>
                 {heldBills.map((h) => (
-                  <button key={h.id} type="button" className="mt-1 flex w-full items-center justify-between text-xs text-white/70 hover:text-white">
+                  <button key={h.id} type="button" className="mt-1 flex w-full items-center justify-between text-xs text-theme-text-secondary hover:text-theme-text-primary">
                     <span className="flex items-center gap-1">
                       <Pause className="h-3 w-3" />
                       {h.id}
@@ -216,16 +216,16 @@ export function PosPageFeature() {
               </div>
             ) : null}
 
-            <div className="mt-4 space-y-1 border-t border-white/[0.06] pt-3 text-sm">
-              <div className="flex justify-between text-white/50">
+            <div className="mt-4 space-y-1 border-t border-theme-border pt-3 text-sm">
+              <div className="flex justify-between text-theme-text-secondary">
                 <span>Subtotal</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-white/50">
+              <div className="flex justify-between text-theme-text-secondary">
                 <span>Tax (5%)</span>
                 <span>{formatCurrency(tax)}</span>
               </div>
-              <div className="flex justify-between text-base font-bold text-white">
+              <div className="flex justify-between text-base font-bold text-theme-text-primary">
                 <span>Total</span>
                 <span className="text-brand-primary">{formatCurrency(total)}</span>
               </div>

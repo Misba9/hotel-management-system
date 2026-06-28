@@ -72,7 +72,7 @@ export function MenuDeleteDialog({ open, title, itemName, detail, submitting, on
             type="button"
             disabled={submitting}
             onClick={() => void onConfirm()}
-            className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+            className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-theme-text-primary shadow-sm hover:bg-red-700 disabled:opacity-50"
           >
             {submitting ? "Deleting…" : "Delete"}
           </button>

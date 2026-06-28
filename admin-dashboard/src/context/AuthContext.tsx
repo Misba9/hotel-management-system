@@ -25,6 +25,7 @@ import {
   type StaffAppRole,
   type StaffUsersDocFields
 } from "@shared/utils/staff-access-control";
+import { isAdminRole } from "@shared/utils/manager-permissions";
 import { getFirebaseAuth, getFirebaseDb, logFirebaseConfigDebug } from "@/lib/firebase";
 import { getRecaptchaToken } from "@/lib/recaptcha";
 
@@ -36,7 +37,7 @@ export type { StaffAppRole };
 const ROLE_SESSION_KEY = "staff_role_session";
 
 export function routeForRole(role: StaffAppRole | null): string {
-  if (!role) return "/login";
+  if (!isAdminRole(role)) return "/login";
   return staffWebHomePathForRole(role);
 }
 
@@ -217,6 +218,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!nextRole) {
         await signOut(auth);
         throw new Error("No role is assigned for this account. Contact an administrator.");
+      }
+      if (!isAdminRole(nextRole)) {
+        await signOut(auth);
+        throw new Error("This account is not permitted in the Admin Web Panel.");
       }
     } catch (err) {
       if (err instanceof FirebaseError) {

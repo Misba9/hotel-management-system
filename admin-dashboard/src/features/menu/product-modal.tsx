@@ -315,7 +315,7 @@ export function ProductModal({
             <button
               type="submit"
               disabled={busy}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-theme-text-primary hover:bg-orange-600 disabled:opacity-50"
             >
               {busy ? (
                 <>

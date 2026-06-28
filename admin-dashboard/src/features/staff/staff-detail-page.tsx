@@ -133,17 +133,17 @@ export function StaffDetailFeature() {
                 <Shield className="h-6 w-6 opacity-90" />
                 <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{row.name}</h1>
               </div>
-              <p className="mt-1 text-sm text-white/90">{row.email}</p>
+              <p className="mt-1 text-sm text-theme-text-primary/90">{row.email}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <span className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${ROLE_BADGE[row.role]}`}>{row.role}</span>
             {row.displayStatus === "active" ? (
-              <span className="rounded-full bg-emerald-500/90 px-3 py-1 text-xs font-bold text-white">Active</span>
+              <span className="rounded-full bg-emerald-500/90 px-3 py-1 text-xs font-bold text-theme-text-primary">Active</span>
             ) : row.displayStatus === "pending" ? (
               <span className="rounded-full bg-amber-400/95 px-3 py-1 text-xs font-bold text-amber-950">Pending approval</span>
             ) : (
-              <span className="rounded-full bg-red-600/90 px-3 py-1 text-xs font-bold text-white">Disabled</span>
+              <span className="rounded-full bg-red-600/90 px-3 py-1 text-xs font-bold text-theme-text-primary">Disabled</span>
             )}
           </div>
         </div>

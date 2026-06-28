@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { hasManagerOperationalAccess } from "@shared/utils/manager-permissions";
 
 import type { StaffRoleId } from "../src/constants/staff-roles";
 import {
@@ -74,7 +75,7 @@ export function OrderCard({
 
     const st = String(order.status ?? "");
     const isTable = order.orderType === "table" || order.orderType === "dine_in";
-    const isPrivileged = role === "admin" || role === "manager";
+    const isPrivileged = hasManagerOperationalAccess(role);
 
     if (isTable) {
       if (st === "PREPARING" && (role === "kitchen" || isPrivileged)) return ["ready"];

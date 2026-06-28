@@ -25,8 +25,10 @@ export function PageShell({ title, description, badge, action, children, classNa
           {badge ? (
             <p className="text-xs font-semibold uppercase tracking-widest text-brand-primary">{badge}</p>
           ) : null}
-          <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{title}</h2>
-          {description ? <p className="mt-1 max-w-2xl text-sm text-white/45">{description}</p> : null}
+          <h2 className="text-2xl font-bold tracking-tight text-theme-text-primary sm:text-3xl">{title}</h2>
+          {description ? (
+            <p className="mt-1 max-w-2xl text-sm font-normal text-theme-text-secondary">{description}</p>
+          ) : null}
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>

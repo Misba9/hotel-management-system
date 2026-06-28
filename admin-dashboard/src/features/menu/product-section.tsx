@@ -46,7 +46,7 @@ export function ProductSection({
           disabled={!canAdd}
           onClick={onAdd}
           title={!canAdd ? "Create an active category first" : undefined}
-          className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+          className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-theme-text-primary shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
         >
           <Plus className="h-4 w-4" aria-hidden />
           Add product

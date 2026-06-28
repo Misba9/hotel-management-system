@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist-electron/electron/main.js",
   "author": "Nausheen Fruits",
-  "description": "Staff desktop app for cashier, kitchen, waiter, and manager roles",
+  "description": "Staff desktop app for cashier, kitchen, and manager operations",
   "scripts": {
     "dev": "npm run build:electron && concurrently -k \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite",

@@ -39,7 +39,7 @@ export async function PATCH(request: Request, context: { params: { uid: string }
   if (!auth.ok) return auth.response;
 
   try {
-    const { uid } = context.params;
+    const uid = context.params.uid?.trim();
     if (!uid) {
       return Response.json({ error: "Missing uid." }, { status: 400, headers: NO_STORE });
     }
@@ -141,7 +141,7 @@ export async function DELETE(request: Request, context: { params: { uid: string 
   if (!auth.ok) return auth.response;
 
   try {
-    const { uid } = context.params;
+    const uid = context.params.uid?.trim();
     if (!uid) {
       return Response.json({ error: "Missing uid." }, { status: 400, headers: NO_STORE });
     }

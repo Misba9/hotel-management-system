@@ -1,10 +1,10 @@
-@import "../../shared/theme/css-variables.css";
-@import "../../shared/theme/components.css";
-@import "../../shared/theme/print.css";
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@import "../../shared/theme/css-variables.css";
+@import "../../shared/theme/components.css";
+@import "../../shared/theme/print.css";
 
 html {
   overflow-x: hidden;

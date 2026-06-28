@@ -87,7 +87,7 @@ export function NotificationCenter({ open, onClose }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 bg-theme-overlay backdrop-blur-sm"
             onClick={onClose}
             aria-label="Close notifications"
           />
@@ -96,12 +96,12 @@ export function NotificationCenter({ open, onClose }: Props) {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 320 }}
-            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-white/10 bg-surface-raised/95 shadow-glass backdrop-blur-xl"
+            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-theme-border bg-theme-card shadow-dropdown"
           >
-            <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
+            <div className="flex items-center justify-between border-b border-theme-border px-5 py-4">
               <div>
-                <h2 className="text-lg font-semibold text-white">Notifications</h2>
-                <p className="text-xs text-white/40">{unreadCount} unread</p>
+                <h2 className="text-lg font-semibold text-theme-text-primary">Notifications</h2>
+                <p className="text-xs text-theme-text-secondary">{unreadCount} unread</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -114,19 +114,19 @@ export function NotificationCenter({ open, onClose }: Props) {
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded-lg p-2 text-white/40 hover:bg-white/10 hover:text-white"
+                  className="rounded-lg p-2 text-theme-text-secondary transition hover:bg-theme-hover hover:text-theme-text-primary"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            <div className="flex gap-1 overflow-x-auto border-b border-white/[0.06] px-4 py-2">
+            <div className="flex gap-1 overflow-x-auto border-b border-theme-border px-4 py-2">
               {(["all", "inventory", "orders", "payments", "kitchen"] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
-                  className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium capitalize text-white/50 hover:bg-white/5 hover:text-white"
+                  className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium capitalize text-theme-text-secondary transition hover:bg-theme-hover hover:text-theme-text-primary"
                 >
                   {tab}
                 </button>
@@ -140,20 +140,20 @@ export function NotificationCenter({ open, onClose }: Props) {
                   <div
                     key={n.id}
                     className={cn(
-                      "mb-2 flex gap-3 rounded-xl border p-3 transition-colors hover:bg-white/[0.03]",
-                      n.unread ? "border-brand-primary/20 bg-brand-muted/50" : "border-white/[0.06]"
+                      "mb-2 flex gap-3 rounded-xl border p-3 transition-colors hover:bg-theme-hover",
+                      n.unread ? "border-brand-primary/20 bg-brand-muted/50" : "border-theme-border"
                     )}
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-theme-hover">
                       <Icon className="h-4 w-4 text-brand-primary" />
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-white">{n.title}</p>
+                        <p className="text-sm font-medium text-theme-text-primary">{n.title}</p>
                         {n.unread ? <Badge variant="default">New</Badge> : null}
                       </div>
-                      <p className="mt-0.5 text-xs text-white/50">{n.message}</p>
-                      <p className="mt-1 text-[10px] text-white/30">{n.time}</p>
+                      <p className="mt-0.5 text-xs text-theme-text-secondary">{n.message}</p>
+                      <p className="mt-1 text-[10px] text-theme-text-disabled">{n.time}</p>
                     </div>
                   </div>
                 );
@@ -171,12 +171,12 @@ export function NotificationBell({ onClick, count }: { onClick: () => void; coun
     <button
       type="button"
       onClick={onClick}
-      className="relative rounded-xl p-2.5 text-white/60 transition hover:bg-white/5 hover:text-white"
+      className="relative rounded-xl border border-theme-border bg-theme-card p-2.5 text-theme-text-secondary shadow-glass transition hover:bg-theme-hover hover:text-theme-text-primary"
       aria-label="Open notifications"
     >
       <Bell className="h-5 w-5" />
       {count > 0 ? (
-        <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-primary px-1 text-[10px] font-bold text-white ring-2 ring-surface">
+        <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-theme-danger px-1 text-[10px] font-bold text-theme-text-primary ring-2 ring-theme-card">
           {count > 9 ? "9+" : count}
         </span>
       ) : null}

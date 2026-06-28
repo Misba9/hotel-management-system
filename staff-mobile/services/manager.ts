@@ -24,6 +24,10 @@ export type StaffDirectoryRow = {
   roleLabel: string;
   roleNorm: string | null;
   isActive: boolean;
+  shift?: string;
+  clockInAt?: unknown;
+  clockOutAt?: unknown;
+  lastSeenAt?: unknown;
 };
 
 function mapStaffUserDoc(id: string, data: Record<string, unknown>): StaffDirectoryRow {
@@ -41,7 +45,22 @@ function mapStaffUserDoc(id: string, data: Record<string, unknown>): StaffDirect
         ? "pending"
         : norm ?? "—";
   const isActive = data.isActive === true;
-  return { uid: id, name, email, roleLabel, roleNorm: norm, isActive };
+  const shift = typeof data.shift === "string" ? data.shift : undefined;
+  const clockInAt = data.clockInAt ?? null;
+  const clockOutAt = data.clockOutAt ?? null;
+  const lastSeenAt = data.lastSeenAt ?? data.updatedAt ?? null;
+  return {
+    uid: id,
+    name,
+    email,
+    roleLabel,
+    roleNorm: norm,
+    isActive,
+    ...(shift ? { shift } : {}),
+    ...(clockInAt ? { clockInAt } : {}),
+    ...(clockOutAt ? { clockOutAt } : {}),
+    ...(lastSeenAt ? { lastSeenAt } : {})
+  };
 }
 
 /** Live roster from `staff_users` (bounded). */

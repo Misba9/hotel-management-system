@@ -53,7 +53,7 @@ export function formatFirestoreListenerError(err: unknown): string {
 }
 
 export function logFirestoreQueryError(scope: string, err: unknown): void {
-  if (typeof __DEV__ === "undefined" || !__DEV__) return;
+  if (!import.meta.env.DEV) return;
   const url = extractFirestoreIndexUrl(err);
   // eslint-disable-next-line no-console
   console.warn(`[firestore:${scope}]`, err instanceof FirebaseError ? `${err.code} ${err.message}` : err);

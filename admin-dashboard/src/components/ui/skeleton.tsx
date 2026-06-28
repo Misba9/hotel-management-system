@@ -34,11 +34,11 @@ export function ChartSkeleton() {
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <div className="glass-panel overflow-hidden p-0">
-      <div className="border-b border-white/[0.06] p-4">
+      <div className="border-b border-theme-border p-4">
         <Skeleton className="h-4 w-40" />
       </div>
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex gap-4 border-b border-white/[0.04] px-4 py-3 last:border-0">
+        <div key={i} className="flex gap-4 border-b border-theme-border px-4 py-3 last:border-0">
           <Skeleton className="h-4 w-1/4" />
           <Skeleton className="h-4 w-1/3" />
           <Skeleton className="h-4 w-1/5" />

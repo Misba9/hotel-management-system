@@ -154,7 +154,7 @@ export function IntegrationsPageFeature() {
       ) : null}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-white/40">
+        <div className="flex items-center gap-2 text-sm text-theme-text-secondary">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading integrations…
         </div>
@@ -164,15 +164,15 @@ export function IntegrationsPageFeature() {
             <GlassCard key={item.id} hover className="flex flex-col">
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="font-semibold text-white">{item.name}</h3>
-                  <p className="text-xs text-white/40">{item.category}</p>
+                  <h3 className="font-semibold text-theme-text-primary">{item.name}</h3>
+                  <p className="text-xs text-theme-text-secondary">{item.category}</p>
                 </div>
                 {item.status === "connected" ? (
                   <CheckCircle2 className="h-5 w-5 text-emerald-400" />
                 ) : item.status === "pending" ? (
                   <RefreshCw className="h-5 w-5 text-amber-400" />
                 ) : (
-                  <XCircle className="h-5 w-5 text-white/30" />
+                  <XCircle className="h-5 w-5 text-theme-text-disabled" />
                 )}
               </div>
               <div className="mt-3 flex items-center gap-2">
@@ -181,7 +181,7 @@ export function IntegrationsPageFeature() {
                 >
                   {item.status}
                 </Badge>
-                <span className="text-[10px] text-white/35">Sync: {item.lastSyncLabel}</span>
+                <span className="text-[10px] text-theme-text-disabled">Sync: {item.lastSyncLabel}</span>
               </div>
               <div className="mt-4 flex gap-2">
                 <Button
@@ -216,22 +216,22 @@ export function IntegrationsPageFeature() {
 
       <GlassCard hover>
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold text-white">Sync Logs</h3>
+          <h3 className="font-semibold text-theme-text-primary">Sync Logs</h3>
           <Badge variant="neutral">{logs.length} events</Badge>
         </div>
         {logs.length === 0 ? (
-          <p className="text-sm text-white/40">No sync activity yet. Connect a service or run a manual sync.</p>
+          <p className="text-sm text-theme-text-secondary">No sync activity yet. Connect a service or run a manual sync.</p>
         ) : (
           <div className="space-y-2">
             {logs.map((log) => (
               <div
                 key={log.id}
-                className="flex items-center justify-between rounded-xl border border-white/[0.06] px-3 py-2.5"
+                className="flex items-center justify-between rounded-xl border border-theme-border px-3 py-2.5"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <span className="shrink-0 font-mono text-xs text-white/35">{formatLogTime(log.createdAt)}</span>
+                  <span className="shrink-0 font-mono text-xs text-theme-text-disabled">{formatLogTime(log.createdAt)}</span>
                   <span className="shrink-0 text-sm font-medium text-brand-primary">{log.service}</span>
-                  <span className="truncate text-sm text-white/60">{log.event}</span>
+                  <span className="truncate text-sm text-theme-text-secondary">{log.event}</span>
                 </div>
                 <Badge
                   variant={log.status === "success" ? "success" : log.status === "warning" ? "warning" : "danger"}

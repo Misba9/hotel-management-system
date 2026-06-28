@@ -134,12 +134,12 @@ export function InventoryPageFeature() {
         <TabsContent value="materials">
           <div className="grid gap-6 lg:grid-cols-3">
             <GlassCard className="lg:col-span-2" hover>
-              <h3 className="mb-4 font-semibold text-white">Stock Movement</h3>
+              <h3 className="mb-4 font-semibold text-theme-text-primary">Stock Movement</h3>
               <StockChart items={stock.slice(0, 6).map((s) => ({ name: s.ingredientName, sold: s.currentStock }))} />
             </GlassCard>
 
             <GlassCard hover>
-              <h3 className="mb-4 font-semibold text-white">Add Material</h3>
+              <h3 className="mb-4 font-semibold text-theme-text-primary">Add Material</h3>
               {error ? <p className="mb-3 text-sm text-rose-400">{error}</p> : null}
               <div className="space-y-3">
                 <Input placeholder="Ingredient name" value={ingredientName} onChange={(e) => setIngredientName(e.target.value)} />
@@ -156,11 +156,11 @@ export function InventoryPageFeature() {
           </div>
 
           <GlassCard hover className="mt-6">
-            <h3 className="mb-4 font-semibold text-white">Materials List</h3>
+            <h3 className="mb-4 font-semibold text-theme-text-primary">Materials List</h3>
             {loading ? (
               <TableSkeleton />
             ) : stock.length === 0 ? (
-              <p className="py-8 text-center text-sm text-white/40">No inventory items yet.</p>
+              <p className="py-8 text-center text-sm text-theme-text-secondary">No inventory items yet.</p>
             ) : (
               <div className="space-y-2">
                 {stock.map((item) => {
@@ -168,11 +168,11 @@ export function InventoryPageFeature() {
                   return (
                     <div
                       key={item.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3"
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-theme-border bg-theme-card p-3"
                     >
                       <div>
-                        <p className="font-medium text-white">{item.ingredientName}</p>
-                        <p className="text-xs text-white/40">
+                        <p className="font-medium text-theme-text-primary">{item.ingredientName}</p>
+                        <p className="text-xs text-theme-text-secondary">
                           {item.currentStock}
                           {item.unit ?? "kg"} · Min {item.minStock}
                           {item.unit ?? "kg"}
@@ -198,7 +198,7 @@ export function InventoryPageFeature() {
         {["recipes", "purchase", "suppliers", "transfers", "wastage", "activity", "expiry"].map((tab) => (
           <TabsContent key={tab} value={tab}>
             <GlassCard>
-              <p className="py-12 text-center text-sm capitalize text-white/40">{tab} module — connect your backend workflows here.</p>
+              <p className="py-12 text-center text-sm capitalize text-theme-text-secondary">{tab} module — connect your backend workflows here.</p>
             </GlassCard>
           </TabsContent>
         ))}

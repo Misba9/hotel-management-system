@@ -37,7 +37,7 @@ export function subscribeTableById(
 }
 
 /**
- * Creates a new `tables/{id}` row (manager/admin per Firestore rules). For waiter testing, sign in as manager or seed data.
+ * Creates a new `tables/{id}` row (manager-level permissions per Firestore rules).
  */
 export async function createFloorTableForTesting(nextTableNumber: number): Promise<string> {
   if (!Number.isFinite(nextTableNumber) || nextTableNumber < 1) {
@@ -56,7 +56,7 @@ const DEMO_TABLE_IDS = ["table_1", "table_2", "table_3", "table_4", "table_5"] a
 
 /**
  * Creates `tables/table_1` … `tables/table_5` with `tableNumber` 1–5 and `status: "FREE"` if the doc is missing.
- * Requires **manager** or **admin** (Firestore rules). Waiters should seed via Firebase Console or ask a manager to tap once.
+ * Requires manager-level permissions (Firestore rules).
  */
 export async function seedFiveDemoTables(): Promise<{ created: number; skipped: number }> {
   let created = 0;
@@ -89,7 +89,7 @@ export async function seedFiveDemoTables(): Promise<{ created: number; skipped: 
 export function formatSeedDemoTablesError(err: unknown): string {
   if (err instanceof FirebaseError && err.code === "permission-denied") {
     return (
-      "Only manager or admin can create tables from the app. In Firebase Console → Firestore → collection `tables`, add documents " +
+      "Only manager accounts can create tables from the app. In Firebase Console → Firestore → collection `tables`, add documents " +
       "`table_1` … `table_5` each with fields: id (string), tableNumber (1–5), status \"FREE\"."
     );
   }

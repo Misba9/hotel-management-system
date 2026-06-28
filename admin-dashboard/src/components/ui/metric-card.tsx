@@ -17,12 +17,16 @@ type MetricCardProps = {
 };
 
 const accentStyles = {
-  orange: "from-brand-primary/20 to-brand-primary/5 text-brand-primary border-brand-primary/20",
-  emerald: "from-emerald-500/20 to-emerald-500/5 text-emerald-400 border-emerald-500/20",
-  violet: "from-violet-500/20 to-violet-500/5 text-violet-400 border-violet-500/20",
-  sky: "from-sky-500/20 to-sky-500/5 text-sky-400 border-sky-500/20",
-  rose: "from-rose-500/20 to-rose-500/5 text-rose-400 border-rose-500/20",
-  amber: "from-amber-500/20 to-amber-500/5 text-amber-400 border-amber-500/20"
+  orange:
+    "from-blue-500/15 to-blue-500/5 text-blue-600 border-blue-500/20 dark:from-brand-primary/20 dark:to-brand-primary/5 dark:text-brand-primary dark:border-brand-primary/20",
+  emerald:
+    "from-emerald-500/15 to-emerald-500/5 text-emerald-600 border-emerald-500/20 dark:from-emerald-500/20 dark:to-emerald-500/5 dark:text-emerald-400 dark:border-emerald-500/20",
+  violet:
+    "from-violet-500/15 to-violet-500/5 text-violet-600 border-violet-500/20 dark:from-violet-500/20 dark:to-violet-500/5 dark:text-violet-400 dark:border-violet-500/20",
+  sky: "from-sky-500/15 to-sky-500/5 text-sky-600 border-sky-500/20 dark:from-sky-500/20 dark:to-sky-500/5 dark:text-sky-400 dark:border-sky-500/20",
+  rose: "from-rose-500/15 to-rose-500/5 text-rose-600 border-rose-500/20 dark:from-rose-500/20 dark:to-rose-500/5 dark:text-rose-400 dark:border-rose-500/20",
+  amber:
+    "from-amber-500/15 to-amber-500/5 text-amber-600 border-amber-500/20 dark:from-amber-500/20 dark:to-amber-500/5 dark:text-amber-400 dark:border-amber-500/20"
 };
 
 export function MetricCard({
@@ -44,20 +48,26 @@ export function MetricCard({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
-      className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-surface-raised/70 p-5 shadow-glass backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-brand-primary/20 hover:shadow-glow-sm"
+      className="admin-metric-card group relative overflow-hidden"
     >
-      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br opacity-40 blur-2xl transition-opacity group-hover:opacity-70" />
-      <div className="relative flex items-start justify-between gap-3">
+      <div className="relative flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45">{title}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-theme-text-secondary">{title}</p>
           {loading ? (
             <div className="mt-3 h-8 w-24 skeleton-shimmer rounded-lg" />
           ) : (
-            <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-white sm:text-3xl">{displayValue}</p>
+            <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-theme-text-primary sm:text-3xl">
+              {displayValue}
+            </p>
           )}
-          {hint && !loading ? <p className="mt-1 text-[11px] text-white/40">{hint}</p> : null}
+          {hint && !loading ? <p className="mt-1 text-[11px] text-theme-text-secondary">{hint}</p> : null}
           {trend && !loading ? (
-            <p className={cn("mt-1.5 text-xs font-medium", trend.value >= 0 ? "text-emerald-400" : "text-rose-400")}>
+            <p
+              className={cn(
+                "mt-1.5 text-xs font-medium",
+                trend.value >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+              )}
+            >
               {trend.value >= 0 ? "+" : ""}
               {trend.value}% {trend.label ?? "vs yesterday"}
             </p>
@@ -65,7 +75,7 @@ export function MetricCard({
         </div>
         <span
           className={cn(
-            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-gradient-to-br shadow-premium transition-transform duration-300 group-hover:scale-110",
+            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-gradient-to-br transition-transform duration-200 group-hover:scale-105",
             accentStyles[accent]
           )}
         >

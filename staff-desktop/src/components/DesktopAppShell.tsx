@@ -7,12 +7,11 @@ import { moduleLinksForRole } from "@/lib/role-routes";
 import { RoleBadge, SyncStatusBadge } from "./SyncStatusBadge";
 
 const SIDEBAR_LINKS = [
-  { path: "/cashier", label: "Cashier", icon: "🧾", roles: ["cashier", "manager", "admin"] as const },
-  { path: "/kitchen", label: "Kitchen", icon: "👨‍🍳", roles: ["kitchen", "manager", "admin"] as const },
-  { path: "/waiter", label: "Tables", icon: "🪑", roles: ["waiter", "manager", "admin"] as const },
-  { path: "/orders", label: "Orders", icon: "📦", roles: ["cashier", "manager", "admin"] as const },
-  { path: "/manager", label: "Dashboard", icon: "📊", roles: ["manager", "admin"] as const },
-  { path: "/settings", label: "Settings", icon: "⚙️", roles: ["cashier", "kitchen", "waiter", "manager", "admin"] as const }
+  { path: "/manager", label: "Dashboard", icon: "📊", roles: ["manager"] as const },
+  { path: "/cashier", label: "POS", icon: "🧾", roles: ["cashier", "manager"] as const },
+  { path: "/orders", label: "Orders", icon: "📦", roles: ["cashier", "manager"] as const },
+  { path: "/kitchen", label: "Kitchen", icon: "👨‍🍳", roles: ["kitchen", "manager"] as const },
+  { path: "/settings", label: "Settings", icon: "⚙️", roles: ["cashier", "kitchen", "manager"] as const }
 ];
 
 type DesktopAppShellProps = {

@@ -3,7 +3,7 @@ import { DeliveryPageFeature } from "@/features/delivery/delivery-page";
 
 export default function DeliveryPage() {
   return (
-    <AdminAuthGuard allowedRoles={["manager", "admin"]}>
+    <AdminAuthGuard allowedRoles={["admin"]}>
       <DeliveryPageFeature />
     </AdminAuthGuard>
   );

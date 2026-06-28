@@ -117,7 +117,7 @@ export function DeliveryPageFeature() {
         <div className="flex gap-2">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Partner name" className="rounded border px-3 py-2 text-sm" />
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="rounded border px-3 py-2 text-sm" />
-          <button onClick={addPartner} disabled={saving} className="rounded bg-orange-500 px-3 py-2 text-sm text-white disabled:opacity-60">
+          <button onClick={addPartner} disabled={saving} className="rounded bg-orange-500 px-3 py-2 text-sm text-theme-text-primary disabled:opacity-60">
             Add
           </button>
         </div>
@@ -134,7 +134,7 @@ export function DeliveryPageFeature() {
               </option>
             ))}
           </select>
-          <button onClick={assignOrder} disabled={saving} className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60">
+          <button onClick={assignOrder} disabled={saving} className="rounded bg-slate-900 px-3 py-2 text-sm text-theme-text-primary disabled:opacity-60">
             Assign
           </button>
         </div>

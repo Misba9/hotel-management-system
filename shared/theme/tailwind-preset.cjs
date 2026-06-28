@@ -33,12 +33,13 @@ module.exports = {
         brand: {
           primary: "var(--theme-primary)",
           secondary: "var(--theme-primary-hover)",
-          glow: "rgba(79, 140, 255, 0.2)",
+          glow: "var(--theme-shadow-glow)",
           muted: "var(--theme-primary-muted)"
         },
         surface: {
           DEFAULT: "var(--theme-surface)",
           raised: "var(--theme-card)",
+          secondary: "var(--theme-surface-secondary)",
           overlay: "var(--theme-hover)",
           glass: "var(--theme-glass)"
         },
@@ -51,17 +52,20 @@ module.exports = {
         sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"]
       },
       boxShadow: {
-        glass: "0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
-        glow: "0 0 40px rgba(79, 140, 255, 0.15)",
-        "glow-sm": "0 0 20px rgba(79, 140, 255, 0.12)",
-        premium: "0 4px 24px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.04) inset",
-        card: "0 4px 16px rgba(0, 0, 0, 0.2)",
-        dropdown: "0 8px 32px rgba(0, 0, 0, 0.35)"
+        glass: "var(--theme-shadow-glass)",
+        glow: "var(--theme-shadow-glow)",
+        "glow-sm": "var(--theme-shadow-glow-sm)",
+        premium: "var(--theme-shadow-card)",
+        card: "var(--theme-shadow-card)",
+        "card-hover": "var(--theme-shadow-card-hover)",
+        dropdown: "var(--theme-shadow-dropdown)"
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
         "mesh-dark":
-          "radial-gradient(at 40% 20%, rgba(79, 140, 255, 0.08) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(79, 140, 255, 0.06) 0px, transparent 50%)"
+          "radial-gradient(at 40% 20%, rgba(79, 140, 255, 0.08) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(79, 140, 255, 0.06) 0px, transparent 50%)",
+        "mesh-light":
+          "radial-gradient(at 40% 20%, rgba(37, 99, 235, 0.04) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(37, 99, 235, 0.03) 0px, transparent 50%)"
       },
       animation: {
         "fade-in": "fadeIn 0.4s ease-out",

@@ -19,8 +19,9 @@ export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "rounded-2xl border border-theme-border bg-theme-card/70 p-5 shadow-glass backdrop-blur-xl",
-        hover && "transition-all duration-300 hover:-translate-y-0.5 hover:border-theme-primary/20 hover:shadow-glow-sm",
+        "rounded-[var(--theme-radius-card)] border border-theme-border bg-theme-card p-5 shadow-card",
+        hover &&
+          "transition-all duration-200 hover:-translate-y-0.5 hover:border-theme-primary/20 hover:shadow-card-hover",
         glow && "shadow-glow",
         className
       )}

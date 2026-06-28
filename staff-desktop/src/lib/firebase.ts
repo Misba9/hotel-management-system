@@ -1,19 +1,26 @@
 import { type FirebaseApp, getApp, getApps, initializeApp } from "firebase/app";
 import {
+  EmailAuthProvider,
   getAuth,
   onAuthStateChanged,
+  reauthenticateWithCredential,
   signInWithEmailAndPassword,
   signOut,
+  updatePassword,
   type Auth,
   type User
 } from "firebase/auth";
-import { doc, getDoc, getFirestore, type Firestore } from "firebase/firestore";
+import { doc, getDoc, getFirestore, setDoc, type Firestore } from "firebase/firestore";
 import { canAccessStaffPlatform } from "@shared/constants/staff-app-access";
 import {
   resolveStaffAppRole,
   usersDocBlocksStaffAccess,
   type StaffAppRole
 } from "@shared/utils/staff-access-control";
+import {
+  hasManagerOperationalAccess,
+  isAdminRole
+} from "@shared/utils/manager-permissions";
 import { isDesktopRuntime, getDesktopApi } from "./desktop-api";
 
 function trimEnv(raw: string | undefined): string | undefined {
@@ -107,6 +114,10 @@ export type StaffProfile = {
   role: StaffAppRole;
 };
 
+function isOperationalDesktopRole(role: StaffAppRole): role is "manager" | "cashier" | "kitchen" {
+  return hasManagerOperationalAccess(role) || role === "cashier" || role === "kitchen";
+}
+
 export async function resolveStaffProfile(user: User): Promise<StaffProfile | null> {
   const db = await getStaffDesktopFirestore();
   if (!db) return null;
@@ -128,6 +139,7 @@ export async function resolveStaffProfile(user: User): Promise<StaffProfile | nu
   const token = await user.getIdTokenResult();
   const role = resolveStaffAppRole(staffData ?? usersData, token.claims.role);
   if (!role) return null;
+  if (!isOperationalDesktopRole(role)) return null;
 
   const platformDoc = staffData ?? usersData;
   if (!canAccessStaffPlatform("desktop", platformDoc)) {
@@ -160,11 +172,20 @@ export async function loginStaff(email: string, password: string): Promise<Staff
       const usersData = usersSnap.exists() ? usersSnap.data() : null;
       const platformDoc = staffData ?? usersData;
       const role = resolveStaffAppRole(staffData ?? usersData, (await cred.user.getIdTokenResult()).claims.role);
+      if (isAdminRole(role)) {
+        throw new Error("This account is intended for the Admin Web Panel.");
+      }
+      if (role === "waiter") {
+        throw new Error("This account is intended for the Staff Mobile app.");
+      }
+      if (role && !isOperationalDesktopRole(role)) {
+        throw new Error("Your role is not permitted on the Staff Desktop application.");
+      }
       if (role && platformDoc && !canAccessStaffPlatform("desktop", platformDoc)) {
-        throw new Error("Your role is not permitted on the desktop app. Use the mobile app or contact an administrator.");
+        throw new Error("Your role is not permitted on the desktop app. Use the mobile app or contact your manager.");
       }
     }
-    throw new Error("Your account is not approved or has no assigned role.");
+    throw new Error("Your account is not approved or has no operational role assigned.");
   }
   return profile;
 }
@@ -196,4 +217,42 @@ export function subscribeAuthState(
     });
   })();
   return () => unsub();
+}
+
+export async function updateStaffDisplayName(nextName: string): Promise<void> {
+  const auth = await getStaffDesktopAuth();
+  const db = await getStaffDesktopFirestore();
+  if (!auth || !db) throw new Error("Firebase is not configured.");
+  const user = auth.currentUser;
+  if (!user) throw new Error("Login required.");
+
+  const name = nextName.trim();
+  if (name.length < 2) {
+    throw new Error("Display name must be at least 2 characters.");
+  }
+
+  const payload = { updatedAt: new Date().toISOString() };
+  await Promise.all([
+    setDoc(doc(db, "staff_users", user.uid), { ...payload, name }, { merge: true }),
+    setDoc(doc(db, "users", user.uid), { ...payload, displayName: name }, { merge: true })
+  ]);
+}
+
+export async function updateStaffPassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const auth = await getStaffDesktopAuth();
+  if (!auth) throw new Error("Firebase is not configured.");
+  const user = auth.currentUser;
+  if (!user || !user.email) throw new Error("Login required.");
+
+  const current = currentPassword.trim();
+  const next = newPassword.trim();
+  if (!current) throw new Error("Current password is required.");
+  if (next.length < 8) throw new Error("New password must be at least 8 characters.");
+
+  const credential = EmailAuthProvider.credential(user.email, current);
+  await reauthenticateWithCredential(user, credential);
+  await updatePassword(user, next);
 }

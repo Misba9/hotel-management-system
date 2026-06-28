@@ -100,14 +100,14 @@ export function OrdersHubFeature() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="font-mono text-sm font-bold text-brand-primary">#{order.id}</p>
-                  <p className="mt-0.5 text-sm text-white/70">{order.customer}</p>
-                  {order.table ? <p className="text-xs text-white/40">{order.table}</p> : null}
+                  <p className="mt-0.5 text-sm text-theme-text-secondary">{order.customer}</p>
+                  {order.table ? <p className="text-xs text-theme-text-secondary">{order.table}</p> : null}
                 </div>
                 <Badge variant="neutral">{order.status}</Badge>
               </div>
               <div className="mt-3 flex items-center justify-between">
-                <span className="text-lg font-bold text-white">{formatCurrency(order.total)}</span>
-                <span className="text-[10px] text-white/35">
+                <span className="text-lg font-bold text-theme-text-primary">{formatCurrency(order.total)}</span>
+                <span className="text-[10px] text-theme-text-disabled">
                   {order.createdAt ? new Date(order.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}
                 </span>
               </div>
@@ -117,8 +117,8 @@ export function OrdersHubFeature() {
       </div>
 
       <GlassCard className="overflow-hidden p-0">
-        <div className="border-b border-white/[0.06] px-5 py-3">
-          <p className="text-sm font-medium text-white/70">Full order management</p>
+        <div className="border-b border-theme-border px-5 py-3">
+          <p className="text-sm font-medium text-theme-text-secondary">Full order management</p>
         </div>
         <div className="p-4 sm:p-5">
           <OrdersPageFeature />

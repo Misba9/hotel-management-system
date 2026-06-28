@@ -1,5 +1,5 @@
-import { ManagerDashboardView } from "@/components/Manager/ManagerDashboardView";
+import { ManagerDashboardScreen } from "../../src/features/manager-mobile/screens";
 
 export default function ManagerDashboardPage() {
-  return <ManagerDashboardView />;
+  return <ManagerDashboardScreen />;
 }

@@ -9,12 +9,10 @@ import { homePathForRole } from "@/lib/role-routes";
 import { CashierDashboard } from "@/pages/CashierDashboard";
 import { KitchenDashboard } from "@/pages/KitchenDashboard";
 import { LoginPage } from "@/pages/LoginPage";
-import { ManagerDashboard } from "@/pages/ManagerDashboard";
+import { ManagerDesktopModule } from "@/features/manager/manager-desktop-module";
 import { OrdersPage } from "@/pages/OrdersPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { SettingsPage } from "@/pages/SettingsPage";
-import { WaiterDashboard } from "@/pages/WaiterDashboard";
-import { WaiterOrderPage } from "@/pages/WaiterOrderPage";
 
 function RootRedirect() {
   const { profile, authReady, loading } = useAuth();
@@ -64,26 +62,6 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/waiter"
-        element={
-          <RoleGuard path="/waiter">
-            <AuthenticatedShell>
-              <WaiterDashboard />
-            </AuthenticatedShell>
-          </RoleGuard>
-        }
-      />
-      <Route
-        path="/waiter/order/:tableId"
-        element={
-          <RoleGuard path="/waiter">
-            <AuthenticatedShell>
-              <WaiterOrderPage />
-            </AuthenticatedShell>
-          </RoleGuard>
-        }
-      />
-      <Route
         path="/orders"
         element={
           <RoleGuard path="/orders">
@@ -94,11 +72,11 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/manager"
+        path="/manager/*"
         element={
           <RoleGuard path="/manager">
             <AuthenticatedShell>
-              <ManagerDashboard />
+              <ManagerDesktopModule />
             </AuthenticatedShell>
           </RoleGuard>
         }

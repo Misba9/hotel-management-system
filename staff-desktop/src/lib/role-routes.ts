@@ -4,8 +4,6 @@ export type StaffDesktopRoute =
   | "/login"
   | "/cashier"
   | "/kitchen"
-  | "/waiter"
-  | "/waiter/order/:tableId"
   | "/orders"
   | "/manager"
   | "/profile"
@@ -17,14 +15,10 @@ export function homePathForRole(role: StaffAppRole): StaffDesktopRoute {
       return "/cashier";
     case "kitchen":
       return "/kitchen";
-    case "waiter":
-      return "/waiter";
     case "manager":
-    case "admin":
       return "/manager";
     default: {
-      const _exhaustive: never = role;
-      return _exhaustive;
+      return "/login";
     }
   }
 }
@@ -32,43 +26,38 @@ export function homePathForRole(role: StaffAppRole): StaffDesktopRoute {
 export function rolesAllowedForPath(path: StaffDesktopRoute): StaffAppRole[] {
   switch (path) {
     case "/cashier":
-      return ["cashier", "manager", "admin"];
+      return ["cashier", "manager"];
     case "/kitchen":
-      return ["kitchen", "manager", "admin"];
-    case "/waiter":
-      return ["waiter", "manager", "admin"];
+      return ["kitchen", "manager"];
     case "/orders":
-      return ["cashier", "manager", "admin"];
+      return ["cashier", "manager"];
     case "/profile":
-      return ["cashier", "kitchen", "waiter", "manager", "admin"];
+      return ["cashier", "kitchen", "manager"];
     case "/manager":
-      return ["manager", "admin"];
+      return ["manager"];
     case "/settings":
-      return ["cashier", "kitchen", "waiter", "manager", "admin"];
+      return ["cashier", "kitchen", "manager"];
     case "/login":
-      return ["cashier", "kitchen", "waiter", "manager", "admin"];
+      return ["cashier", "kitchen", "manager"];
     default:
       return [];
   }
 }
 
 export function roleLabel(role: StaffAppRole): string {
-  const labels: Record<StaffAppRole, string> = {
-    admin: "Admin",
-    manager: "Manager",
-    kitchen: "Kitchen",
-    cashier: "Cashier",
-    waiter: "Waiter"
-  };
-  return labels[role];
+  if (role === "manager") return "Manager";
+  if (role === "kitchen") return "Kitchen";
+  if (role === "cashier") return "Cashier";
+  return "Not allowed on desktop";
 }
 
 export function moduleLinksForRole(role: StaffAppRole): Array<{ path: StaffDesktopRoute; label: string }> {
   const all = [
-    { path: "/cashier" as const, label: "Cashier", roles: ["cashier", "manager", "admin"] as StaffAppRole[] },
-    { path: "/kitchen" as const, label: "Kitchen", roles: ["kitchen", "manager", "admin"] as StaffAppRole[] },
-    { path: "/waiter" as const, label: "Waiter", roles: ["waiter", "manager", "admin"] as StaffAppRole[] },
-    { path: "/manager" as const, label: "Manager", roles: ["manager", "admin"] as StaffAppRole[] }
+    { path: "/cashier" as const, label: "Cashier", roles: ["cashier", "manager"] as StaffAppRole[] },
+    { path: "/kitchen" as const, label: "Kitchen", roles: ["kitchen", "manager"] as StaffAppRole[] },
+    { path: "/manager" as const, label: "Dashboard", roles: ["manager"] as StaffAppRole[] },
+    { path: "/orders" as const, label: "Orders", roles: ["cashier", "manager"] as StaffAppRole[] },
+    { path: "/settings" as const, label: "Settings", roles: ["cashier", "kitchen", "manager"] as StaffAppRole[] }
   ];
   return all.filter((entry) => entry.roles.includes(role)).map(({ path, label }) => ({ path, label }));
 }

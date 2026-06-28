@@ -1,5 +1,5 @@
 /**
- * Unified Firestore `orders/{orderId}` — same documents for POS, kitchen, delivery, admin, customer.
+ * Unified Firestore `orders/{orderId}` — same documents for POS, kitchen, delivery, and customer apps.
  * Real-time via onSnapshot; `id` field mirrors the document id.
  *
  * Indexing (deploy `backend/firestore.indexes.json`):

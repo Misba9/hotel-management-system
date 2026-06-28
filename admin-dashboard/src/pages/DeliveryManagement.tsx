@@ -198,7 +198,7 @@ export default function DeliveryManagement() {
       ) : null}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-white/60">
+        <div className="flex items-center gap-2 text-theme-text-secondary">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading online orders…
         </div>
@@ -214,17 +214,17 @@ export default function DeliveryManagement() {
               <GlassCard key={order.id} hover className="space-y-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-semibold text-white">
+                    <h3 className="text-lg font-semibold text-theme-text-primary">
                       {order.orderNumber ?? order.id}
                     </h3>
-                    <p className="text-sm text-white/50">
+                    <p className="text-sm text-theme-text-secondary">
                       {order.customerName ?? "Customer"} · {order.phone ?? "—"}
                     </p>
                   </div>
                   <Badge variant="neutral">{(order.source ?? order.orderType ?? "online").toUpperCase()}</Badge>
                 </div>
 
-                <div className="space-y-2 text-sm text-white/70">
+                <div className="space-y-2 text-sm text-theme-text-secondary">
                   <div className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-brand-primary" />
                     <span>
@@ -263,8 +263,8 @@ export default function DeliveryManagement() {
                 </div>
 
                 {order.rapidoRideId || tracking ? (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-white/75">
-                    <div className="font-semibold text-white">Rapido Tracking</div>
+                  <div className="rounded-xl border border-theme-border bg-theme-hover p-3 text-sm text-theme-text-primary/75">
+                    <div className="font-semibold text-theme-text-primary">Rapido Tracking</div>
                     <div>Ride ID: {order.rapidoRideId ?? "—"}</div>
                     <div>Status: {tracking?.status ?? order.rapidoStatus ?? "booked"}</div>
                     {tracking?.driverName ? <div>Driver: {tracking.driverName}</div> : null}

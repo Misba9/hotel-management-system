@@ -127,20 +127,20 @@ export function SettingsPageFeature() {
 
         <TabsContent value="restaurant">
           <GlassCard hover>
-            <h3 className="mb-4 font-semibold text-white">Business Settings</h3>
+            <h3 className="mb-4 font-semibold text-theme-text-primary">Business Settings</h3>
             {loading ? (
-              <p className="text-sm text-white/40">Loading…</p>
+              <p className="text-sm text-theme-text-secondary">Loading…</p>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-1.5">
-                  <span className="text-xs font-medium text-white/50">Business Hours</span>
+                  <span className="text-xs font-medium text-theme-text-secondary">Business Hours</span>
                   <Input
                     value={settings.businessHours}
                     onChange={(e) => setSettings((p) => ({ ...p, businessHours: e.target.value }))}
                   />
                 </label>
                 <label className="space-y-1.5">
-                  <span className="text-xs font-medium text-white/50">Delivery Radius (km)</span>
+                  <span className="text-xs font-medium text-theme-text-secondary">Delivery Radius (km)</span>
                   <Input
                     type="number"
                     value={settings.deliveryRadiusKm}
@@ -148,7 +148,7 @@ export function SettingsPageFeature() {
                   />
                 </label>
                 <label className="space-y-1.5">
-                  <span className="text-xs font-medium text-white/50">Tax (%)</span>
+                  <span className="text-xs font-medium text-theme-text-secondary">Tax (%)</span>
                   <Input
                     type="number"
                     value={settings.taxPercent}
@@ -156,7 +156,7 @@ export function SettingsPageFeature() {
                   />
                 </label>
                 <label className="space-y-1.5">
-                  <span className="text-xs font-medium text-white/50">Default Discount (%)</span>
+                  <span className="text-xs font-medium text-theme-text-secondary">Default Discount (%)</span>
                   <Input
                     type="number"
                     value={settings.discountPercent}
@@ -173,12 +173,12 @@ export function SettingsPageFeature() {
 
         <TabsContent value="payments">
           <GlassCard hover>
-            <h3 className="mb-4 font-semibold text-white">Payment gateway</h3>
+            <h3 className="mb-4 font-semibold text-theme-text-primary">Payment gateway</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-1.5">
-                <span className="text-xs font-medium text-white/50">Provider</span>
+                <span className="text-xs font-medium text-theme-text-secondary">Provider</span>
                 <select
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                  className="w-full rounded-lg border border-theme-border bg-theme-input-bg px-3 py-2 text-sm text-theme-text-primary"
                   value={settings.paymentProvider}
                   onChange={(e) =>
                     setSettings((p) => ({ ...p, paymentProvider: e.target.value as SettingsPayload["paymentProvider"] }))
@@ -189,15 +189,15 @@ export function SettingsPageFeature() {
                 </select>
               </label>
               <label className="space-y-1.5">
-                <span className="text-xs font-medium text-white/50">Merchant UPI ID</span>
+                <span className="text-xs font-medium text-theme-text-secondary">Merchant UPI ID</span>
                 <Input value={settings.upiVpa} onChange={(e) => setSettings((p) => ({ ...p, upiVpa: e.target.value }))} placeholder="store@upi" />
               </label>
               <label className="space-y-1.5 md:col-span-2">
-                <span className="text-xs font-medium text-white/50">Bank / display name</span>
+                <span className="text-xs font-medium text-theme-text-secondary">Bank / display name</span>
                 <Input value={settings.upiBankName} onChange={(e) => setSettings((p) => ({ ...p, upiBankName: e.target.value }))} />
               </label>
               <div className="md:col-span-2 space-y-2">
-                <span className="text-xs font-medium text-white/50">Enabled cashier methods</span>
+                <span className="text-xs font-medium text-theme-text-secondary">Enabled cashier methods</span>
                 <div className="flex flex-wrap gap-2">
                   {(["cash", "upi", "card", "wallet", "split"] as const).map((m) => {
                     const on = settings.enabledPaymentMethods.includes(m);
@@ -205,7 +205,7 @@ export function SettingsPageFeature() {
                       <button
                         key={m}
                         type="button"
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${on ? "bg-brand-primary text-white" : "bg-white/10 text-white/60"}`}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${on ? "bg-brand-primary text-white" : "bg-theme-hover text-theme-text-secondary"}`}
                         onClick={() =>
                           setSettings((p) => ({
                             ...p,
@@ -222,7 +222,7 @@ export function SettingsPageFeature() {
                 </div>
               </div>
             </div>
-            <p className="mt-4 text-xs text-white/40">
+            <p className="mt-4 text-xs text-theme-text-secondary">
               Razorpay keys are set in server env (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET). Manual UPI shows on cashier when provider is Manual.
             </p>
             <Button className="mt-6" onClick={() => void save()} disabled={saving || loading}>
@@ -233,13 +233,13 @@ export function SettingsPageFeature() {
 
         <TabsContent value="printers">
           <GlassCard hover>
-            <h3 className="mb-4 font-semibold text-white">Printer routing</h3>
-            <p className="mb-4 text-sm text-white/50">Assign counter receipt and kitchen KOT printers. Cashier prints to both after payment.</p>
+            <h3 className="mb-4 font-semibold text-theme-text-primary">Printer routing</h3>
+            <p className="mb-4 text-sm text-theme-text-secondary">Assign counter receipt and kitchen KOT printers. Cashier prints to both after payment.</p>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-1.5">
-                <span className="text-xs font-medium text-white/50">Counter receipt printer</span>
+                <span className="text-xs font-medium text-theme-text-secondary">Counter receipt printer</span>
                 <select
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                  className="w-full rounded-lg border border-theme-border bg-theme-input-bg px-3 py-2 text-sm text-theme-text-primary"
                   value={settings.counterPrinterId}
                   onChange={(e) => setSettings((p) => ({ ...p, counterPrinterId: e.target.value }))}
                 >
@@ -251,9 +251,9 @@ export function SettingsPageFeature() {
                 </select>
               </label>
               <label className="space-y-1.5">
-                <span className="text-xs font-medium text-white/50">Kitchen KOT printer</span>
+                <span className="text-xs font-medium text-theme-text-secondary">Kitchen KOT printer</span>
                 <select
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                  className="w-full rounded-lg border border-theme-border bg-theme-input-bg px-3 py-2 text-sm text-theme-text-primary"
                   value={settings.kitchenPrinterId}
                   onChange={(e) => setSettings((p) => ({ ...p, kitchenPrinterId: e.target.value }))}
                 >
@@ -266,7 +266,7 @@ export function SettingsPageFeature() {
               </label>
             </div>
             {printers.length > 0 ? (
-              <ul className="mt-6 space-y-2 text-sm text-white/60">
+              <ul className="mt-6 space-y-2 text-sm text-theme-text-secondary">
                 {printers.map((p) => (
                   <li key={p.id}>
                     {p.name} · {p.type} {p.ipAddress ? `· ${p.ipAddress}` : ""} {p.role ? `· ${p.role}` : ""}
@@ -274,7 +274,7 @@ export function SettingsPageFeature() {
                 ))}
               </ul>
             ) : (
-              <p className="mt-4 text-sm text-white/40">No printers in Firestore yet. Seed via backend or add printers collection docs.</p>
+              <p className="mt-4 text-sm text-theme-text-secondary">No printers in Firestore yet. Seed via backend or add printers collection docs.</p>
             )}
             <Button className="mt-6" onClick={() => void save()} disabled={saving || loading}>
               {saving ? "Saving…" : "Save printer routing"}
@@ -302,7 +302,7 @@ export function SettingsPageFeature() {
               <GlassCard>
                 <div className="flex flex-col items-center py-12 text-center">
                   <Icon className="mb-3 h-8 w-8 text-brand-primary/60" />
-                  <p className="text-sm text-white/50">{label} configuration — extend with your backend modules.</p>
+                  <p className="text-sm text-theme-text-secondary">{label} configuration — extend with your backend modules.</p>
                   <Button variant="secondary" className="mt-4">
                     Configure {label}
                   </Button>

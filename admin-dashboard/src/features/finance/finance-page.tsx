@@ -63,11 +63,11 @@ export function FinancePageFeature() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <GlassCard hover>
-          <h3 className="mb-4 font-semibold text-white">Income vs Expense</h3>
+          <h3 className="mb-4 font-semibold text-theme-text-primary">Income vs Expense</h3>
           {data?.revenuePerDay ? <SalesChart revenuePerDay={data.revenuePerDay} /> : <ChartSkeleton />}
         </GlassCard>
         <GlassCard hover>
-          <h3 className="mb-4 font-semibold text-white">Cash Flow</h3>
+          <h3 className="mb-4 font-semibold text-theme-text-primary">Cash Flow</h3>
           {data?.revenuePerDay ? (
             <SalesChart revenuePerDay={data.revenuePerDay.map((d) => ({ ...d, revenue: d.revenue * 0.78 }))} />
           ) : (
@@ -78,13 +78,13 @@ export function FinancePageFeature() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <GlassCard hover>
-          <h3 className="mb-4 font-semibold text-white">Recent Transactions</h3>
+          <h3 className="mb-4 font-semibold text-theme-text-primary">Recent Transactions</h3>
           <div className="space-y-2">
             {transactions.map((t) => (
-              <div key={t.id} className="flex items-center justify-between rounded-xl border border-white/[0.06] p-3">
+              <div key={t.id} className="flex items-center justify-between rounded-xl border border-theme-border p-3">
                 <div>
-                  <p className="text-sm font-medium text-white">{t.id}</p>
-                  <p className="text-xs text-white/40">
+                  <p className="text-sm font-medium text-theme-text-primary">{t.id}</p>
+                  <p className="text-xs text-theme-text-secondary">
                     {t.type} · {t.method} · {t.time}
                   </p>
                 </div>
@@ -96,17 +96,17 @@ export function FinancePageFeature() {
           </div>
         </GlassCard>
         <GlassCard hover>
-          <h3 className="mb-4 font-semibold text-white">Recent Expenses</h3>
+          <h3 className="mb-4 font-semibold text-theme-text-primary">Recent Expenses</h3>
           <div className="space-y-2">
             {[
               { label: "Vegetable vendor", amount: 4500, date: "Today" },
               { label: "Gas refill", amount: 1200, date: "Yesterday" },
               { label: "Packaging supplies", amount: 890, date: "Jun 10" }
             ].map((e) => (
-              <div key={e.label} className="flex items-center justify-between rounded-xl border border-white/[0.06] p-3">
+              <div key={e.label} className="flex items-center justify-between rounded-xl border border-theme-border p-3">
                 <div>
-                  <p className="text-sm text-white">{e.label}</p>
-                  <p className="text-xs text-white/40">{e.date}</p>
+                  <p className="text-sm text-theme-text-primary">{e.label}</p>
+                  <p className="text-xs text-theme-text-secondary">{e.date}</p>
                 </div>
                 <span className="font-semibold text-rose-400">{formatCurrency(e.amount)}</span>
               </div>

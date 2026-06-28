@@ -406,7 +406,7 @@ function ManagerOrderCard({
               type="button"
               disabled={busy || terminal || !overridePick || overridePick === (order.status ?? "")}
               onClick={() => onPatchOverride(order.id, overridePick)}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-orange-600 dark:hover:bg-orange-500"
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-theme-text-primary shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-orange-600 dark:hover:bg-orange-500"
             >
               Apply
             </button>
