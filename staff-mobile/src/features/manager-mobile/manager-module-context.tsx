@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { collection } from "firebase/firestore";
 import { subscribeRecentOrders, subscribeKitchenKdsOrders, type StaffOrderRow } from "../../../services/orders";
 import { useNetworkStatus } from "../../hooks/use-network-status";
@@ -105,6 +105,23 @@ function mapManagerTableRow(id: string, data: Record<string, unknown>): ManagerT
   };
 }
 
+function ordersSignature(rows: StaffOrderRow[]): string {
+  return rows
+    .map((row) => `${row.id}:${String(row.status ?? "")}:${String(row.updatedAt ?? row.createdAt ?? "")}`)
+    .join("|");
+}
+
+function tablesSignature(rows: ManagerTableRow[]): string {
+  return rows
+    .map(
+      (row) =>
+        `${row.id}:${row.uiStatus}:${String(row.currentOrderId ?? "")}:${String(
+          row.assignedWaiterUid ?? ""
+        )}:${String(row.reservationName ?? "")}`
+    )
+    .join("|");
+}
+
 function toMillis(value: unknown): number {
   if (value && typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
     try {
@@ -167,14 +184,22 @@ export function ManagerModuleProvider({ children }: { children: ReactNode }) {
   const [fromCache, setFromCache] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const signaturesRef = useRef({ orders: "", kitchen: "", tables: "" });
 
   useEffect(() => {
     void (async () => {
       const cache = await loadCache();
       if (!cache) return;
-      setOrders(sortByNewest(cache.orders));
-      setKitchenOrders(sortByNewest(cache.kitchenOrders));
-      setTables(cache.tables);
+      const sortedOrders = sortByNewest(cache.orders);
+      const sortedKitchen = sortByNewest(cache.kitchenOrders);
+      const sortedTables = [...cache.tables].sort((a, b) => a.number - b.number || a.id.localeCompare(b.id));
+      const oSig = ordersSignature(sortedOrders);
+      const kSig = ordersSignature(sortedKitchen);
+      const tSig = tablesSignature(sortedTables);
+      setOrders(sortedOrders);
+      setKitchenOrders(sortedKitchen);
+      setTables(sortedTables);
+      signaturesRef.current = { orders: oSig, kitchen: kSig, tables: tSig };
       setLastSyncAt(cache.savedAt);
       setFromCache(true);
       setLoading(false);
@@ -194,21 +219,56 @@ export function ManagerModuleProvider({ children }: { children: ReactNode }) {
     let liveOrders: StaffOrderRow[] = [];
     let liveKitchen: StaffOrderRow[] = [];
     let liveTables: ManagerTableRow[] = [];
+    let flushedInitial = { orders: false, kitchen: false, tables: false };
+    let commitQueued = false;
+    let disposed = false;
 
     const persist = () => {
-      const payload: CachePayload = {
-        orders: sortByNewest(liveOrders),
-        kitchenOrders: sortByNewest(liveKitchen),
-        tables: [...liveTables].sort((a, b) => a.number - b.number || a.id.localeCompare(b.id)),
-        savedAt: new Date().toISOString()
-      };
-      setOrders(payload.orders);
-      setKitchenOrders(payload.kitchenOrders);
-      setTables(payload.tables);
-      setLastSyncAt(payload.savedAt);
-      setFromCache(false);
-      setLoading(false);
-      void saveCache(payload);
+      if (disposed) return;
+      const nextOrders = sortByNewest(liveOrders);
+      const nextKitchen = sortByNewest(liveKitchen);
+      const nextTables = [...liveTables].sort((a, b) => a.number - b.number || a.id.localeCompare(b.id));
+      const nextOrdersSig = ordersSignature(nextOrders);
+      const nextKitchenSig = ordersSignature(nextKitchen);
+      const nextTablesSig = tablesSignature(nextTables);
+
+      const changed =
+        nextOrdersSig !== signaturesRef.current.orders ||
+        nextKitchenSig !== signaturesRef.current.kitchen ||
+        nextTablesSig !== signaturesRef.current.tables;
+
+      if (changed) {
+        setOrders(nextOrders);
+        setKitchenOrders(nextKitchen);
+        setTables(nextTables);
+        signaturesRef.current = {
+          orders: nextOrdersSig,
+          kitchen: nextKitchenSig,
+          tables: nextTablesSig
+        };
+        setLastSyncAt(new Date().toISOString());
+        setFromCache(false);
+        void saveCache({
+          orders: nextOrders,
+          kitchenOrders: nextKitchen,
+          tables: nextTables,
+          savedAt: new Date().toISOString()
+        });
+      }
+
+      const initialStreamsReady = flushedInitial.orders && flushedInitial.kitchen && flushedInitial.tables;
+      if (initialStreamsReady) {
+        setLoading((prev) => (prev ? false : prev));
+      }
+    };
+
+    const schedulePersist = () => {
+      if (commitQueued || disposed) return;
+      commitQueued = true;
+      Promise.resolve().then(() => {
+        commitQueued = false;
+        persist();
+      });
     };
 
     const onStreamError = (err: Error) => {
@@ -219,7 +279,8 @@ export function ManagerModuleProvider({ children }: { children: ReactNode }) {
     const unsubOrders = subscribeRecentOrders(
       (rows) => {
         liveOrders = rows;
-        persist();
+        flushedInitial.orders = true;
+        schedulePersist();
       },
       onStreamError
     );
@@ -227,7 +288,8 @@ export function ManagerModuleProvider({ children }: { children: ReactNode }) {
     const unsubKitchen = subscribeKitchenKdsOrders(
       (rows) => {
         liveKitchen = rows;
-        persist();
+        flushedInitial.kitchen = true;
+        schedulePersist();
       },
       onStreamError
     );
@@ -237,12 +299,14 @@ export function ManagerModuleProvider({ children }: { children: ReactNode }) {
       collection(staffDb, TABLES_COLLECTION),
       (snap) => {
         liveTables = snap.docs.map((docSnap) => mapManagerTableRow(docSnap.id, docSnap.data() as Record<string, unknown>));
-        persist();
+        flushedInitial.tables = true;
+        schedulePersist();
       },
       onStreamError
     );
 
     return () => {
+      disposed = true;
       unsubOrders();
       unsubKitchen();
       unsubTables();

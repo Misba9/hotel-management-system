@@ -198,7 +198,7 @@ export function ManagerDashboardScreen() {
             ["Orders", stats.orders.toString(), "clipboard-list-outline"],
             ["Kitchen Queue", stats.kitchenQueue.toString(), "chef-hat"],
             ["Occupied Tables", stats.occupiedTables.toString(), "table-furniture"],
-            ["Pending Bills", stats.pendingBills.toString(), "receipt-text-clock-outline"]
+            ["Pending Bills", stats.pendingBills.toString(), "receipt"]
           ].map(([label, value, icon]) => (
             <View
               key={label}

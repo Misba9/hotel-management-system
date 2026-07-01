@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useRouter, useSegments } from "expo-router";
+import { useRouter } from "expo-router";
 
 import type { StaffRoleId } from "../constants/staff-roles";
 import { roleHomeHref } from "../lib/staff-role-home";
@@ -10,7 +10,6 @@ import { useAuthStore } from "../../store/useAuthStore";
  */
 export function useRoleShellGuard(allowedRoles: readonly StaffRoleId[]) {
   const router = useRouter();
-  const segments = useSegments();
   const authReady = useAuthStore((s) => s.authReady);
   const loading = useAuthStore((s) => s.loading);
   const user = useAuthStore((s) => s.user);
@@ -23,5 +22,5 @@ export function useRoleShellGuard(allowedRoles: readonly StaffRoleId[]) {
     if (!allowedRoles.includes(role)) {
       router.replace(roleHomeHref(role));
     }
-  }, [authReady, loading, user, isAuthenticated, role, allowedRoles, router, segments]);
+  }, [authReady, loading, user, isAuthenticated, role, allowedRoles, router]);
 }
