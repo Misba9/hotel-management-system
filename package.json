@@ -8,6 +8,7 @@
     "apps/kitchen-kds",
     "staff-desktop",
     "customer-web",
+    "customer-mobile",
     "staff-mobile",
     "backend/functions"
   ],
@@ -53,6 +54,7 @@
     "dev:web": "npm run dev --workspace=customer-web",
     "dev:admin": "npm run dev --workspace=admin-dashboard",
     "dev:mobile": "npm run dev --workspace=@nausheen/staff-mobile",
+    "dev:customer-mobile": "npm run dev --workspace=@nausheen/customer-mobile",
     "build:mobile:android": "npm run build:android --workspace=@nausheen/staff-mobile",
     "dev:staff-desktop": "npm run dev --workspace=@nausheen/staff-desktop",
     "dev:customer": "npm run dev:web",

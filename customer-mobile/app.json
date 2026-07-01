@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Nausheen Fruits",
+    "slug": "nausheen-customer",
+    "scheme": "nausheen-customer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "assetBundlePatterns": ["**/*"],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "androidMode": "default",
+          "androidCollapsedTitle": "Nausheen Fruits"
+        }
+      ],
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hotel.customerapp"
+    },
+    "android": {
+      "package": "com.hotel.customerapp",
+      "googleServicesFile": "./google-services.json"
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}
