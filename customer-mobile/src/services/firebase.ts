@@ -40,6 +40,32 @@ const firebaseConfig = {
   appId: env("EXPO_PUBLIC_FIREBASE_APP_ID")
 };
 
+const REQUIRED: [string, string | undefined][] = [
+  ["EXPO_PUBLIC_FIREBASE_API_KEY", firebaseConfig.apiKey],
+  ["EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN", firebaseConfig.authDomain],
+  ["EXPO_PUBLIC_FIREBASE_PROJECT_ID", firebaseConfig.projectId],
+  ["EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET", firebaseConfig.storageBucket],
+  ["EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID", firebaseConfig.messagingSenderId],
+  ["EXPO_PUBLIC_FIREBASE_APP_ID", firebaseConfig.appId]
+];
+
+const PLACEHOLDER = /^(YOUR_API_KEY|XXXX|your-project-id|your-project\.firebaseapp\.com)$/i;
+
+for (const [name, value] of REQUIRED) {
+  const s = value == null ? "" : String(value).trim();
+  if (!s || PLACEHOLDER.test(s)) {
+    throw new Error(
+      `[Firebase] ${name} missing in customer-mobile/.env. Copy customer-mobile/.env.example and fill values from Firebase Console (same project as google-services.json).`
+    );
+  }
+}
+
+if (firebaseConfig.projectId !== EXPECTED_NATIVE_PROJECT_ID) {
+  console.warn(
+    `[Firebase] EXPO_PUBLIC_FIREBASE_PROJECT_ID="${firebaseConfig.projectId}" should match google-services.json / firebase-project-lock (${EXPECTED_NATIVE_PROJECT_ID}).`
+  );
+}
+
 export function isFirebaseConfigured(): boolean {
   return Boolean(
     firebaseConfig.apiKey &&

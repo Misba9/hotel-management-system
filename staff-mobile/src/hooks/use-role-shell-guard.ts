@@ -15,6 +15,7 @@ export function useRoleShellGuard(allowedRoles: readonly StaffRoleId[]) {
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const role = useAuthStore((s) => s.role);
+  const allowedRolesKey = allowedRoles.join("\0");
 
   useEffect(() => {
     if (!authReady || loading) return;
@@ -22,5 +23,6 @@ export function useRoleShellGuard(allowedRoles: readonly StaffRoleId[]) {
     if (!allowedRoles.includes(role)) {
       router.replace(roleHomeHref(role));
     }
-  }, [authReady, loading, user, isAuthenticated, role, allowedRoles, router]);
+    // Stable key — inline `["waiter"]` literals must not retrigger this every render.
+  }, [authReady, loading, user, isAuthenticated, role, allowedRolesKey, router]);
 }

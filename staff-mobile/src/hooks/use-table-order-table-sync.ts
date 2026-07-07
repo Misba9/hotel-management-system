@@ -54,9 +54,9 @@ export function useTableOrderTableSync(enabled: boolean) {
           const last = lastDesiredOccupiedRef.current.get(tableId);
           if (last === occupied) continue;
           lastDesiredOccupiedRef.current.set(tableId, occupied);
-          const status = occupied ? "OCCUPIED" : "FREE";
+          const status = occupied ? "occupied" : "available";
           const tid = requireFirestoreId(tableId, "tableId");
-          if (!tid) return;
+          if (!tid) continue;
           void updateDoc(doc(staffDb, TABLES_COLLECTION, tid), { status }).catch((err) => {
             logWarn(
               "useTableOrderTableSync.update",

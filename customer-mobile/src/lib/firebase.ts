@@ -17,8 +17,12 @@ function initCustomerAuth() {
     return initializeAuth(firebaseApp, {
       persistence: getReactNativePersistence(AsyncStorage)
     });
-  } catch {
-    return getAuth(firebaseApp);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/already-initialized/i.test(message)) {
+      return getAuth(firebaseApp);
+    }
+    throw error;
   }
 }
 

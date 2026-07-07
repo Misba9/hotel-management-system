@@ -83,9 +83,10 @@ function resolveSharedSource(moduleName) {
 
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [path.resolve(projectRoot), sharedRoot];
+config.watchFolders = [path.resolve(projectRoot), sharedRoot, rootNodeModules];
 config.resolver.nodeModulesPaths = [localNodeModules, rootNodeModules];
-config.resolver.disableHierarchicalLookup = false;
+// Monorepo: resolve hoisted deps only via nodeModulesPaths (not nested per-package lookups).
+config.resolver.disableHierarchicalLookup = true;
 
 const deduped = {
   react: resolvePackageDir("react"),
@@ -112,6 +113,16 @@ try {
 } catch {
   /* optional */
 }
+try {
+  deduped["@expo/metro-runtime"] = resolvePackageDir("@expo/metro-runtime");
+} catch {
+  /* optional */
+}
+try {
+  deduped["whatwg-fetch"] = resolvePackageDir("whatwg-fetch");
+} catch {
+  /* optional */
+}
 
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
@@ -129,6 +140,13 @@ function resolveWithoutCustomHook(ctx, moduleName, platform) {
 }
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === "whatwg-fetch") {
+    return {
+      type: "sourceFile",
+      filePath: path.join(resolvePackageDir("whatwg-fetch"), "dist/fetch.umd.js")
+    };
+  }
+
   const sharedFile = resolveSharedSource(moduleName);
   if (sharedFile) {
     return { type: "sourceFile", filePath: sharedFile };

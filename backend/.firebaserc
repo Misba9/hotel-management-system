@@ -1,16 +1,15 @@
 {
   "projects": {
-    "default": "nausheen-fruits",
-    "prod-web": "nausheen-fruits"
+    "default": "nausheen-fruits-new"
   },
   "targets": {
-    "nausheen-fruits": {
+    "nausheen-fruits-new": {
       "hosting": {
-        "customer-web": [
-          "customer-web-d85b1"
+        "customer": [
+          "nausheen-customer"
         ],
-        "admin-dashboard": [
-          "admin-dashboard-ec439"
+        "admin": [
+          "nausheen-admin"
         ]
       }
     }

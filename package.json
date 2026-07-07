@@ -13,9 +13,16 @@
     "backend/functions"
   ],
   "overrides": {
-    "react-native": "0.74.5",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "@nausheen/customer-mobile": {
+      "react": "19.1.0",
+      "react-dom": "19.1.0",
+      "react-native": "0.81.5"
+    },
+    "@nausheen/staff-mobile": {
+      "react": "18.3.1",
+      "react-dom": "18.3.1",
+      "react-native": "0.74.5"
+    }
   },
   "dependencies": {
     "@react-google-maps/api": "^2.20.8",
@@ -28,6 +35,7 @@
     "typescript": "^5.1.6"
   },
   "devDependencies": {
+    "firebase-tools": "^14.27.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.2"
   },
@@ -60,14 +68,24 @@
     "dev:customer": "npm run dev:web",
     "build:web": "npm run build --workspace @nausheen/customer-web && npm run build --workspace @nausheen/admin-dashboard",
     "build:functions": "npm run build --workspace @nausheen/functions",
-    "firebase:build": "npm run build:functions",
-    "firebase:deploy:functions": "firebase deploy --config backend/firebase.json --project nausheen-fruits --only functions",
-    "firebase:deploy:hosting": "firebase deploy --config backend/firebase.json --project nausheen-fruits --only hosting",
-    "firebase:deploy:rules": "firebase deploy --config backend/firebase.json --project nausheen-fruits --only firestore:rules,storage",
-    "firebase:deploy:firestore": "firebase deploy --config backend/firebase.json --project nausheen-fruits --only firestore",
-    "firebase:deploy:all": "firebase deploy --config backend/firebase.json --project nausheen-fruits",
-    "firebase:release:functions": "npm run firebase:build && npm run firebase:deploy:functions",
-    "deploy": "firebase deploy --config backend/firebase.json --project nausheen-fruits --only hosting",
+    "firebase:validate": "node scripts/firebase/ensure-webframeworks.mjs && node scripts/firebase/validate-config.mjs",
+    "firebase:enable-webframeworks": "node scripts/firebase/ensure-webframeworks.mjs",
+    "firebase:artifacts-policy": "node scripts/firebase/ensure-artifacts-policy.mjs",
+    "firebase:detect": "node scripts/firebase/detect-app-framework.mjs customer-web && node scripts/firebase/detect-app-framework.mjs admin-dashboard",
+    "firebase:setup-hosting": "bash scripts/firebase/setup-hosting.sh",
+    "firebase:build": "node scripts/firebase/build-for-deploy.mjs all",
+    "firebase:deploy:functions": "firebase deploy --project nausheen-fruits-new --config firebase.json --only functions --force",
+    "firebase:deploy:hosting:customer": "node scripts/firebase/ensure-webframeworks.mjs && node scripts/firebase/ensure-artifacts-policy.mjs && firebase deploy --project nausheen-fruits-new --config firebase.json --only hosting:customer --force",
+    "firebase:deploy:hosting:admin": "node scripts/firebase/ensure-webframeworks.mjs && node scripts/firebase/ensure-artifacts-policy.mjs && firebase deploy --project nausheen-fruits-new --config firebase.json --only hosting:admin --force",
+    "firebase:deploy:hosting": "node scripts/firebase/ensure-webframeworks.mjs && node scripts/firebase/ensure-artifacts-policy.mjs && firebase deploy --project nausheen-fruits-new --config firebase.json --only hosting:customer,hosting:admin --force",
+    "firebase:deploy:rules": "firebase deploy --project nausheen-fruits-new --config firebase.json --only firestore:rules,storage",
+    "firebase:deploy:firestore": "firebase deploy --project nausheen-fruits-new --config firebase.json --only firestore",
+    "firebase:deploy:all": "firebase deploy --project nausheen-fruits-new --config firebase.json --only functions,hosting:customer,hosting:admin --force",
+    "firebase:release:functions": "npm run build:functions && npm run firebase:deploy:functions",
+    "deploy:customer": "node scripts/firebase/deploy.mjs customer",
+    "deploy:admin": "node scripts/firebase/deploy.mjs admin",
+    "deploy:all": "node scripts/firebase/deploy.mjs all",
+    "deploy": "npm run deploy:all",
     "deploy:functions": "npm run firebase:deploy:functions",
     "deploy:hosting": "npm run firebase:deploy:hosting",
     "deploy:rules": "npm run firebase:deploy:rules",

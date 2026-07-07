@@ -2,10 +2,11 @@ import "react-native-gesture-handler";
 import NetInfo from "@react-native-community/netinfo";
 import { Stack, usePathname, useRootNavigationState, useRouter } from "expo-router";
 import { useEffect } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { installGlobalErrorHandlers } from "../src/bootstrap-global-errors";
 import { ensureStaffFirestoreOnline } from "../src/services/firebase";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { MobileThemeProvider } from "../../shared/theme/react-native/MobileThemeProvider";
@@ -72,27 +73,18 @@ export default function RootLayout() {
   }, [nav?.key, authReady, loading, user, isAuthenticated, role, pathname, router]);
 
   return (
-    <SafeAreaProvider>
-      <MobileThemeProvider>
-        {(!authReady || loading) && pathname !== "/login" && (
-          <View style={styles.boot} pointerEvents="auto">
-            <ActivityIndicator size="large" color="#4F8CFF" />
-          </View>
-        )}
-        <Stack screenOptions={{ headerShown: false }} />
-        <OfflineBanner />
-        <StaffNotificationBootstrap />
-      </MobileThemeProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
+        <MobileThemeProvider>
+          <Stack screenOptions={{ headerShown: false }} />
+          <OfflineBanner />
+          <StaffNotificationBootstrap />
+        </MobileThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  boot: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#0F1115",
-    zIndex: 50
-  }
+  root: { flex: 1 }
 });

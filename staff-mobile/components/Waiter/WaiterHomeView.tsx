@@ -7,7 +7,7 @@ import {
 import { formatKitchenStatusLabel, formatPaymentStatusLabel } from "@shared/utils/order-display";
 import { useRouter } from "expo-router";
 import { signOut } from "firebase/auth";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -33,7 +33,6 @@ import {
   type StaffOrderRow
 } from "../../services/orders";
 import { patchWaiterTable, subscribeAllTables, type FloorTable } from "../../services/tables";
-import { useTableOrderTableSync } from "../../src/hooks/use-table-order-table-sync";
 import { staffAuth } from "../../src/lib/firebase";
 import { useAuthStore } from "../../store/useAuthStore";
 
@@ -123,8 +122,9 @@ export function WaiterHomeView() {
 
   const [historyErr, setHistoryErr] = useState<string | null>(null);
 
-  /** Keep `tables/{id}.status` in sync with open dine-in orders (realtime). */
-  useTableOrderTableSync(true);
+  const ordersFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingOrdersRef = useRef<StaffOrderRow[]>([]);
+  const healAttemptRef = useRef(new Set<string>());
 
   useEffect(() => {
     const unsub = subscribeAllTables(
@@ -138,14 +138,30 @@ export function WaiterHomeView() {
   }, []);
 
   useEffect(() => {
+    let firstSnapshot = true;
     setOrdersLoading(true);
+
+    const flushOrders = () => {
+      setOrders(pendingOrdersRef.current);
+      setOrdersLoading(false);
+      setRefreshing(false);
+      setOrdersErr(null);
+      setHistoryErr(null);
+    };
+
     const unsub = subscribeWaiterOrders(
       (next) => {
-        setOrders(next);
-        setOrdersLoading(false);
-        setRefreshing(false);
-        setOrdersErr(null);
-        setHistoryErr(null);
+        pendingOrdersRef.current = next;
+        if (firstSnapshot) {
+          firstSnapshot = false;
+          flushOrders();
+          return;
+        }
+        if (ordersFlushTimerRef.current) return;
+        ordersFlushTimerRef.current = setTimeout(() => {
+          ordersFlushTimerRef.current = null;
+          flushOrders();
+        }, 300);
       },
       (err) => {
         setOrdersErr(err.message);
@@ -154,7 +170,14 @@ export function WaiterHomeView() {
         setRefreshing(false);
       }
     );
-    return unsub;
+
+    return () => {
+      if (ordersFlushTimerRef.current) {
+        clearTimeout(ordersFlushTimerRef.current);
+        ordersFlushTimerRef.current = null;
+      }
+      unsub();
+    };
   }, []);
 
   const openOrderForTable = useCallback(
@@ -196,16 +219,21 @@ export function WaiterHomeView() {
     return m;
   }, [tables, orders]);
 
-  /** Heal stale Firestore rows: occupied in DB but no open tickets on this table. */
+  /** Heal stale Firestore rows once per table — avoid write storms that freeze Android. */
   useEffect(() => {
     if (tables.length === 0 || ordersLoading) return;
     for (const t of tables) {
       const active = activePosCountByTableId.get(t.id) ?? 0;
-      if (active === 0 && t.status === "occupied") {
-        void patchWaiterTable(t.id, { status: "FREE", currentOrderId: null }).catch(() => {
-          /* Rules may block — UI still correct via activeOrderCount */
-        });
+      if (active > 0) {
+        healAttemptRef.current.delete(t.id);
+        continue;
       }
+      if (t.status !== "occupied") continue;
+      if (healAttemptRef.current.has(t.id)) continue;
+      healAttemptRef.current.add(t.id);
+      void patchWaiterTable(t.id, { status: "FREE", currentOrderId: null }).catch(() => {
+        healAttemptRef.current.delete(t.id);
+      });
     }
   }, [tables, ordersLoading, activePosCountByTableId]);
 

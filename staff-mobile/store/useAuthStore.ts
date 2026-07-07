@@ -37,6 +37,7 @@ let sessionHydratedUid: string | null = null;
 let authHydrationGen = 0;
 
 const HYDRATE_MS = 12_000;
+const AUTH_INIT_MS = 8_000;
 
 function clearRoleListener() {
   attachedRoleUid = null;
@@ -168,12 +169,73 @@ function attachStaffRoleListener(uid: string, user: User, set: (partial: Partial
       const data = snap.data();
       if (!data) return;
       const { gate, profile } = resolveStaffSession(safeUid, user.email, data as Record<string, unknown>, true);
+      const current = useAuthStore.getState();
       if (gate === "active" && profile) {
-        set({ role: profile.role, profile, isAuthenticated: true, authError: null });
+        sessionHydratedUid = safeUid;
+        if (
+          current.isAuthenticated &&
+          current.role === profile.role &&
+          current.profile?.uid === profile.uid &&
+          current.profile?.name === profile.name
+        ) {
+          return;
+        }
+        set({ role: profile.role, profile, isAuthenticated: true, authError: null, loading: false, authReady: true });
       } else {
-        set({ role: null, profile: null, isAuthenticated: false });
+        sessionHydratedUid = null;
+        if (!current.isAuthenticated && !current.role && !current.profile) return;
+        set({
+          role: null,
+          profile: null,
+          isAuthenticated: false,
+          loading: false,
+          authReady: true
+        });
       }
     }) ?? undefined;
+}
+
+function refreshStaffSessionInBackground(
+  uid: string,
+  user: User,
+  hydrationId: number,
+  set: (partial: Partial<AuthState>) => void
+) {
+  void (async () => {
+    try {
+      const { role, profile, error } = await hydrateStaffRole(user);
+      if (hydrationId !== authHydrationGen) return;
+      if (staffAuth.currentUser?.uid !== uid) return;
+
+      if (role && profile) {
+        applyAuthenticatedSession(user, role, profile, set);
+      } else {
+        sessionHydratedUid = null;
+        set({
+          user,
+          role: null,
+          profile: null,
+          isAuthenticated: false,
+          authError: error,
+          loading: false,
+          authReady: true
+        });
+      }
+    } catch (e) {
+      if (hydrationId !== authHydrationGen) return;
+      logAuthStoreError("useAuthStore.refreshStaffSessionInBackground", e);
+      sessionHydratedUid = null;
+      set({
+        user,
+        role: null,
+        profile: null,
+        isAuthenticated: false,
+        authError: e instanceof Error ? e.message : "Failed to load staff profile.",
+        loading: false,
+        authReady: true
+      });
+    }
+  })();
 }
 
 /** Wait until auth store finishes hydration (used after `login()` resolves). */
@@ -316,7 +378,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     authListenerAttached = true;
 
+    const authInitTimer = setTimeout(() => {
+      const s = useAuthStore.getState();
+      if (!s.authReady) {
+        set({ loading: false, authReady: true });
+      }
+    }, AUTH_INIT_MS);
+
     unsubAuthGlobal = onAuthStateChanged(staffAuth, (user) => {
+      clearTimeout(authInitTimer);
+
       if (!user?.uid?.trim()) {
         authHydrationGen += 1;
         resetAuthState(set);
@@ -326,9 +397,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       const uid = user.uid.trim();
       const current = useAuthStore.getState();
 
-      if (sessionHydratedUid === uid && current.isAuthenticated && current.role && current.profile) {
+      /** Same Firebase user — keep UI responsive; refresh profile in the background if needed. */
+      if (sessionHydratedUid === uid) {
         set({ user, loading: false, authReady: true });
         attachStaffRoleListener(uid, user, set);
+        if (current.isAuthenticated && current.role && current.profile) {
+          return;
+        }
+        const hydrationId = ++authHydrationGen;
+        refreshStaffSessionInBackground(uid, user, hydrationId, set);
         return;
       }
 
@@ -344,43 +421,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         authError: null
       });
 
-      void (async () => {
-        try {
-          const { role, profile, error } = await hydrateStaffRole(user);
-          if (hydrationId !== authHydrationGen) return;
-          if (staffAuth.currentUser?.uid !== uid) return;
-
-          if (role && profile) {
-            applyAuthenticatedSession(user, role, profile, set);
-          } else {
-            sessionHydratedUid = null;
-            set({
-              user,
-              role: null,
-              profile: null,
-              isAuthenticated: false,
-              authError: error,
-              loading: false,
-              authReady: true
-            });
-          }
-        } catch (e) {
-          if (hydrationId !== authHydrationGen) return;
-          logAuthStoreError("useAuthStore.onAuthStateChanged", e);
-          sessionHydratedUid = null;
-          set({
-            user,
-            role: null,
-            profile: null,
-            isAuthenticated: false,
-            authError: e instanceof Error ? e.message : "Failed to load staff profile.",
-            loading: false,
-            authReady: true
-          });
-        }
-      })();
+      refreshStaffSessionInBackground(uid, user, hydrationId, set);
     });
 
-    return () => {};
+    return () => {
+      clearTimeout(authInitTimer);
+    };
   }
 }));

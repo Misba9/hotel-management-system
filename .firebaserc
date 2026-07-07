@@ -2,6 +2,17 @@
   "projects": {
     "default": "nausheen-fruits-new"
   },
-  "targets": {},
+  "targets": {
+    "nausheen-fruits-new": {
+      "hosting": {
+        "customer": [
+          "nausheen-customer"
+        ],
+        "admin": [
+          "nausheen-admin"
+        ]
+      }
+    }
+  },
   "etags": {}
 }

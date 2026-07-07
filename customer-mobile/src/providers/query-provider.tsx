@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ReactNode, useState } from "react";
+import { useState, type PropsWithChildren } from "react";
 
 function makeClient() {
   return new QueryClient({
@@ -20,7 +20,11 @@ function makeClient() {
   });
 }
 
-export function QueryProvider({ children }: { children: ReactNode }) {
+export function QueryProvider({ children }: PropsWithChildren) {
   const [client] = useState(makeClient);
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      {children as Parameters<typeof QueryClientProvider>[0]["children"]}
+    </QueryClientProvider>
+  );
 }
