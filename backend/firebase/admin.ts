@@ -20,8 +20,58 @@ function shouldUseRuntimeDefaultCredentials(): boolean {
     process.env.GOOGLE_APPLICATION_CREDENTIALS ||
       process.env.K_SERVICE ||
       process.env.FUNCTION_TARGET ||
-      process.env.FUNCTIONS_EMULATOR
+      process.env.FUNCTIONS_EMULATOR ||
+      process.env.GCLOUD_PROJECT ||
+      process.env.GOOGLE_CLOUD_PROJECT ||
+      process.env.FIREBASE_CONFIG
   );
+}
+
+function getRuntimeProjectId(): string | undefined {
+  if (process.env.FIREBASE_PROJECT_ID?.trim()) {
+    return process.env.FIREBASE_PROJECT_ID.trim();
+  }
+  if (process.env.GCLOUD_PROJECT?.trim()) {
+    return process.env.GCLOUD_PROJECT.trim();
+  }
+  if (process.env.GOOGLE_CLOUD_PROJECT?.trim()) {
+    return process.env.GOOGLE_CLOUD_PROJECT.trim();
+  }
+  const raw = process.env.FIREBASE_CONFIG?.trim();
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as { projectId?: unknown };
+    const projectId = String(parsed.projectId ?? "").trim();
+    return projectId || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getAppInitOptions() {
+  const projectId = getRuntimeProjectId();
+  const storageBucket = sanitizeBucket(
+    process.env.FIREBASE_STORAGE_BUCKET ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+  );
+  return {
+    ...(projectId ? { projectId } : {}),
+    ...(storageBucket ? { storageBucket } : {})
+  };
+}
+
+function initializeWithServiceAccount(): App {
+  return initializeApp({
+    credential: cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: sanitizePrivateKey(process.env.FIREBASE_PRIVATE_KEY)
+    }),
+    ...getAppInitOptions()
+  });
+}
+
+function initializeWithRuntimeCredentials(): App {
+  return initializeApp(getAppInitOptions());
 }
 
 function createMissingEnvError(missing: RequiredServiceEnvKey[]): Error {
@@ -48,20 +98,23 @@ function initializeAdminApp(): App {
   }
 
   const missing = getMissingServiceAccountEnv();
+  const useRuntimeCredentials = shouldUseRuntimeDefaultCredentials();
 
   if (missing.length === 0) {
-    return initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: sanitizePrivateKey(process.env.FIREBASE_PRIVATE_KEY)
-      }),
-      storageBucket: sanitizeBucket(process.env.FIREBASE_STORAGE_BUCKET ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET)
-    });
+    try {
+      return initializeWithServiceAccount();
+    } catch (error) {
+      if (!useRuntimeCredentials) throw error;
+      console.warn(
+        "[firebase-admin] Service-account env vars are set but invalid; falling back to runtime default credentials.",
+        error
+      );
+      return initializeWithRuntimeCredentials();
+    }
   }
 
   const missingEnvError = createMissingEnvError(missing);
-  if (!shouldUseRuntimeDefaultCredentials()) {
+  if (!useRuntimeCredentials) {
     throw missingEnvError;
   }
 
@@ -69,7 +122,7 @@ function initializeAdminApp(): App {
     console.warn(`${missingEnvError.message} Falling back to runtime default credentials.`);
   }
 
-  return initializeApp();
+  return initializeWithRuntimeCredentials();
 }
 
 export function getFirebaseAdminApp(): App | null {

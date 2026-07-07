@@ -12,4 +12,4 @@ serviceAccountKey.json
 coverage
 .DS_Store
 staff-mobile-legacy-backup
-firebase-debug.log
+firebase-debug.*.log

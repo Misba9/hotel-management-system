@@ -1,3 +1,4 @@
+import { getFirebaseAdminApp } from "@shared/firebase/admin";
 import { fetchMenuFromFirestoreAdmin } from "@/lib/server/menu-firestore";
 import type { Category, Product } from "@/lib/menu-data-types";
 
@@ -72,6 +73,13 @@ function toItemsPayload(products: MenuCachePayload["products"]): MenuCachePayloa
 
 export async function GET() {
   try {
+    if (!getFirebaseAdminApp()) {
+      console.error(
+        "[api/menu] Firebase Admin is not initialized. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY (or deploy on Cloud Functions with runtime credentials)."
+      );
+      return Response.json({ error: "Failed to fetch menu" }, { status: 503 });
+    }
+
     const now = Date.now();
     if (MENU_CACHE_TTL_MS > 0 && menuCache && menuCache.expiresAt > now) {
       if (process.env.NODE_ENV === "development") {

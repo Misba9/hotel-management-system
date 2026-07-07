@@ -1,4 +1,6 @@
-import { adminAuth, adminDb, adminMessaging } from "@shared/firebase/admin";
+import { adminAuth, adminDb, adminMessaging, getFirebaseAdminApp } from "@shared/firebase/admin";
+
+export const dynamic = "force-dynamic";
 
 type ServiceStatus = "connected" | "working" | "reachable" | "configured" | "error" | "not_configured";
 
@@ -12,12 +14,6 @@ type HealthPayload = {
   details: Record<string, string>;
 };
 
-function hasAdminEnv() {
-  return Boolean(
-    process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY
-  );
-}
-
 export async function GET() {
   const details: Record<string, string> = {};
   const result: HealthPayload = {
@@ -30,7 +26,7 @@ export async function GET() {
     details
   };
 
-  if (!hasAdminEnv()) {
+  if (!getFirebaseAdminApp()) {
     result.status = "degraded";
     result.database = "not_configured";
     result.auth = "not_configured";
@@ -38,7 +34,7 @@ export async function GET() {
     result.messaging = "not_configured";
     result.functions = "not_configured";
     details.config =
-      "Missing FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY in server env.";
+      "Firebase Admin SDK is not initialized. On Cloud Functions this should use runtime credentials; locally set FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY.";
     return Response.json(result, { status: 200 });
   }
 
