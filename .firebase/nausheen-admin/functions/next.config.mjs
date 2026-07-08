@@ -52,7 +52,9 @@ var nextConfig = {
   },
   experimental: {
     externalDir: true,
-    optimizePackageImports: ["lucide-react", "recharts"]
+    optimizePackageImports: ["lucide-react", "recharts"],
+    /** Keep a single firebase-admin instance in the Node server bundle (Firebase Hosting SSR). */
+    serverComponentsExternalPackages: ["firebase-admin"]
   }
 };
 var next_config_default = nextConfig;

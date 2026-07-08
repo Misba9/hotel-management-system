@@ -61,7 +61,7 @@ export function AdminDashboardShell({ children }: Props) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-theme-background">
+    <div className="h-screen overflow-hidden bg-theme-background">
       <AnimatePresence>
         {mobileOpen ? (
           <motion.button
@@ -76,14 +76,13 @@ export function AdminDashboardShell({ children }: Props) {
         ) : null}
       </AnimatePresence>
 
-      <div className="flex min-h-screen">
-        <aside
-          className={cn(
-            "theme-sidebar fixed inset-y-0 left-0 z-50 flex flex-col shadow-glass backdrop-blur-xl transition-all duration-200 md:static md:z-0",
-            collapsed ? "w-[4.5rem]" : "w-[min(17rem,88vw)] md:w-64",
-            mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-          )}
-        >
+      <aside
+        className={cn(
+          "theme-sidebar fixed inset-y-0 left-0 z-50 flex h-screen flex-col overflow-hidden shadow-glass backdrop-blur-xl transition-all duration-200",
+          collapsed ? "w-[4.5rem]" : "w-[min(17rem,88vw)] md:w-64",
+          mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        )}
+      >
           <div className="flex h-16 shrink-0 items-center justify-between border-b border-theme-border px-4">
             <Link href="/admin" className="flex items-center gap-3" onClick={() => setMobileOpen(false)}>
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl accent-gradient shadow-glow-sm">
@@ -149,8 +148,13 @@ export function AdminDashboardShell({ children }: Props) {
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col md:min-h-screen">
-          <header className="sticky top-0 z-30 border-b border-theme-border bg-theme-surface/95 shadow-glass backdrop-blur-xl">
+      <div
+        className={cn(
+          "flex h-screen min-w-0 flex-col transition-all duration-200",
+          collapsed ? "md:pl-[4.5rem]" : "md:pl-64"
+        )}
+      >
+          <header className="z-30 shrink-0 border-b border-theme-border bg-theme-surface/95 shadow-glass backdrop-blur-xl">
             <div className="flex h-14 items-center gap-3 px-4 sm:h-16 sm:gap-4 sm:px-6">
               <button
                 type="button"
@@ -204,9 +208,8 @@ export function AdminDashboardShell({ children }: Props) {
             </div>
           </header>
 
-          <main className="flex-1 space-y-6 p-4 pb-24 sm:p-6 lg:p-8 md:pb-8">{children}</main>
+          <main className="min-h-0 flex-1 overflow-y-auto space-y-6 p-4 pb-24 sm:p-6 lg:p-8 md:pb-8">{children}</main>
         </div>
-      </div>
 
       <MobileBottomNav />
       <NotificationCenter open={notificationsOpen} onClose={() => setNotificationsOpen(false)} />

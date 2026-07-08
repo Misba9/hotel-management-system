@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import type { StaffOrderRow } from "../../../services/orders";
 import { isOrderPaid, kitchenStatusLabel } from "../../lib/cashier-order-filters";
 import { getOrderSourceMeta, isOrderCancelled } from "../../lib/pos/order-source";
@@ -98,9 +99,9 @@ export function PosPlatformOrdersPanel({
   onPayment,
   onClose
 }: Props) {
-  const { width } = useWindowDimensions();
-  const isMobile = width < 768;
-  const isTablet = width >= 768 && width < 1200;
+  const layout = useResponsiveLayout();
+  const isPhone = layout.isPhone;
+  const isTabletOnly = layout.isSmallTablet;
   const title = PLATFORM_TITLES[platform];
   const hint = platform !== "parcel" ? PLATFORM_HINTS[platform] : undefined;
 
@@ -216,14 +217,14 @@ export function PosPlatformOrdersPanel({
           </View>
           <PosButton label="↻" variant="ghost" onPress={onRefresh} style={styles.refreshBtn} />
         </View>
-        <View style={[styles.filtersRow, isMobile && styles.filtersRowStacked]}>
+        <View style={[styles.filtersRow, isPhone && styles.filtersRowStacked]}>
           <View
             style={[
               styles.searchField,
-              !isMobile && (isTablet ? styles.searchFieldTablet : styles.searchFieldFlex)
+              !isPhone && (isTabletOnly ? styles.searchFieldTablet : styles.searchFieldFlex)
             ]}
           >
-            <PosIcon name="search" size={18} color={posColors.textDim} />
+            <PosIcon name="search" size={layout.iconSize * 0.85} color={posColors.textDim} />
             <PosInput
               placeholder="Search Order"
               value={search}
@@ -231,19 +232,19 @@ export function PosPlatformOrdersPanel({
               style={styles.searchInput}
             />
           </View>
-          <View style={!isMobile && isTablet ? styles.statusSlotTablet : undefined}>
+          <View style={!isPhone && isTabletOnly ? styles.statusSlotTablet : undefined}>
             <PosPlatformStatusFilter
               platform={platform}
               activeStatus={statusFilter}
               statusCounts={statusCounts}
               onStatusChange={onStatusChange}
-              fullWidth={isMobile}
+              fullWidth={isPhone}
             />
           </View>
         </View>
       </View>
     ),
-    [title, hint, orders.length, search, onSearchChange, onRefresh, platform, statusFilter, statusCounts, onStatusChange, isMobile, isTablet]
+    [title, hint, orders.length, search, onSearchChange, onRefresh, platform, statusFilter, statusCounts, onStatusChange, isPhone, isTabletOnly, layout.iconSize]
   );
 
   if (loading && orders.length === 0) {

@@ -14,6 +14,7 @@ export default function KitchenLayout() {
       }}
     >
       <Tabs.Screen name="orders" options={{ title: "Orders" }} />
+      <Tabs.Screen name="settings" options={{ title: "Settings" }} />
     </Tabs>
   );
 }

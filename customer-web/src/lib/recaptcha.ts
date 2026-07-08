@@ -49,13 +49,10 @@ function loadRecaptchaScript(siteKey: string): Promise<void> {
  * Google reCAPTCHA v3 (invisible). Use action names: `login`, `signup`, etc.
  */
 export async function getRecaptchaToken(action: string): Promise<string> {
-  const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
+  const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY?.trim();
   if (!siteKey) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("NEXT_PUBLIC_RECAPTCHA_SITE_KEY is not set.");
-    }
     console.warn(
-      "[recaptcha] NEXT_PUBLIC_RECAPTCHA_SITE_KEY missing — skipping client token (non-production only).",
+      "[recaptcha] NEXT_PUBLIC_RECAPTCHA_SITE_KEY missing — using bypass token. Add reCAPTCHA v3 keys for bot protection."
     );
     return `dev-bypass:${action}`;
   }

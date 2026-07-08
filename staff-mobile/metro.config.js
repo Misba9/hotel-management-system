@@ -15,8 +15,9 @@ const sharedRoot = path.join(workspaceRoot, "shared");
 const localNodeModules = path.join(projectRoot, "node_modules");
 const rootNodeModules = path.join(workspaceRoot, "node_modules");
 
-function resolvePackageDir(packageName) {
-  for (const base of [projectRoot, workspaceRoot]) {
+function resolvePackageDir(packageName, preferLocalOnly = false) {
+  const bases = preferLocalOnly ? [projectRoot] : [projectRoot, workspaceRoot];
+  for (const base of bases) {
     try {
       return path.dirname(require.resolve(`${packageName}/package.json`, { paths: [base] }));
     } catch {
@@ -83,15 +84,33 @@ function resolveSharedSource(moduleName) {
 
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [path.resolve(projectRoot), sharedRoot];
+config.watchFolders = [path.resolve(projectRoot), sharedRoot, rootNodeModules];
 
 config.resolver.nodeModulesPaths = [localNodeModules, rootNodeModules];
 
-config.resolver.disableHierarchicalLookup = false;
+// Monorepo: resolve hoisted deps only via nodeModulesPaths (not nested per-package lookups).
+config.resolver.disableHierarchicalLookup = true;
+
+/** Use the @firebase/auth copy bundled with `firebase` (avoids hoisted 1.13.x vs firebase 10.x mismatch). */
+function resolveFirebaseNestedAuthDir() {
+  const firebaseDir = resolvePackageDir("firebase", true);
+  const nested = path.join(firebaseDir, "node_modules", "@firebase", "auth");
+  if (fs.existsSync(path.join(nested, "package.json"))) {
+    return nested;
+  }
+  return resolvePackageDir("@firebase/auth");
+}
+
+function resolveFirebaseAuthRnEntry() {
+  return path.join(resolveFirebaseNestedAuthDir(), "dist", "rn", "index.js");
+}
+
+const firebaseAuthRnEntry = resolveFirebaseAuthRnEntry();
 
 const deduped = {
-  react: resolvePackageDir("react"),
-  "react-dom": resolvePackageDir("react-dom"),
+  // RN 0.74 expects react@18.2 — never fall back to hoisted root 18.3.x (invalid hook call).
+  react: resolvePackageDir("react", true),
+  "react-dom": resolvePackageDir("react-dom", true),
   "@react-native/virtualized-lists": resolveVirtualizedListsDir()
 };
 try {
@@ -113,7 +132,32 @@ try {
 }
 /** Single Firestore SDK for staff-mobile + `@shared` hooks (prevents collection() type errors on web). */
 try {
-  deduped.firebase = resolvePackageDir("firebase");
+  deduped["@firebase/auth"] = resolveFirebaseNestedAuthDir();
+} catch {
+  /* optional */
+}
+try {
+  deduped["@firebase/app"] = resolvePackageDir("@firebase/app", true);
+} catch {
+  /* optional */
+}
+try {
+  deduped["@firebase/firestore"] = resolvePackageDir("@firebase/firestore", true);
+} catch {
+  /* optional */
+}
+try {
+  deduped.firebase = resolvePackageDir("firebase", true);
+} catch {
+  /* optional */
+}
+try {
+  deduped["@expo/metro-runtime"] = resolvePackageDir("@expo/metro-runtime");
+} catch {
+  /* optional */
+}
+try {
+  deduped.zustand = resolvePackageDir("zustand");
 } catch {
   /* optional */
 }
@@ -134,6 +178,19 @@ function resolveWithoutCustomHook(ctx, moduleName, platform) {
 }
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  const isNative = platform === "android" || platform === "ios";
+
+  if (isNative && moduleName === "staff-mobile-firebase-auth-rn") {
+    return { type: "sourceFile", filePath: firebaseAuthRnEntry };
+  }
+
+  if (isNative && (moduleName === "firebase/auth" || moduleName === "@firebase/auth")) {
+    return {
+      type: "sourceFile",
+      filePath: path.join(projectRoot, "src/lib/firebase-auth-entry.native.js")
+    };
+  }
+
   const sharedFile = resolveSharedSource(moduleName);
   if (sharedFile) {
     return { type: "sourceFile", filePath: sharedFile };

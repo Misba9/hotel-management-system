@@ -11,20 +11,41 @@ const REQUIRED_SERVICE_ACCOUNT_ENV = [
 
 type RequiredServiceEnvKey = (typeof REQUIRED_SERVICE_ACCOUNT_ENV)[number];
 
+/** Read at call time so Next.js does not bake runtime-only Cloud env vars into the server bundle. */
+function readRuntimeEnv(name: string): string | undefined {
+  return process.env[name];
+}
+
+function hasServiceAccountEnv(): boolean {
+  return REQUIRED_SERVICE_ACCOUNT_ENV.every((key) => Boolean(readRuntimeEnv(key)?.trim()));
+}
+
 function getMissingServiceAccountEnv(): RequiredServiceEnvKey[] {
-  return REQUIRED_SERVICE_ACCOUNT_ENV.filter((key) => !process.env[key]);
+  return REQUIRED_SERVICE_ACCOUNT_ENV.filter((key) => !readRuntimeEnv(key)?.trim());
 }
 
 function shouldUseRuntimeDefaultCredentials(): boolean {
-  return Boolean(
-    process.env.GOOGLE_APPLICATION_CREDENTIALS ||
-      process.env.K_SERVICE ||
-      process.env.FUNCTION_TARGET ||
-      process.env.FUNCTIONS_EMULATOR ||
-      process.env.GCLOUD_PROJECT ||
-      process.env.GOOGLE_CLOUD_PROJECT ||
-      process.env.FIREBASE_CONFIG
-  );
+  const runtimeKeys = [
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "K_SERVICE",
+    "K_CONFIGURATION",
+    "FUNCTION_TARGET",
+    "FUNCTIONS_EMULATOR",
+    "GCLOUD_PROJECT",
+    "GOOGLE_CLOUD_PROJECT",
+    "FIREBASE_CONFIG"
+  ];
+  return runtimeKeys.some((key) => Boolean(readRuntimeEnv(key)));
+}
+
+function getExistingApp(): App | null {
+  const apps = getApps();
+  if (apps.length === 0) return null;
+  try {
+    return getApp();
+  } catch {
+    return apps[0] ?? null;
+  }
 }
 
 function getRuntimeProjectId(): string | undefined {
@@ -93,36 +114,28 @@ function sanitizeBucket(value: string | undefined): string | undefined {
 let cachedInitErrorMessage = "";
 
 function initializeAdminApp(): App {
-  if (getApps().length > 0) {
-    return getApp();
-  }
+  const existing = getExistingApp();
+  if (existing) return existing;
 
-  const missing = getMissingServiceAccountEnv();
   const useRuntimeCredentials = shouldUseRuntimeDefaultCredentials();
 
-  if (missing.length === 0) {
+  if (useRuntimeCredentials) {
     try {
-      return initializeWithServiceAccount();
-    } catch (error) {
-      if (!useRuntimeCredentials) throw error;
-      console.warn(
-        "[firebase-admin] Service-account env vars are set but invalid; falling back to runtime default credentials.",
-        error
-      );
       return initializeWithRuntimeCredentials();
+    } catch (runtimeError) {
+      if (!hasServiceAccountEnv()) throw runtimeError;
+      console.warn(
+        "[firebase-admin] Runtime credentials failed; retrying with service-account env vars.",
+        runtimeError
+      );
     }
   }
 
-  const missingEnvError = createMissingEnvError(missing);
-  if (!useRuntimeCredentials) {
-    throw missingEnvError;
+  if (hasServiceAccountEnv()) {
+    return initializeWithServiceAccount();
   }
 
-  if (process.env.NODE_ENV !== "production") {
-    console.warn(`${missingEnvError.message} Falling back to runtime default credentials.`);
-  }
-
-  return initializeWithRuntimeCredentials();
+  throw createMissingEnvError(getMissingServiceAccountEnv());
 }
 
 export function getFirebaseAdminApp(): App | null {
@@ -169,14 +182,10 @@ export function createLazyAdminService<T extends object>(serviceName: string, fa
   return createLazyServiceProxy(serviceName, factory);
 }
 
-const app = getAdminAppSafely();
-
-export const adminDb: Firestore = app
-  ? getFirestore(app)
-  : createLazyServiceProxy<Firestore>("Firestore", (adminApp) => getFirestore(adminApp));
-export const adminAuth: Auth = app
-  ? getAuth(app)
-  : createLazyServiceProxy<Auth>("Auth", (adminApp) => getAuth(adminApp));
-export const adminMessaging: Messaging = app
-  ? getMessaging(app)
-  : createLazyServiceProxy<Messaging>("Messaging", (adminApp) => getMessaging(adminApp));
+export const adminDb: Firestore = createLazyServiceProxy<Firestore>("Firestore", (adminApp) =>
+  getFirestore(adminApp)
+);
+export const adminAuth: Auth = createLazyServiceProxy<Auth>("Auth", (adminApp) => getAuth(adminApp));
+export const adminMessaging: Messaging = createLazyServiceProxy<Messaging>("Messaging", (adminApp) =>
+  getMessaging(adminApp)
+);

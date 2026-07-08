@@ -19,8 +19,8 @@
       "react-native": "0.81.5"
     },
     "@nausheen/staff-mobile": {
-      "react": "18.3.1",
-      "react-dom": "18.3.1",
+      "react": "18.2.0",
+      "react-dom": "18.2.0",
       "react-native": "0.74.5"
     }
   },

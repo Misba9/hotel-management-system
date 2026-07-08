@@ -1,44 +1,68 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from "react-native";
-import { isActivePipelineStatus } from "@shared/utils/canonical-order-fields";
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect } from "expo-router";
 
+import { KitchenHistoryPanel } from "./KitchenHistoryPanel";
+import { KitchenNav } from "./KitchenNav";
 import { KitchenTicketCard } from "../KitchenTicketCard";
 import { printKitchenKot } from "../../services/kitchen-kot-print";
 import {
   kitchenAcceptOrder,
   kitchenMarkOrderReady,
+  kitchenMarkPickedUp,
   kitchenMarkPreparing,
   markKitchenTicketPrinted,
-  subscribeKitchenKdsOrders,
   type StaffOrderRow
 } from "../../services/orders";
+import { useKitchenAutoPrintSetting } from "../../src/hooks/use-kitchen-auto-print-setting";
+import { useKitchenStageOrders } from "../../src/hooks/use-kitchen-stage-orders";
+import type { KitchenStage } from "../../src/lib/kitchen-order-mapper";
+import type { KitchenOrder } from "../../src/lib/kitchen-kds";
 import { useNetworkStatus } from "../../src/hooks/use-network-status";
+import { useSyncStaffAppBadge } from "../../src/services/notifications";
 
-function sortKdsOrders(rows: StaffOrderRow[]): StaffOrderRow[] {
-  return [...rows].sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0));
+type BusyAction = "accept" | "preparing" | "ready" | "print" | "picked-up" | null;
+
+function SectionHeader({ title, count }: { title: string; count: number }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {count > 0 ? (
+        <View style={styles.sectionBadge}>
+          <Text style={styles.sectionBadgeText}>{count}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 export function KitchenView() {
   const { isOnline } = useNetworkStatus();
-  const [orders, setOrders] = useState<StaffOrderRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [busy, setBusy] = useState<{ id: string; action: "accept" | "preparing" | "ready" | "print" } | null>(
-    null
-  );
+  const [stage, setStage] = useState<KitchenStage>("active");
+  const { autoPrintEnabled, autoPrintReady, reloadAutoPrintSetting } = useKitchenAutoPrintSetting();
+  const { orders, historyOrders, rowsById, counts, loading, error } = useKitchenStageOrders(stage, isOnline);
+  const [busy, setBusy] = useState<{ id: string; action: BusyAction } | null>(null);
   const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set());
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const prevIdsRef = useRef<Set<string>>(new Set());
-  const bootstrappedRef = useRef(false);
   const pendingAutoPrintIdsRef = useRef<Set<string>>(new Set());
   const autoPrintInFlightRef = useRef<Set<string>>(new Set());
   const highlightTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  const safeOrders = useMemo(
-    () => orders.filter((o) => o && Array.isArray(o.items) && isActivePipelineStatus(o.status)),
+  useSyncStaffAppBadge(isOnline ? counts.active + counts.ready : 0);
+
+  useFocusEffect(
+    useCallback(() => {
+      void reloadAutoPrintSetting();
+    }, [reloadAutoPrintSetting])
+  );
+
+  const newOrders = useMemo(() => orders.filter((o) => o.status === "new"), [orders]);
+  const preparingOrders = useMemo(
+    () => orders.filter((o) => o.status === "accepted" || o.status === "preparing"),
     [orders]
   );
-  const sorted = useMemo(() => sortKdsOrders(safeOrders), [safeOrders]);
+  const readyOrders = useMemo(() => orders.filter((o) => o.status === "ready"), [orders]);
 
   const markAsNew = useCallback((orderId: string) => {
     setNewOrderIds((prev) => new Set(prev).add(orderId));
@@ -51,105 +75,93 @@ export function KitchenView() {
         return next;
       });
       delete highlightTimersRef.current[orderId];
-    }, 3000);
+    }, 2500);
   }, []);
 
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-
-    if (!isOnline) {
-      setLoading(false);
-      setOrders([]);
-      bootstrappedRef.current = false;
-      prevIdsRef.current = new Set();
-      pendingAutoPrintIdsRef.current.clear();
-      return () => {
-        if (unsubscribe) unsubscribe();
-      };
+    if (stage !== "active" || newOrders.length === 0) return;
+    for (const order of newOrders) {
+      if (!newOrderIds.has(order.orderId)) markAsNew(order.orderId);
     }
-
-    setLoading(true);
-    setHasError(false);
-    try {
-      unsubscribe = subscribeKitchenKdsOrders(
-        (next) => {
-          const byId = new Map<string, StaffOrderRow>();
-          for (const row of next) byId.set(row.id, row);
-          const deduped = [...byId.values()];
-          const nextIds = new Set(deduped.map((o) => o.id));
-          if (!bootstrappedRef.current) {
-            bootstrappedRef.current = true;
-            prevIdsRef.current = nextIds;
-            setOrders(deduped);
-            setLoading(false);
-            return;
-          }
-          for (const o of deduped) {
-            if (!prevIdsRef.current.has(o.id)) {
-              markAsNew(o.id);
-              pendingAutoPrintIdsRef.current.add(o.id);
-            }
-          }
-          prevIdsRef.current = nextIds;
-          setOrders(deduped);
-          setLoading(false);
-        },
-        () => {
-          setHasError(true);
-          setLoading(false);
-        }
-      );
-    } catch {
-      setHasError(true);
-      setLoading(false);
-    }
-
-    return () => {
-      Object.values(highlightTimersRef.current).forEach(clearTimeout);
-      highlightTimersRef.current = {};
-      bootstrappedRef.current = false;
-      prevIdsRef.current = new Set();
-      pendingAutoPrintIdsRef.current.clear();
-      autoPrintInFlightRef.current.clear();
-      if (unsubscribe) unsubscribe();
-    };
-  }, [isOnline, markAsNew]);
+  }, [newOrders, stage, markAsNew, newOrderIds]);
 
   useEffect(() => {
-    if (!isOnline || orders.length === 0) return;
+    if (!autoPrintReady || !autoPrintEnabled || !isOnline || stage !== "active") return;
+    for (const order of newOrders) {
+      const row = rowsById.get(order.orderId);
+      if (!row || row.printed === true) continue;
+      pendingAutoPrintIdsRef.current.add(order.orderId);
+    }
+  }, [newOrders, rowsById, isOnline, stage, autoPrintEnabled, autoPrintReady]);
+
+  useEffect(() => {
+    if (!autoPrintReady || !autoPrintEnabled || !isOnline || stage !== "active") return;
 
     const queue = pendingAutoPrintIdsRef.current;
     const run = async () => {
-      for (const o of orders) {
-        if (!queue.has(o.id)) continue;
-        const canon = o.canonicalStatus;
-        if ((canon !== "new" && canon !== "accepted" && canon !== "preparing") || o.printed === true) {
-          queue.delete(o.id);
+      for (const order of newOrders) {
+        if (!queue.has(order.orderId)) continue;
+        const row = rowsById.get(order.orderId);
+        if (!row) continue;
+        if (row.printed === true) {
+          queue.delete(order.orderId);
           continue;
         }
-        if (autoPrintInFlightRef.current.has(o.id)) continue;
+        if (autoPrintInFlightRef.current.has(order.orderId)) continue;
 
-        queue.delete(o.id);
-        autoPrintInFlightRef.current.add(o.id);
+        queue.delete(order.orderId);
+        autoPrintInFlightRef.current.add(order.orderId);
         try {
-          await printKitchenKot(o, { source: "auto" });
-          await markKitchenTicketPrinted(o.id);
+          await printKitchenKot(row, { source: "auto" });
+          await markKitchenTicketPrinted(order.orderId);
         } catch (e) {
           console.error("Kitchen auto-print failed", e);
-          queue.add(o.id);
+          queue.add(order.orderId);
         } finally {
-          autoPrintInFlightRef.current.delete(o.id);
+          autoPrintInFlightRef.current.delete(order.orderId);
         }
       }
     };
 
     void run();
-  }, [orders, isOnline]);
+  }, [newOrders, rowsById, isOnline, stage, autoPrintEnabled, autoPrintReady]);
 
-  const runPrint = useCallback(async (order: StaffOrderRow) => {
-    setBusy({ id: order.id, action: "print" });
+  const runAction = useCallback(
+    async (order: KitchenOrder, action: BusyAction) => {
+      const row = rowsById.get(order.orderId);
+      if (!row) {
+        setStatusMessage("Order not found — wait for sync.");
+        return;
+      }
+      setBusy({ id: order.orderId, action });
+      try {
+        if (action === "accept") await kitchenAcceptOrder(row);
+        else if (action === "preparing") await kitchenMarkPreparing(row);
+        else if (action === "ready") await kitchenMarkOrderReady(row);
+        else if (action === "picked-up") await kitchenMarkPickedUp(row);
+
+        const labels: Record<Exclude<BusyAction, null | "print">, string> = {
+          accept: "accepted",
+          preparing: "marked preparing",
+          ready: "marked ready",
+          "picked-up": "marked picked up"
+        };
+        if (action && action !== "print") {
+          setStatusMessage(`Order ${order.orderNumber} ${labels[action]}`);
+        }
+      } catch (e) {
+        Alert.alert("Action failed", e instanceof Error ? e.message : "Could not update order.");
+      } finally {
+        setBusy(null);
+      }
+    },
+    [rowsById]
+  );
+
+  const runPrint = useCallback(async (row: StaffOrderRow) => {
+    setBusy({ id: row.id, action: "print" });
     try {
-      await printKitchenKot(order, { source: "manual" });
+      await printKitchenKot(row, { source: "manual" });
     } catch {
       Alert.alert("Print failed", "Could not print this ticket. Try again.");
     } finally {
@@ -157,69 +169,94 @@ export function KitchenView() {
     }
   }, []);
 
-  const runAccept = useCallback(async (order: StaffOrderRow) => {
-    setBusy({ id: order.id, action: "accept" });
-    try {
-      await kitchenAcceptOrder(order);
-    } catch (e) {
-      Alert.alert("Action failed", e instanceof Error ? e.message : "Could not accept order.");
-    } finally {
-      setBusy(null);
-    }
-  }, []);
+  const connectionLabel = !isOnline
+    ? "Offline · reconnect to sync"
+    : loading
+      ? "Connecting to kitchen queue…"
+      : "Live · Cloud connected";
 
-  const runPreparing = useCallback(async (order: StaffOrderRow) => {
-    setBusy({ id: order.id, action: "preparing" });
-    try {
-      await kitchenMarkPreparing(order);
-    } catch (e) {
-      Alert.alert("Action failed", e instanceof Error ? e.message : "Could not start preparing.");
-    } finally {
-      setBusy(null);
-    }
-  }, []);
+  const renderCard = (order: KitchenOrder, showReadyActions = false) => {
+    const row = rowsById.get(order.orderId);
+    if (!row) return null;
+    return (
+      <KitchenTicketCard
+        key={order.orderId}
+        order={order}
+        busy={busy?.id === order.orderId ? (busy?.action ?? null) : null}
+        onAccept={() => void runAction(order, "accept")}
+        onPreparing={() => void runAction(order, "preparing")}
+        onMarkReady={() => void runAction(order, "ready")}
+        onPickedUp={() => void runAction(order, "picked-up")}
+        onPrint={() => void runPrint(row)}
+        isNew={newOrderIds.has(order.orderId)}
+        showReadyActions={showReadyActions}
+      />
+    );
+  };
 
-  const runReady = useCallback(async (order: StaffOrderRow) => {
-    setBusy({ id: order.id, action: "ready" });
-    try {
-      await kitchenMarkOrderReady(order);
-    } catch (e) {
-      Alert.alert("Action failed", e instanceof Error ? e.message : "Could not mark ready.");
-    } finally {
-      setBusy(null);
+  const activeListData = useMemo(() => {
+    const sections: Array<{ key: string; title: string; orders: KitchenOrder[] }> = [];
+    if (newOrders.length > 0) sections.push({ key: "new", title: "New", orders: newOrders });
+    if (preparingOrders.length > 0) {
+      sections.push({ key: "preparing", title: "Preparing", orders: preparingOrders });
     }
-  }, []);
+    return sections;
+  }, [newOrders, preparingOrders]);
 
   return (
     <View style={styles.screen}>
       <Text style={styles.heading}>Kitchen</Text>
-      <Text style={styles.sub}>Live queue — new through ready (realtime).</Text>
+      <Text style={styles.sub}>{connectionLabel}</Text>
+
       {!isOnline ? <Text style={styles.banner}>No connection</Text> : null}
-      {hasError ? <Text style={styles.state}>Something went wrong</Text> : null}
+      {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+      {statusMessage ? (
+        <Pressable onPress={() => setStatusMessage(null)}>
+          <Text style={styles.successBanner}>{statusMessage}</Text>
+        </Pressable>
+      ) : null}
+
+      <KitchenNav stage={stage} counts={counts} onStageChange={setStage} />
+
       {loading ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="small" color="#cbd5e1" />
-          <Text style={styles.state}>Loading tickets...</Text>
+          <Text style={styles.state}>Loading tickets…</Text>
         </View>
-      ) : null}
-      <FlatList
-        data={sorted}
-        keyExtractor={(o) => o.id}
-        extraData={busy}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <KitchenTicketCard
-            order={item}
-            busy={busy?.id === item.id ? busy.action : null}
-            onAccept={() => void runAccept(item)}
-            onPreparing={() => void runPreparing(item)}
-            onPrint={() => void runPrint(item)}
-            onMarkReady={() => void runReady(item)}
-            isNew={newOrderIds.has(item.id)}
-          />
-        )}
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>No tickets in queue</Text> : null}
-      />
+      ) : stage === "history" ? (
+        <KitchenHistoryPanel orders={historyOrders} />
+      ) : stage === "ready" ? (
+        <FlatList
+          data={readyOrders}
+          keyExtractor={(o) => o.orderId}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => renderCard(item, true)}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyTitle}>No orders ready</Text>
+              <Text style={styles.emptyHint}>Finished tickets wait here for pickup</Text>
+            </View>
+          }
+        />
+      ) : (
+        <FlatList
+          data={activeListData}
+          keyExtractor={(s) => s.key}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyTitle}>No active orders</Text>
+              <Text style={styles.emptyHint}>New and in-progress tickets appear here</Text>
+            </View>
+          }
+          renderItem={({ item: section }) => (
+            <View>
+              <SectionHeader title={section.title} count={section.orders.length} />
+              {section.orders.map((order) => renderCard(order, false))}
+            </View>
+          )}
+        />
+      )}
     </View>
   );
 }
@@ -251,8 +288,51 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "700"
   },
+  errorBanner: {
+    color: "#fecaca",
+    backgroundColor: "#7f1d1d",
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    textAlign: "center",
+    fontWeight: "600"
+  },
+  successBanner: {
+    color: "#ccfbf1",
+    backgroundColor: "#134e4a",
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    textAlign: "center",
+    fontWeight: "600"
+  },
   loadingWrap: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, marginBottom: 8 },
-  state: { color: "#cbd5e1", paddingHorizontal: 16, marginBottom: 8, fontSize: 14 },
+  state: { color: "#cbd5e1", fontSize: 14 },
   list: { paddingBottom: 32 },
-  empty: { textAlign: "center", marginTop: 48, color: "#64748b", fontSize: 16 }
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    marginTop: 4
+  },
+  sectionTitle: { fontSize: 16, fontWeight: "800", color: "#e2e8f0", letterSpacing: 0.3 },
+  sectionBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#ea580c",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6
+  },
+  sectionBadgeText: { fontSize: 12, fontWeight: "800", color: "#fff" },
+  emptyWrap: { alignItems: "center", marginTop: 48, paddingHorizontal: 24 },
+  emptyTitle: { fontSize: 18, fontWeight: "800", color: "#e2e8f0", marginBottom: 6 },
+  emptyHint: { fontSize: 14, color: "#64748b", textAlign: "center", lineHeight: 20 }
 });

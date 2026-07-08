@@ -3,14 +3,12 @@ import {
   Alert,
   Animated,
   Platform,
-  Pressable,
   StyleSheet,
-  Text,
   TextInput,
   ToastAndroid,
-  View,
-  useWindowDimensions
+  View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { signOut } from "firebase/auth";
 import type { StaffOrderRow } from "../../../services/orders";
@@ -51,6 +49,7 @@ import { PosDeliveryHub } from "./pos-delivery-hub";
 import type { CartLine, DiscountMode, MenuQuickFilter, PosNotification, PosOrderChannel, PosPanelTab, SplitPaymentLine } from "./pos-types";
 import { channelToBackendOrder } from "./pos-types";
 import { CategorySidebar } from "./category-sidebar";
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import { posColors } from "./pos-theme";
 import { TransactionHistoryPanel } from "./transaction-history-panel";
 import type { FloorTable } from "../../hooks/use-tables";
@@ -61,10 +60,8 @@ function showToast(msg: string) {
 
 export function PosDashboard() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const isDesktop = width >= 1200;
-  const isTablet = width >= 768 && width < 1200;
-  const isMobile = width < 768;
+  const layout = useResponsiveLayout();
+  const { isPhone, isTablet, isLargeTablet, showSplitBill, billSplitRatio } = layout;
 
   useCashierOrdersSubscription(true);
   const ordersHub = useCashierOrders();
@@ -410,9 +407,9 @@ export function PosDashboard() {
       selectOrder(order.id);
       populateCustomerFromOrder(order);
       setCart([]);
-      if (isMobile) setMobileTab("bill");
+      if (isPhone) setMobileTab("bill");
     },
-    [selectOrder, populateCustomerFromOrder, isMobile]
+    [selectOrder, populateCustomerFromOrder, isPhone]
   );
 
   const handleEditParcelOrder = useCallback(
@@ -423,9 +420,9 @@ export function PosDashboard() {
       setCart(orderToCart(order));
       populateCustomerFromOrder(order);
       setOrderChannel("parcel");
-      if (isMobile) setMobileTab("menu");
+      if (isPhone) setMobileTab("menu");
     },
-    [selectOrder, orderToCart, populateCustomerFromOrder, isMobile]
+    [selectOrder, orderToCart, populateCustomerFromOrder, isPhone]
   );
 
   const handleDuplicateParcelOrder = useCallback(
@@ -448,14 +445,14 @@ export function PosDashboard() {
         setBillMode("existing");
         setSelectedOrderId(placed.orderId);
         populateCustomerFromOrder(order);
-        if (isMobile) setMobileTab("bill");
+        if (isPhone) setMobileTab("bill");
       } catch (e) {
         Alert.alert("Duplicate failed", e instanceof Error ? e.message : "Unknown error");
       } finally {
         setBusy(false);
       }
     },
-    [populateCustomerFromOrder, isMobile]
+    [populateCustomerFromOrder, isPhone]
   );
 
   const handleCancelParcelOrder = useCallback(
@@ -497,8 +494,8 @@ export function PosDashboard() {
     setPaymentMethod(null);
     setDiscountPercent(0);
     setOrderChannel("parcel");
-    if (isMobile || isTablet) setMobileTab("menu");
-  }, [isMobile, isTablet, isParcelMode]);
+    if (isPhone || isTablet) setMobileTab("menu");
+  }, [isPhone, isTablet, isParcelMode]);
 
   const buildCartLinesForOrder = useCallback(() => {
     return cart.map((l) => ({
@@ -590,7 +587,7 @@ export function PosDashboard() {
       showToast(`Paid · Token #${placed.tokenNumber} · Printed`);
       setBillMode("existing");
       setSelectedOrderId(placed.orderId);
-      if (isMobile) setMobileTab("orders");
+      if (isPhone) setMobileTab("orders");
     } catch (e) {
       Alert.alert("Payment failed", e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -603,7 +600,7 @@ export function PosDashboard() {
     selectedTable,
     customerName,
     phone,
-    isMobile,
+    isPhone,
     isParcelMode,
     buildCartLinesForOrder,
     resolvePaymentMethod,
@@ -829,7 +826,7 @@ export function PosDashboard() {
         setSelectedCategory(cat);
       }}
       onQuickFilter={setMenuQuickFilter}
-      compact={isMobile}
+      compact={isPhone}
     />
   ) : null;
 
@@ -854,7 +851,7 @@ export function PosDashboard() {
       favoriteIds={favoriteIds}
       onToggleFavorite={toggleFavorite}
       searchInputRef={menuSearchRef}
-      showCategoryTabs={isMobile}
+      showCategoryTabs={isPhone}
       onBarcodeScan={handleBarcodeScan}
       onQuickDiscount={handleQuickDiscount}
       headerAction={
@@ -872,7 +869,7 @@ export function PosDashboard() {
             activeStatus={statusFilters.parcel}
             statusCounts={platformStatusCounts.parcel}
             onStatusChange={(s) => setPlatformStatusFilter("parcel", s)}
-            fullWidth={isMobile}
+            fullWidth={isPhone}
           />
         ) : undefined
       }
@@ -880,193 +877,140 @@ export function PosDashboard() {
   );
 
   return (
-    <Animated.View style={[styles.root, { opacity: fadeAnim }]}>
-      <PosNavbar
-        restaurantName="Nausheen Fruits Juice Center"
-        branchName="Main Branch"
-        cashierName={cashierName}
-        counterNumber={2}
-        unreadCount={unreadCount}
-        onMenuToggle={isDesktop ? () => setSidebarCollapsed((v) => !v) : undefined}
-        onHistory={() => setShowHistory(true)}
-        onNotifications={() => setShowNotifications(true)}
-        onDelivery={() => setShowDeliveryHub(true)}
-        onSettings={() => Alert.alert("Settings", "Cashier settings are read-only. Contact manager for changes.")}
-        onProfile={() => router.push("/profile")}
-        onLogout={() => void handleLogout()}
-        onHelp={shortcutHandlers.onShowShortcuts}
-      />
+    <SafeAreaView style={styles.safe} edges={["left", "right"]}>
+      <Animated.View style={[styles.root, { opacity: fadeAnim }]}>
+        <PosNavbar
+          restaurantName="Nausheen Fruits Juice Center"
+          branchName="Main Branch"
+          cashierName={cashierName}
+          counterNumber={2}
+          unreadCount={unreadCount}
+          onMenuToggle={isLargeTablet ? () => setSidebarCollapsed((v) => !v) : undefined}
+          onHistory={() => setShowHistory(true)}
+          onNotifications={() => setShowNotifications(true)}
+          onDelivery={() => setShowDeliveryHub(true)}
+          onSettings={() => Alert.alert("Settings", "Cashier settings are read-only. Contact manager for changes.")}
+          onProfile={() => router.push("/profile")}
+          onLogout={() => void handleLogout()}
+          onHelp={shortcutHandlers.onShowShortcuts}
+        />
 
-      <PosOrderSourceBar
-        activePlatform={platformFilter}
-        platformCounts={platformCounts}
-        onPlatformChange={setPlatformFilter}
-      />
+        <PosOrderSourceBar
+          activePlatform={platformFilter}
+          platformCounts={platformCounts}
+          onPlatformChange={setPlatformFilter}
+        />
 
-      <View style={styles.main}>
-        {!isParcelMode ? (
-          platformOrdersPanel
-        ) : isDesktop ? (
-          <View style={styles.desktopWorkspace}>
-            {categorySidebar}
-            <View style={styles.colMenu}>{menuPanel}</View>
-            <View style={styles.colBill}>{billPanel}</View>
-          </View>
-        ) : isTablet ? (
-          <>
-            <View style={styles.tabletWorkspace}>
-              {categorySidebar}
-              <View style={styles.tabletCenter}>
-                {mobileTab === "menu" ? menuPanel : billPanel}
+        <View style={styles.main}>
+          {!isParcelMode ? (
+            platformOrdersPanel
+          ) : showSplitBill ? (
+            <View style={styles.splitRoot}>
+              {isPhone ? categorySidebar : null}
+              <View style={styles.splitRow}>
+                {!isPhone ? categorySidebar : null}
+                <View style={[styles.colMenu, { flex: billSplitRatio }]}>{menuPanel}</View>
+                <View style={[styles.colBill, { flex: 1 - billSplitRatio }]}>{billPanel}</View>
               </View>
             </View>
-            <View style={styles.tabBar}>
-              {(["menu", "bill"] as const).map((tab) => (
-                <TabBtn key={tab} label={tab === "menu" ? "Products" : "Bill"} active={mobileTab === tab} onPress={() => setMobileTab(tab)} />
-              ))}
-            </View>
-          </>
-        ) : (
-          <>
-            <View style={styles.mobileBody}>
-              {mobileTab === "menu" ? (
-                <>
-                  {categorySidebar}
-                  {menuPanel}
-                </>
-              ) : (
-                billPanel
-              )}
-            </View>
-          </>
-        )}
-      </View>
-
-      {isMobile && isParcelMode ? (
-        <View style={styles.mobileTabs}>
-          {(["menu", "bill"] as const).map((tab) => (
-            <TabBtn
-              key={tab}
-              label={tab === "menu" ? "Menu" : "Bill"}
-              active={mobileTab === tab}
-              onPress={() => setMobileTab(tab)}
-            />
-          ))}
+          ) : (
+            <>
+              {categorySidebar}
+              <View style={styles.mobileBody}>
+                {mobileTab === "menu" ? menuPanel : billPanel}
+              </View>
+            </>
+          )}
         </View>
-      ) : null}
 
-      {isParcelMode ? (
-        <PosBottomBar
-          isMobile={isMobile}
-          onNewOrder={handleNewOrder}
+        {isParcelMode ? (
+          <PosBottomBar
+            onNewOrder={handleNewOrder}
+            onPrint={() => selectedOrder && void runPrint(selectedOrder)}
+            onPay={() => void handleAcceptPayment()}
+            onMore={shortcutHandlers.onShowShortcuts}
+            onMenu={() => setMobileTab("menu")}
+            onBill={() => setMobileTab("bill")}
+            showFabActions={isTablet}
+            onNewCustomer={() => setMobileTab("bill")}
+            onExpense={() => Alert.alert("Expense", "Record drawer expense with manager PIN.")}
+            onCashIn={() => Alert.alert("Cash In", "Record cash added to drawer.")}
+            onCashOut={() => Alert.alert("Cash Out", "Record cash removed from drawer.")}
+          />
+        ) : null}
+
+        {isPhone && isParcelMode ? (
+          <PosQuickFab
+            onNewOrder={handleNewOrder}
+            onNewCustomer={() => setMobileTab("bill")}
+            onExpense={() => Alert.alert("Expense", "Record drawer expense with manager PIN.")}
+            onCashIn={() => Alert.alert("Cash In", "Record cash added to drawer.")}
+            onCashOut={() => Alert.alert("Cash Out", "Record cash removed from drawer.")}
+          />
+        ) : null}
+
+        <PosTestingFab />
+        <PosTestingPanelModal />
+        <PosRecentParcelDrawer
+          visible={showRecentParcelDrawer}
+          orders={filteredParcelOrders}
+          loading={ordersLoading}
+          todayCount={todayParcelCount}
+          onClose={() => setShowRecentParcelDrawer(false)}
+          onOpen={handleOpenParcelOrder}
+          onEdit={handleEditParcelOrder}
+          onPrint={(o) => void runPrint(o)}
+          onDuplicate={(o) => void handleDuplicateParcelOrder(o)}
+          onCancel={handleCancelParcelOrder}
+        />
+        <PosOrderDetailModal
+          visible={showOrderModal}
+          order={selectedOrder}
+          busy={busy}
+          onClose={closeOrderModal}
+          onAccept={() => showToast("Order accepted")}
+          onReject={() => Alert.alert("Reject", "Contact manager to reject this order.")}
+          onSendKitchen={() => showToast("Sent to kitchen")}
+          onReady={() => showToast("Marked ready")}
+          onPayment={() => { closeOrderModal(); if (isPhone) setMobileTab("bill"); }}
           onPrint={() => selectedOrder && void runPrint(selectedOrder)}
-          onPay={() => void handleAcceptPayment()}
-          onMore={shortcutHandlers.onShowShortcuts}
         />
-      ) : null}
 
-      {!isMobile && isParcelMode ? (
-        <PosQuickFab
-          onNewOrder={handleNewOrder}
-          onNewCustomer={() => setMobileTab("bill")}
-          onExpense={() => Alert.alert("Expense", "Record drawer expense with manager PIN.")}
-          onCashIn={() => Alert.alert("Cash In", "Record cash added to drawer.")}
-          onCashOut={() => Alert.alert("Cash Out", "Record cash removed from drawer.")}
+        <TransactionHistoryPanel
+          visible={showHistory}
+          orders={allOrders}
+          onClose={() => setShowHistory(false)}
+          onReprint={(o) => void runPrint(o)}
+          onRefund={handleRefund}
         />
-      ) : null}
-
-      <PosTestingFab />
-      <PosTestingPanelModal />
-      <PosRecentParcelDrawer
-        visible={showRecentParcelDrawer}
-        orders={filteredParcelOrders}
-        loading={ordersLoading}
-        todayCount={todayParcelCount}
-        onClose={() => setShowRecentParcelDrawer(false)}
-        onOpen={handleOpenParcelOrder}
-        onEdit={handleEditParcelOrder}
-        onPrint={(o) => void runPrint(o)}
-        onDuplicate={(o) => void handleDuplicateParcelOrder(o)}
-        onCancel={handleCancelParcelOrder}
-      />
-      <PosOrderDetailModal
-        visible={showOrderModal}
-        order={selectedOrder}
-        busy={busy}
-        onClose={closeOrderModal}
-        onAccept={() => showToast("Order accepted")}
-        onReject={() => Alert.alert("Reject", "Contact manager to reject this order.")}
-        onSendKitchen={() => showToast("Sent to kitchen")}
-        onReady={() => showToast("Marked ready")}
-        onPayment={() => { closeOrderModal(); if (isMobile) setMobileTab("bill"); }}
-        onPrint={() => selectedOrder && void runPrint(selectedOrder)}
-      />
-
-      <TransactionHistoryPanel
-        visible={showHistory}
-        orders={allOrders}
-        onClose={() => setShowHistory(false)}
-        onReprint={(o) => void runPrint(o)}
-        onRefund={handleRefund}
-      />
-      <PosNotificationsPanel
-        visible={showNotifications}
-        notifications={notifications}
-        unreadCount={unreadCount}
-        onClose={() => setShowNotifications(false)}
-        onMarkRead={() => {
-          setNotificationsRead(true);
-          setShowNotifications(false);
-        }}
-      />
-      <PosDeliveryHub
-        visible={showDeliveryHub}
-        orders={allOrders}
-        onClose={() => setShowDeliveryHub(false)}
-        onPrint={(o) => void runPrint(o)}
-      />
-    </Animated.View>
-  );
-}
-
-function TabBtn({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.tabBtn, active && styles.tabBtnOn]}>
-      <Text style={[styles.tabText, active && styles.tabTextOn]}>{label}</Text>
-    </Pressable>
+        <PosNotificationsPanel
+          visible={showNotifications}
+          notifications={notifications}
+          unreadCount={unreadCount}
+          onClose={() => setShowNotifications(false)}
+          onMarkRead={() => {
+            setNotificationsRead(true);
+            setShowNotifications(false);
+          }}
+        />
+        <PosDeliveryHub
+          visible={showDeliveryHub}
+          orders={allOrders}
+          onClose={() => setShowDeliveryHub(false)}
+          onPrint={(o) => void runPrint(o)}
+        />
+      </Animated.View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: posColors.bg },
   root: { flex: 1, backgroundColor: posColors.bg },
   main: { flex: 1, minHeight: 0 },
-  desktopWorkspace: { flex: 1, flexDirection: "row", minHeight: 0 },
-  colMenu: { flex: 1, minWidth: 300 },
-  colBill: { width: "32%", minWidth: 300, maxWidth: 400 },
-  tabletWorkspace: { flex: 1, flexDirection: "row", minHeight: 0 },
-  tabletCenter: { flex: 1, minWidth: 0 },
-  mobileBody: { flex: 1, minHeight: 0 },
-  tabBar: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    borderTopColor: posColors.border,
-    backgroundColor: posColors.secondary
-  },
-  mobileTabs: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    borderTopColor: posColors.border,
-    backgroundColor: posColors.secondary,
-    paddingBottom: Platform.OS === "ios" ? 8 : 0
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderTopWidth: 2,
-    borderTopColor: "transparent"
-  },
-  tabBtnOn: { borderTopColor: posColors.primary, backgroundColor: posColors.primaryMuted },
-  tabText: { fontSize: 12, fontWeight: "800", color: posColors.textDim },
-  tabTextOn: { color: posColors.primary }
+  splitRoot: { flex: 1, minHeight: 0 },
+  splitRow: { flex: 1, flexDirection: "row", minHeight: 0 },
+  colMenu: { minWidth: 0 },
+  colBill: { minWidth: 0, borderLeftWidth: 1, borderLeftColor: posColors.border },
+  mobileBody: { flex: 1, minHeight: 0 }
 });

@@ -46,7 +46,7 @@ export function ManagerModuleShell({
   );
 
   return (
-    <div className="flex min-h-screen bg-theme-background text-theme-text-primary">
+    <div className="h-screen overflow-hidden bg-theme-background text-theme-text-primary">
       {mobileOpen ? (
         <button
           type="button"
@@ -58,8 +58,8 @@ export function ManagerModuleShell({
 
       <aside
         className={[
-          "fixed inset-y-0 left-0 z-50 flex w-[19rem] flex-col border-r border-theme-border bg-theme-surface shadow-glass transition-transform md:static md:translate-x-0",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed inset-y-0 left-0 z-50 flex h-screen w-[19rem] flex-col overflow-hidden border-r border-theme-border bg-theme-surface shadow-glass transition-transform",
+          mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         ].join(" ")}
       >
         <div className="border-b border-theme-border px-5 py-4">
@@ -101,7 +101,7 @@ export function ManagerModuleShell({
             );
           })}
         </nav>
-        <div className="border-t border-theme-border p-3">
+        <div className="shrink-0 border-t border-theme-border p-3">
           <button
             type="button"
             onClick={onLogout}
@@ -112,8 +112,8 @@ export function ManagerModuleShell({
         </div>
       </aside>
 
-      <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 border-b border-theme-border bg-theme-surface/95 px-4 py-3 backdrop-blur md:px-6">
+      <div className="flex h-screen min-w-0 flex-1 flex-col md:pl-[19rem]">
+        <header className="z-30 shrink-0 border-b border-theme-border bg-theme-surface/95 px-4 py-3 backdrop-blur md:px-6">
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -147,7 +147,7 @@ export function ManagerModuleShell({
             </Link>
           </div>
         </header>
-        <main className="p-4 md:p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

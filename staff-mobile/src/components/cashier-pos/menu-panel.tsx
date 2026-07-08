@@ -2,24 +2,24 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Animated,
+  FlatList,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
-  type TextInput,
-  type ViewStyle
+  type TextInput
 } from "react-native";
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import type { CartLine, MenuItemDoc, MenuQuickFilter } from "./pos-types";
 import { PosComboSection } from "./pos-combo-section";
 import { ProductCard } from "./product-card";
-import { PosIcon } from "./pos-icons";
-import { PosEmpty, PosInput } from "./pos-ui";
-import { posColors, posPanel, posRadius, posSpacing, posType } from "./pos-theme";
+import { ResponsiveSearchBar } from "./responsive/ResponsiveSearchBar";
+import { PosEmpty } from "./pos-ui";
+import { posColors, posPanel, posSpacing, posType } from "./pos-theme";
 
-const GRID_GAP = 16;
+const GRID_GAP = 12;
 
 type Props = {
   products: MenuItemDoc[];
@@ -49,31 +49,7 @@ type Props = {
   orderToolbar?: React.ReactNode;
 };
 
-function useProductCardMetrics(containerWidth: number, windowWidth: number) {
-  return useMemo(() => {
-    const isMobile = windowWidth < 768;
-    const isTablet = windowWidth >= 768 && windowWidth < 1200;
-    const cardHeight = isMobile ? 260 : isTablet ? 250 : 260;
-    const horizontalPad = posSpacing.sm * 2;
-    const innerWidth = Math.max(0, containerWidth - horizontalPad);
-
-    if (isMobile) {
-      const cardWidth = Math.max(160, innerWidth);
-      return { cardWidth, cardHeight, isMobile: true as const };
-    }
-
-    const cardWidth = isTablet ? 220 : 240;
-    return { cardWidth, cardHeight, isMobile: false as const };
-  }, [containerWidth, windowWidth]);
-}
-
-function AnimatedProductCell({
-  children,
-  index
-}: {
-  children: React.ReactNode;
-  index: number;
-}) {
+function AnimatedProductCell({ children, index }: { children: React.ReactNode; index: number }) {
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.96)).current;
 
@@ -85,7 +61,7 @@ function AnimatedProductCell({
   }, [index, opacity, scale]);
 
   return (
-    <Animated.View style={{ opacity, transform: [{ scale }] }}>
+    <Animated.View style={{ opacity, transform: [{ scale }], flex: 1 }}>
       {children}
     </Animated.View>
   );
@@ -114,9 +90,9 @@ export function MenuPanel({
   orderToolbar
 }: Props) {
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [gridWidth, setGridWidth] = useState(0);
-  const { width: windowWidth } = useWindowDimensions();
-  const { cardWidth, cardHeight, isMobile } = useProductCardMetrics(gridWidth, windowWidth);
+  const layout = useResponsiveLayout();
+  const numColumns = layout.productColumns;
+  const pad = layout.padding;
 
   const visibleProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -150,36 +126,12 @@ export function MenuPanel({
       .map((p) => p.name);
   }, [products, search]);
 
-  const gridStyle = useMemo((): ViewStyle => {
-    if (Platform.OS === "web" && !isMobile && cardWidth > 0) {
-      return {
-        display: "grid",
-        gridTemplateColumns: `repeat(auto-fill, ${cardWidth}px)`,
-        gap: GRID_GAP,
-        justifyContent: "start",
-        padding: posSpacing.sm,
-        paddingBottom: posSpacing.huge
-      } as unknown as ViewStyle;
-    }
-    return {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: GRID_GAP,
-      justifyContent: "flex-start",
-      alignContent: "flex-start",
-      padding: posSpacing.sm,
-      paddingBottom: posSpacing.huge
-    };
-  }, [cardWidth, isMobile]);
-
-  const renderCard = useCallback(
-    (item: MenuItemDoc, index: number) => (
-      <AnimatedProductCell key={item.id} index={index}>
-        <View style={{ width: cardWidth, height: cardHeight }}>
+  const renderItem = useCallback(
+    ({ item, index }: { item: MenuItemDoc; index: number }) => (
+      <View style={numColumns > 1 ? styles.gridCell : styles.gridCellSingle}>
+        <AnimatedProductCell index={index}>
           <ProductCard
             item={item}
-            width={cardWidth}
-            height={cardHeight}
             qty={cartQtyById[item.id] ?? 0}
             isFavorite={favoriteIds.has(item.id)}
             isBestSeller={item.isBestSeller ?? item.name.length % 5 === 0}
@@ -187,17 +139,19 @@ export function MenuPanel({
             onDec={() => onDec(item)}
             onToggleFavorite={() => onToggleFavorite(item.id)}
           />
-        </View>
-      </AnimatedProductCell>
+        </AnimatedProductCell>
+      </View>
     ),
-    [cardWidth, cardHeight, cartQtyById, favoriteIds, onAdd, onDec, onToggleFavorite]
+    [cartQtyById, favoriteIds, numColumns, onAdd, onDec, onToggleFavorite]
   );
+
+  const keyExtractor = useCallback((item: MenuItemDoc) => item.id, []);
 
   if (quickFilter === "combos") {
     return (
       <View style={[posPanel(), styles.panel]}>
-        <View style={styles.header}>
-          <Text style={posType.h3}>Combo Builder</Text>
+        <View style={[styles.header, { padding: pad }]}>
+          <Text style={[posType.h3, { fontSize: layout.moderateScale(15) }]}>Combo Builder</Text>
           <Text style={posType.small}>One-click meal deals</Text>
         </View>
         <PosComboSection products={products} onAddCombo={onAddCombo} />
@@ -206,54 +160,36 @@ export function MenuPanel({
   }
 
   return (
-    <View style={[posPanel(), styles.panel]}>
-      <View style={styles.searchSection}>
-        <View style={styles.searchRow}>
-          <View style={[styles.searchWrap, { flex: 1 }]}>
-            <PosIcon name="search" size={18} color={posColors.textDim} />
-            <PosInput
-              ref={searchInputRef}
-              value={search}
-              onChangeText={(v) => {
-                onSearchChange(v);
-                setShowSuggestions(v.trim().length >= 2);
-              }}
-              onFocus={() => setShowSuggestions(search.trim().length >= 2)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-              placeholder="Search product…  ( / )"
-              style={styles.search}
-            />
-            <Pressable onPress={onBarcodeScan} style={styles.scanBtn}>
-              <Text style={styles.scanText}>⌗</Text>
-            </Pressable>
-          </View>
-          {headerAction ? <View style={styles.headerAction}>{headerAction}</View> : null}
-        </View>
-        {orderToolbar ? <View style={styles.orderToolbar}>{orderToolbar}</View> : null}
-        {showSuggestions && suggestions.length > 0 ? (
-          <View style={styles.suggestions}>
-            {suggestions.map((name) => (
-              <Pressable
-                key={name}
-                onPress={() => {
-                  onSearchChange(name);
-                  setShowSuggestions(false);
-                }}
-                style={styles.suggestionRow}
-              >
-                <PosIcon name="search" size={12} color={posColors.textDim} />
-                <Text style={styles.suggestionText}>{name}</Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-      </View>
+    <KeyboardAvoidingView
+      style={[posPanel(), styles.panel]}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={layout.isTablet ? 0 : 80}
+    >
+      <ResponsiveSearchBar
+        search={search}
+        onSearchChange={(v) => {
+          onSearchChange(v);
+          setShowSuggestions(v.trim().length >= 2);
+        }}
+        onBarcodeScan={onBarcodeScan}
+        searchInputRef={searchInputRef}
+        headerAction={headerAction}
+        orderToolbar={orderToolbar}
+        suggestions={suggestions}
+        showSuggestions={showSuggestions}
+        onSuggestionSelect={(name) => {
+          onSearchChange(name);
+          setShowSuggestions(false);
+        }}
+        onFocus={() => setShowSuggestions(search.trim().length >= 2)}
+        onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+      />
 
-      <View style={styles.toolbar}>
-        <Text style={posType.h3}>Products</Text>
+      <View style={[styles.toolbar, { paddingHorizontal: pad }]}>
+        <Text style={[posType.h3, { fontSize: layout.moderateScale(15) }]}>Products</Text>
         <Text style={posType.small}>{visibleProducts.length} items</Text>
-        <Pressable onPress={onQuickDiscount} style={styles.discBtn}>
-          <Text style={styles.discText}>F6 Discount</Text>
+        <Pressable onPress={onQuickDiscount} style={[styles.discBtn, { minHeight: layout.minTouch }]}>
+          <Text style={[styles.discText, { fontSize: layout.moderateScale(10) }]}>F6 Discount</Text>
         </Pressable>
       </View>
 
@@ -266,95 +202,50 @@ export function MenuPanel({
       ) : visibleProducts.length === 0 ? (
         <PosEmpty message="No products found" hint="Try another category or search" />
       ) : (
-        <ScrollView
-          style={styles.gridScroll}
-          contentContainerStyle={gridStyle}
+        <FlatList
+          key={`grid-${numColumns}`}
+          data={visibleProducts}
+          keyExtractor={keyExtractor}
+          numColumns={numColumns}
+          renderItem={renderItem}
+          style={styles.gridList}
+          contentContainerStyle={[styles.gridContent, { padding: pad, gap: GRID_GAP }]}
+          columnWrapperStyle={numColumns > 1 ? { gap: GRID_GAP } : undefined}
           showsVerticalScrollIndicator
-          onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
-        >
-          {visibleProducts.map((item, index) => renderCard(item, index))}
-        </ScrollView>
+          keyboardShouldPersistTaps="handled"
+          removeClippedSubviews
+          initialNumToRender={numColumns * 4}
+          maxToRenderPerBatch={numColumns * 3}
+          windowSize={7}
+        />
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  panel: { borderRightWidth: 0 },
-  header: { padding: posSpacing.lg, borderBottomWidth: 1, borderBottomColor: posColors.border },
-  searchSection: {
-    paddingHorizontal: posSpacing.lg,
-    paddingTop: posSpacing.md,
-    paddingBottom: posSpacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: posColors.border,
-    zIndex: 10
-  },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: posSpacing.sm
-  },
-  headerAction: { flexShrink: 0 },
-  orderToolbar: { paddingTop: posSpacing.sm, alignItems: "flex-end" },
-  searchWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: posSpacing.sm,
-    backgroundColor: posColors.card,
-    borderRadius: posRadius.md,
-    borderWidth: 1,
-    borderColor: posColors.borderStrong,
-    paddingHorizontal: posSpacing.md,
-    minHeight: 48
-  },
-  search: { flex: 1, borderWidth: 0, backgroundColor: "transparent", paddingVertical: 12, fontSize: 15 },
-  scanBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: posRadius.sm,
-    backgroundColor: posColors.bg,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: posColors.border
-  },
-  scanText: { fontSize: 16, fontWeight: "800", color: posColors.textSecondary },
-  suggestions: {
-    marginTop: posSpacing.xs,
-    backgroundColor: posColors.card,
-    borderRadius: posRadius.md,
-    borderWidth: 1,
-    borderColor: posColors.border,
-    overflow: "hidden"
-  },
-  suggestionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: posSpacing.sm,
-    paddingHorizontal: posSpacing.md,
-    paddingVertical: posSpacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: posColors.border
-  },
-  suggestionText: { fontSize: 13, fontWeight: "600", color: posColors.text },
+  panel: { borderRightWidth: 0, flex: 1, minHeight: 0 },
+  header: { borderBottomWidth: 1, borderBottomColor: posColors.border },
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
     gap: posSpacing.sm,
-    paddingHorizontal: posSpacing.lg,
     paddingVertical: posSpacing.sm
   },
   discBtn: {
     marginLeft: "auto",
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: posRadius.sm,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: posColors.border,
-    backgroundColor: posColors.card
+    backgroundColor: posColors.card,
+    justifyContent: "center"
   },
-  discText: { fontSize: 10, fontWeight: "800", color: posColors.warning },
+  discText: { fontWeight: "800", color: posColors.warning },
   loader: { flex: 1, alignItems: "center", justifyContent: "center" },
-  gridScroll: { flex: 1, minHeight: 0 }
+  gridList: { flex: 1, minHeight: 0 },
+  gridContent: { paddingBottom: posSpacing.huge },
+  gridCell: { flex: 1, minWidth: 0 },
+  gridCellSingle: { width: "100%" }
 });

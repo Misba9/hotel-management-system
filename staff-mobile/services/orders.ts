@@ -181,6 +181,86 @@ export function subscribeKitchenKdsOrders(
   }
 }
 
+/** Kitchen tab: status == new */
+export function subscribeKitchenNewOrders(
+  onNext: (orders: StaffOrderRow[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  const q = query(collection(staffDb, ORDERS_COLLECTION), where("status", "==", "new"));
+  return subscribeFirestoreQuery(
+    "subscribeKitchenNewOrders",
+    q,
+    (snap) => onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>))),
+    onError
+  );
+}
+
+/** Kitchen tab: accepted + preparing */
+export function subscribeKitchenPreparingOrders(
+  onNext: (orders: StaffOrderRow[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  const q = query(
+    collection(staffDb, ORDERS_COLLECTION),
+    where("status", "in", ["accepted", "preparing"])
+  );
+  return subscribeFirestoreQuery(
+    "subscribeKitchenPreparingOrders",
+    q,
+    (snap) => onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>))),
+    onError
+  );
+}
+
+/** Kitchen tab: status == ready */
+export function subscribeKitchenReadyOrders(
+  onNext: (orders: StaffOrderRow[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  const q = query(collection(staffDb, ORDERS_COLLECTION), where("status", "==", "ready"));
+  return subscribeFirestoreQuery(
+    "subscribeKitchenReadyOrders",
+    q,
+    (snap) => onNext(snap.docs.map((d) => enrichOrder(d.id, d.data() as Record<string, unknown>))),
+    onError
+  );
+}
+
+const HISTORY_FETCH_LIMIT = 600;
+const HISTORY_RESULT_LIMIT = 250;
+
+function isKitchenHistoryStatus(status: string): boolean {
+  const canon = normalizeOrderStatus(status);
+  return canon === "completed" || canon === "cancelled";
+}
+
+/** Kitchen history — recent terminal orders (no composite index required). */
+export function subscribeKitchenHistoryOrders(
+  onNext: (rows: Array<{ order: StaffOrderRow; data: Record<string, unknown> }>) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  const q = query(
+    collection(staffDb, ORDERS_COLLECTION),
+    orderBy("createdAt", "desc"),
+    limit(HISTORY_FETCH_LIMIT)
+  );
+  return subscribeFirestoreQuery(
+    "subscribeKitchenHistoryOrders",
+    q,
+    (snap) => {
+      const rows = snap.docs
+        .map((d) => ({
+          order: enrichOrder(d.id, d.data() as Record<string, unknown>),
+          data: d.data() as Record<string, unknown>
+        }))
+        .filter(({ order }) => isKitchenHistoryStatus(String(order.status ?? "")))
+        .slice(0, HISTORY_RESULT_LIMIT);
+      onNext(rows);
+    },
+    onError
+  );
+}
+
 export async function kitchenAcceptOrder(order: StaffOrderRow): Promise<void> {
   const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(order.id));
   const canon = canonicalOrderStatus(String(order.status ?? ""));
@@ -257,6 +337,20 @@ export async function kitchenMarkOrderReady(order: StaffOrderRow): Promise<void>
     status: "ready",
     readyAt: serverTimestamp(),
     updatedAt: serverTimestamp()
+  });
+}
+
+/** Waiter picked up — kitchen removes from ready queue. */
+export async function kitchenMarkPickedUp(order: StaffOrderRow): Promise<void> {
+  const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(order.id));
+  const canon = canonicalOrderStatus(String(order.status ?? ""));
+  if (canon !== "ready") throw new Error("Only ready orders can be marked picked up.");
+  const ts = serverTimestamp();
+  await updateDoc(ref, {
+    status: "completed",
+    deliveredAt: ts,
+    servedAt: ts,
+    updatedAt: ts
   });
 }
 

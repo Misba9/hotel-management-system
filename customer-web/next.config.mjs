@@ -17,6 +17,10 @@ const nextConfig = {
   reactStrictMode: true,
   /** Default is true; explicit for font CSS inlining / optimization (see `next/font`). */
   optimizeFonts: true,
+  experimental: {
+    /** Keep a single firebase-admin instance in the Node server bundle (Firebase Hosting SSR). */
+    serverComponentsExternalPackages: ["firebase-admin"]
+  },
   images: {
     domains: [
       "images.unsplash.com",

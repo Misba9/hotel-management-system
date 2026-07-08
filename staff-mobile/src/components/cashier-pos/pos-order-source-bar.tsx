@@ -1,5 +1,6 @@
 import React, { memo } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import type { PlatformTab } from "../../lib/pos/cashier-pos-store";
 import type { OrderStatusFilter } from "../../lib/pos/order-source";
 import { posCard, posColors, posRadius, posSpacing } from "./pos-theme";
@@ -30,28 +31,64 @@ export const PosOrderSourceBar = memo(function PosOrderSourceBar({
   platformCounts,
   onPlatformChange
 }: Props) {
+  const layout = useResponsiveLayout();
+  const useEqualWidth = layout.isTablet;
+  const useTwoRowGrid = layout.isLargePhone && !layout.isLandscape;
+
+  const tabs = PLATFORM_TABS.map((tab) => {
+    const on = activePlatform === tab.id;
+    const count = platformCounts[tab.id];
+    return (
+      <Pressable
+        key={tab.id}
+        onPress={() => onPlatformChange(tab.id)}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: on }}
+        style={[
+          styles.tab,
+          posCard(),
+          on && styles.tabOn,
+          on && { borderColor: tab.color },
+          useEqualWidth && styles.tabEqual,
+          useTwoRowGrid && styles.tabGrid,
+          { minHeight: layout.minTouch, borderRadius: layout.radius }
+        ]}
+      >
+        <Text style={[styles.emoji, { fontSize: layout.moderateScale(16) }]}>{tab.emoji}</Text>
+        <Text style={[styles.label, { fontSize: layout.moderateScale(12) }, on && { color: tab.color }]}>
+          {tab.label}
+        </Text>
+        <View style={[styles.countBadge, on && { backgroundColor: tab.color }]}>
+          <Text style={[styles.countText, on && styles.countTextOn]}>{count}</Text>
+        </View>
+      </Pressable>
+    );
+  });
+
+  if (useEqualWidth) {
+    return (
+      <View style={[styles.wrap, { paddingHorizontal: layout.padding }]}>
+        <View style={styles.tabletRow}>{tabs}</View>
+      </View>
+    );
+  }
+
+  if (useTwoRowGrid) {
+    return (
+      <View style={[styles.wrap, { paddingHorizontal: layout.padding }]}>
+        <View style={styles.twoRowGrid}>{tabs}</View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.wrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-        {PLATFORM_TABS.map((tab) => {
-          const on = activePlatform === tab.id;
-          const count = platformCounts[tab.id];
-          return (
-            <Pressable
-              key={tab.id}
-              onPress={() => onPlatformChange(tab.id)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-              style={[styles.tab, posCard(), on && styles.tabOn, on && { borderColor: tab.color }]}
-            >
-              <Text style={styles.emoji}>{tab.emoji}</Text>
-              <Text style={[styles.label, on && { color: tab.color }]}>{tab.label}</Text>
-              <View style={[styles.countBadge, on && { backgroundColor: tab.color }]}>
-                <Text style={[styles.countText, on && styles.countTextOn]}>{count}</Text>
-              </View>
-            </Pressable>
-          );
-        })}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollRow, { paddingHorizontal: layout.padding }]}
+      >
+        {tabs}
       </ScrollView>
     </View>
   );
@@ -81,11 +118,22 @@ const styles = StyleSheet.create({
     borderBottomColor: posColors.border,
     backgroundColor: posColors.secondary
   },
-  row: {
-    paddingHorizontal: posSpacing.md,
+  scrollRow: {
     paddingVertical: posSpacing.sm,
     gap: posSpacing.sm,
     alignItems: "center"
+  },
+  tabletRow: {
+    flexDirection: "row",
+    paddingVertical: posSpacing.sm,
+    gap: posSpacing.sm,
+    alignItems: "stretch"
+  },
+  twoRowGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingVertical: posSpacing.sm,
+    gap: posSpacing.sm
   },
   tab: {
     flexDirection: "row",
@@ -96,15 +144,16 @@ const styles = StyleSheet.create({
     borderRadius: posRadius.lg,
     borderWidth: 1,
     borderColor: posColors.border,
-    minWidth: 110
+    flexShrink: 0
   },
+  tabEqual: { flex: 1, justifyContent: "center" },
+  tabGrid: { flexBasis: "48%", flexGrow: 1, justifyContent: "center" },
   tabOn: {
     backgroundColor: posColors.primaryMuted,
     borderWidth: 1.5
   },
-  emoji: { fontSize: 16 },
+  emoji: {},
   label: {
-    fontSize: 12,
     fontWeight: "800",
     color: posColors.textSecondary,
     letterSpacing: 0.2

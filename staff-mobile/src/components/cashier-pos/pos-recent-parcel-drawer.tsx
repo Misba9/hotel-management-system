@@ -7,9 +7,9 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  View,
-  useWindowDimensions
+  View
 } from "react-native";
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import type { StaffOrderRow } from "../../../services/orders";
 import { isOrderPaid, kitchenStatusLabel } from "../../lib/cashier-order-filters";
 import { isOrderCancelled } from "../../lib/pos/order-source";
@@ -72,10 +72,8 @@ export function PosRecentParcelDrawer({
   onDuplicate,
   onCancel
 }: Props) {
-  const { width, height } = useWindowDimensions();
-  const isMobile = width < 768;
-  const isTablet = width >= 768 && width < 1200;
-  const drawerWidth = isMobile ? width : isTablet ? width * 0.8 : width * 0.45;
+  const layout = useResponsiveLayout();
+  const drawerWidth = layout.isPhone ? layout.width : layout.isSmallTablet ? layout.width * 0.8 : layout.width * 0.45;
 
   const slideAnim = useRef(new Animated.Value(drawerWidth)).current;
   const [search, setSearch] = useState("");
@@ -171,7 +169,7 @@ export function PosRecentParcelDrawer({
             posShadow(true),
             {
               width: drawerWidth,
-              height,
+              height: layout.height,
               transform: [{ translateX: slideAnim }]
             }
           ]}

@@ -56,11 +56,11 @@ export function DesktopAppShell({
     <div className="flex h-screen overflow-hidden bg-theme-background">
       {!hideSidebar ? (
         <aside
-          className={`theme-sidebar flex shrink-0 flex-col transition-all ${
+          className={`theme-sidebar flex h-screen shrink-0 flex-col overflow-hidden transition-all ${
             sidebarCollapsed ? "w-[68px]" : "w-[220px]"
           }`}
         >
-          <div className="flex items-center justify-between border-b border-theme-border px-4 py-4">
+          <div className="flex shrink-0 items-center justify-between border-b border-theme-border px-4 py-4">
             {!sidebarCollapsed ? (
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-theme-primary">Nausheen Staff</p>
@@ -78,7 +78,7 @@ export function DesktopAppShell({
               {sidebarCollapsed ? "»" : "«"}
             </button>
           </div>
-          <nav className="flex flex-1 flex-col gap-1 p-2">
+          <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2">
             {links.map((link) => {
               const active = location.pathname === link.path;
               return (
@@ -132,7 +132,7 @@ export function DesktopAppShell({
             ) : null}
           </div>
         </header>
-        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </div>
     </div>
   );

@@ -11,9 +11,16 @@ import { staffAuth as auth } from "../lib/firebase";
  * @returns {Promise<import('firebase/auth').User>}
  */
 export async function login(email, password) {
-  const cred = await signInWithEmailAndPassword(auth, String(email).trim(), password);
-  await cred.user.getIdToken(true);
-  return cred.user;
+  try {
+    const cred = await signInWithEmailAndPassword(auth, String(email).trim(), password);
+    return cred.user;
+  } catch (error) {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.error("[staffAuth.login]", error);
+    }
+    throw error;
+  }
 }
 
 export function logout() {

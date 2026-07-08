@@ -1,14 +1,24 @@
-import React from "react";
+import React, { memo } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import { PosIcon } from "./pos-icons";
+import { ResponsiveToolbar } from "./responsive/ResponsiveToolbar";
 import { posColors, posRadius, posShadow, posSpacing } from "./pos-theme";
 
 type Props = {
-  isMobile: boolean;
+  isMobile?: boolean;
   onNewOrder: () => void;
   onPrint: () => void;
   onPay: () => void;
   onMore: () => void;
+  onMenu?: () => void;
+  onBill?: () => void;
+  showFabActions?: boolean;
+  onNewCustomer?: () => void;
+  onExpense?: () => void;
+  onCashIn?: () => void;
+  onCashOut?: () => void;
 };
 
 const SHORTCUTS = [
@@ -24,105 +34,172 @@ const SHORTCUTS = [
   { key: "CTRL+B", label: "Barcode" }
 ];
 
-export function PosBottomBar({ isMobile, onNewOrder, onPrint, onPay, onMore }: Props) {
-  if (isMobile) {
+export const PosBottomBar = memo(function PosBottomBar({
+  onNewOrder,
+  onPrint,
+  onPay,
+  onMore,
+  onMenu,
+  onBill,
+  showFabActions,
+  onNewCustomer,
+  onExpense,
+  onCashIn,
+  onCashOut
+}: Props) {
+  const layout = useResponsiveLayout();
+  const insets = useSafeAreaInsets();
+  const iconSize = layout.iconSize;
+
+  if (layout.isPhone) {
     return (
-      <View style={styles.mobileBar}>
-        <MobileAction icon="plus" label="New" onPress={onNewOrder} />
-        <MobileAction icon="print" label="Print" onPress={onPrint} />
-        <Pressable onPress={onPay} style={styles.payBtn}>
-          <PosIcon name="pay" size={20} color="#fff" />
-          <Text style={styles.payText}>Pay</Text>
+      <View style={[styles.mobileBar, { paddingBottom: Math.max(insets.bottom, posSpacing.sm) }]}>
+        {onMenu ? <MobileAction icon="more" label="Menu" onPress={onMenu} size={iconSize} minTouch={layout.minTouch} /> : null}
+        {onBill ? (
+          <Pressable onPress={onBill} style={[styles.mobileAction, { minWidth: layout.minTouch, minHeight: layout.minTouch }]}>
+            <Text style={{ fontSize: iconSize }}>🧾</Text>
+            <Text style={styles.mobileLabel}>Bill</Text>
+          </Pressable>
+        ) : null}
+        <MobileAction icon="plus" label="New" onPress={onNewOrder} size={iconSize} minTouch={layout.minTouch} />
+        <MobileAction icon="print" label="Print" onPress={onPrint} size={iconSize} minTouch={layout.minTouch} />
+        <Pressable onPress={onPay} style={[styles.payBtn, { minHeight: layout.minTouch, borderRadius: layout.radius }]}>
+          <PosIcon name="pay" size={iconSize} color="#fff" />
+          <Text style={[styles.payText, { fontSize: layout.moderateScale(15) }]}>Pay</Text>
         </Pressable>
-        <MobileAction icon="more" label="More" onPress={onMore} />
+        <MobileAction icon="more" label="More" onPress={onMore} size={iconSize} minTouch={layout.minTouch} />
       </View>
     );
   }
 
   return (
-    <View style={styles.desktopBar}>
+    <ResponsiveToolbar>
       {SHORTCUTS.map((s) => (
         <View key={s.key} style={styles.shortcut}>
-          <View style={styles.keyCap}>
-            <Text style={styles.keyText}>{s.key}</Text>
+          <View style={[styles.keyCap, { borderRadius: layout.radius * 0.5 }]}>
+            <Text style={[styles.keyText, { fontSize: layout.moderateScale(10) }]}>{s.key}</Text>
           </View>
-          <Text style={styles.shortcutLabel}>{s.label}</Text>
+          <Text style={[styles.shortcutLabel, { fontSize: layout.moderateScale(11) }]}>{s.label}</Text>
         </View>
       ))}
-    </View>
+      {showFabActions ? (
+        <>
+          <ToolbarBtn label="New Order" emoji="🧾" onPress={onNewOrder} layout={layout} />
+          <ToolbarBtn label="Customer" emoji="👤" onPress={onNewCustomer} layout={layout} />
+          <ToolbarBtn label="Expense" emoji="💸" onPress={onExpense} layout={layout} />
+          <ToolbarBtn label="Cash In" emoji="📥" onPress={onCashIn} layout={layout} />
+          <ToolbarBtn label="Cash Out" emoji="📤" onPress={onCashOut} layout={layout} />
+        </>
+      ) : null}
+      <Pressable
+        onPress={onPay}
+        style={[styles.tabletPayBtn, { minHeight: layout.minTouch, borderRadius: layout.radius, paddingHorizontal: layout.padding }]}
+      >
+        <PosIcon name="pay" size={iconSize} color="#fff" />
+        <Text style={[styles.payText, { fontSize: layout.moderateScale(15) }]}>Pay</Text>
+      </Pressable>
+    </ResponsiveToolbar>
   );
-}
+});
 
 function MobileAction({
   icon,
   label,
-  onPress
+  onPress,
+  size,
+  minTouch
 }: {
   icon: "plus" | "print" | "more";
   label: string;
   onPress: () => void;
+  size: number;
+  minTouch: number;
 }) {
   return (
-    <Pressable onPress={onPress} style={styles.mobileAction}>
-      <PosIcon name={icon} size={20} color={posColors.textSecondary} />
+    <Pressable onPress={onPress} style={[styles.mobileAction, { minWidth: minTouch, minHeight: minTouch }]}>
+      <PosIcon name={icon} size={size} color={posColors.textSecondary} />
       <Text style={styles.mobileLabel}>{label}</Text>
     </Pressable>
   );
 }
 
+function ToolbarBtn({
+  label,
+  emoji,
+  onPress,
+  layout
+}: {
+  label: string;
+  emoji: string;
+  onPress?: () => void;
+  layout: ReturnType<typeof useResponsiveLayout>;
+}) {
+  if (!onPress) return null;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.toolbarBtn, { minHeight: layout.minTouch, borderRadius: layout.radius, paddingHorizontal: layout.padding * 0.6 }]}
+    >
+      <Text style={{ fontSize: layout.moderateScale(16) }}>{emoji}</Text>
+      <Text style={[styles.toolbarLabel, { fontSize: layout.moderateScale(12) }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  desktopBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    flexWrap: "wrap",
-    gap: posSpacing.md,
-    paddingVertical: posSpacing.xs,
-    paddingHorizontal: posSpacing.lg,
-    backgroundColor: posColors.secondary,
-    borderTopWidth: 1,
-    borderTopColor: posColors.border,
-    minHeight: 36
-  },
   shortcut: { flexDirection: "row", alignItems: "center", gap: 6 },
   keyCap: {
     paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 6,
     backgroundColor: posColors.card,
     borderWidth: 1,
     borderColor: posColors.border
   },
   keyText: {
-    fontSize: 10,
     fontWeight: "800",
     color: posColors.textSecondary,
     fontFamily: Platform.OS === "web" ? "monospace" : undefined
   },
-  shortcutLabel: { fontSize: 11, color: posColors.textDim, fontWeight: "600" },
+  shortcutLabel: { color: posColors.textDim, fontWeight: "600" },
   mobileBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-around",
-    paddingVertical: posSpacing.sm,
-    paddingHorizontal: posSpacing.md,
+    justifyContent: "space-between",
+    paddingVertical: posSpacing.xs,
+    paddingHorizontal: posSpacing.sm,
     backgroundColor: posColors.secondary,
     borderTopWidth: 1,
     borderTopColor: posColors.border,
     ...posShadow(true)
   },
-  mobileAction: { alignItems: "center", gap: 4, padding: posSpacing.sm, minWidth: 56 },
+  mobileAction: { alignItems: "center", justifyContent: "center", gap: 2, padding: posSpacing.xs, flex: 1 },
   mobileLabel: { fontSize: 10, fontWeight: "700", color: posColors.textSecondary },
   payBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     backgroundColor: posColors.success,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: posRadius.lg,
-    minWidth: 120,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexShrink: 1,
     justifyContent: "center"
   },
-  payText: { color: "#fff", fontSize: 15, fontWeight: "900" }
+  tabletPayBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: posColors.success,
+    paddingVertical: 10,
+    marginLeft: "auto"
+  },
+  payText: { color: "#fff", fontWeight: "900" },
+  toolbarBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: posColors.card,
+    borderWidth: 1,
+    borderColor: posColors.border
+  },
+  toolbarLabel: { fontWeight: "700", color: posColors.text }
 });

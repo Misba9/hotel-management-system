@@ -1,15 +1,34 @@
 import React from "react";
 import { Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import { useCashierPosStore } from "../../lib/pos/cashier-pos-store";
 import { PosButton } from "./pos-ui";
 import { posCard, posColors, posGlass, posRadius, posShadow, posSpacing, posType } from "./pos-theme";
 
 export function PosTestingFab() {
   const setShowTestPanel = useCashierPosStore((s) => s.setShowTestPanel);
+  const layout = useResponsiveLayout();
+  const insets = useSafeAreaInsets();
+
+  if (layout.isTablet) return null;
+
   return (
-    <Pressable style={styles.fab} onPress={() => setShowTestPanel(true)}>
-      <Text style={styles.fabEmoji}>🧪</Text>
-      <Text style={styles.fabLabel}>Test Orders</Text>
+    <Pressable
+      style={[
+        styles.fab,
+        {
+          left: layout.padding,
+          bottom: Math.max(insets.bottom, layout.padding) + layout.scale(80),
+          borderRadius: layout.radius * 2,
+          paddingHorizontal: layout.padding,
+          minHeight: layout.minTouch
+        }
+      ]}
+      onPress={() => setShowTestPanel(true)}
+    >
+      <Text style={[styles.fabEmoji, { fontSize: layout.moderateScale(18) }]}>🧪</Text>
+      <Text style={[styles.fabLabel, { fontSize: layout.moderateScale(13) }]}>Test Orders</Text>
     </Pressable>
   );
 }
@@ -96,14 +115,10 @@ function GenBtn({ label, emoji, onPress, wide }: { label: string; emoji: string;
 const styles = StyleSheet.create({
   fab: {
     position: "absolute",
-    bottom: 24,
-    left: 24,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: posRadius.pill,
     backgroundColor: posColors.purple,
     zIndex: 100,
     ...posShadow(true)
