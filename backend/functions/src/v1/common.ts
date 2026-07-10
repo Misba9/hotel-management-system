@@ -1,5 +1,4 @@
-import { getAuth } from "firebase-admin/auth";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 
 /** Opt-in: set `FIREBASE_FUNCTIONS_ENFORCE_APP_CHECK=true` after every client sends App Check (web + native staff). */
@@ -7,9 +6,9 @@ const enforceAppCheck = process.env.FIREBASE_FUNCTIONS_ENFORCE_APP_CHECK === "tr
 import { z, ZodError } from "zod";
 import type { Request } from "firebase-functions/v2/https";
 import { callableCorsOptions, httpCorsOptions } from "../cors";
+import { auth, db } from "../admin-app";
 
-export const db = getFirestore();
-export const auth = getAuth();
+export { auth, db };
 
 /** Firestore mirrors for former RTDB paths `orderFeeds/{orderId}` and `deliveryTracking/{orderId}`. */
 export async function syncOrderFeedDoc(orderId: string, data: Record<string, unknown>, merge = true) {

@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase-admin/app";
+import "./admin-app"; // must load before any module that uses Firestore/Auth
 import { seedInitialData } from "./seed";
 import { placeOrder, updateDeliveryStatus, updateKitchenStatus } from "./orders";
 import { verifyRazorpayPayment, razorpayWebhook } from "./payments";
@@ -31,7 +31,7 @@ import { platformApiV1 } from "./v1/api";
 import { createStaffUser } from "./adminStaffCreate";
 import { onTableOrderCompletedFreeTable } from "./freeTableOnTableOrderCompleted";
 
-initializeApp();
+// Admin SDK initialized via ./admin-app
 
 export {
   seedInitialData,

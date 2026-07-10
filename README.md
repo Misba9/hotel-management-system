@@ -1,204 +1,276 @@
-# Nausheen Fruits Juice Center Platform
+# 🍹 Fruit Hotel Management Platform
 
-Production-ready full-stack restaurant ordering and management monorepo.
+A complete Restaurant / Hotel Management SaaS Platform built with Firebase.
+---
 
-## 1) Complete Folder Structure
+
+# 📂 Project Structure
 
 ```text
-/
-├── apps/
-│   ├── customer-web/        # Next.js 14 customer app
-│   ├── staff-mobile/        # Expo React Native staff app
-│   └── admin-dashboard/     # Next.js 14 admin app
-├── functions/               # Firebase Cloud Functions (TypeScript)
-├── lib/
-│   ├── firebase/
-│   ├── utils/
-│   ├── hooks/
-│   └── types/
-├── components/
-│   ├── ui/
-│   └── shared/
-├── docs/
+
+fruit-hotel-management-platform
+
+│
+
+├── admin-dashboard      # Admin Web Application
+
+├── customer-web         # Customer Website
+
+├── customer-mobile      # React Native Customer App
+
+├── staff-desktop        # Staff Desktop (Electron/Web)
+
+├── staff-mobile         # React Native Staff App
+
+├── backend              # Optional Node.js API
+
+├── functions            # Firebase Cloud Functions
+
+├── shared               # Shared Components & Utilities
+
+├── packages             # Shared Packages
+
 ├── firebase.json
+
 ├── firestore.rules
-├── firestore.indexes.json
-└── storage.rules
+
+├── storage.rules
+
+└── package.json
+
 ```
 
-## 2) Firestore Database Schema
+---
+# 🚀 Prerequisites
 
-Collections:
+Install:
 
-- `users`
-- `roles`
-- `menu_categories`
-- `menu_items`
-- `orders`
-- `order_items`
-- `payments`
-- `addresses`
-- `delivery_assignments`
-- `staff`
-- `inventory`
-- `coupons`
-- `notifications`
-- `branches`
+- Node.js 20+
+- npm
+- Firebase CLI
+- Android Studio (for Android)
+- Xcode (for iOS - macOS only)
+- Java JDK 17+
 
-Indexes defined in `firestore.indexes.json`.
 
-## 3) Firebase Security Rules
 
-- Firestore RBAC rules in `firestore.rules`
-- Storage access rules in `storage.rules`
-- Role strategy documented in `docs/security-rbac.md`
 
-## 4) Cloud Functions
+---
 
-Defined in `functions/src`:
+# 💻 Run Applications
 
-- `placeOrder`, `updateKitchenStatus`, `updateDeliveryStatus`
-- `verifyRazorpayPayment`, `razorpayWebhook`
-- `onOrderStatusChanged`
-- `getAdminAnalytics`
-- `exportDailyOrdersCsv`
-- `getUpsellSuggestions`, `grantLoyaltyPointsOnDelivered`
-- `seedInitialData`, `healthCheck`
 
-## 5) API Routes
 
-Customer app (`apps/customer-web/src/app/api`):
+Each application runs independently.
 
-- `/api/checkout`
-- `/api/coupons/validate`
-- `/api/tracking/[orderId]`
-- `/api/upsell`
+Open a separate terminal for each application.
 
-Admin app (`apps/admin-dashboard/src/app/api`):
 
-- `/api/analytics`
-
-## 6) Next.js Frontend Pages
-
-Customer pages:
-
-- `/`
-- `/menu`
-- `/cart`
-- `/checkout`
-- `/tracking`
-- `/profile`
-- `/orders`
-- `/offers`
-
-## 7) React Native Screens
-
-Staff app screens:
-
-- `LoginScreen`
-- `RoleHomeScreen`
-- Role panels for Delivery, Kitchen, Waiter, Cashier, Manager
-
-## 8) Admin Dashboard Components
-
-- KPI cards (`components/shared/kpi-card.tsx`)
-- Orders chart (`apps/admin-dashboard/src/components/orders-chart.tsx`)
-- Management modules: menu, inventory, coupons, staff, branches
-
-## 9) Firebase — build & deploy (copy-paste)
-
-Config file: `backend/firebase.json`. Default project in scripts: `nausheen-fruits` (change `--project` if needed).
-
-**One-time**
+## Admin Dashboard
 
 ```bash
-npm install -g firebase-tools
-firebase login
-firebase use nausheen-fruits
+
+cd admin-dashboard
+
+npm install & npm run dev
+
 ```
 
-**Cloud Functions — compile TypeScript**
+---
+
+## Customer Web
 
 ```bash
-npm run firebase:build
+
+cd customer-web
+
+npm install & npm run dev
+
 ```
+---
 
-Same as: `npm run build:functions` (builds workspace `@nausheen/functions` → `backend/functions/dist`).
-
-**Cloud Functions — deploy**
+## Customer Mobile
 
 ```bash
-npm run firebase:deploy:functions
+
+cd customer-mobile
+
+npm install && npm run dev
+
 ```
 
-**Build + deploy functions in one step**
+---
+
+## Staff Desktop
 
 ```bash
-npm run firebase:release:functions
+
+cd staff-desktop
+
+npm install && npm run dev
+
 ```
 
-**Firestore rules + Storage rules**
+---
+
+## Staff Mobile
 
 ```bash
-npm run firebase:deploy:rules
+
+cd staff-mobile
+
+npm install && npm run dev
+
 ```
 
-**Firestore rules, indexes, and other Firestore config**
+---
+
+## Firebase Functions
 
 ```bash
-npm run firebase:deploy:firestore
+
+cd functions
+
+npm install
+
 ```
 
-**Hosting only** (targets in `backend/firebase.json`; ensure `out/` / build output exists if you use static hosting)
+---
+
+# ☁️ Firebase Deployment
+
+---
+
+## Deploy Customer Website
 
 ```bash
-npm run firebase:deploy:hosting
-```
 
-**Everything** (functions + hosting + rules + indexes as defined in `firebase.json`)
+cd customer-web
+npm run build
+firebase deploy --only hosting
+
+```
+---
+
+## Deploy Admin Dashboard
 
 ```bash
-npm run firebase:deploy:all
-```
 
-**Raw CLI equivalents** (from repo root)
+cd admin-dashboard
+npm run build
+firebase deploy --only hosting
+
+```
+---
+
+## Deploy Firebase Functions
 
 ```bash
-firebase deploy --config backend/firebase.json --project nausheen-fruits --only functions
-firebase deploy --config backend/firebase.json --project nausheen-fruits --only hosting
-firebase deploy --config backend/firebase.json --project nausheen-fruits --only firestore:rules,storage
+firebase deploy --only functions
+
+```
+---
+
+## Deploy Firestore Rules
+
+```bash
+
+firebase deploy --only firestore
+
+```
+---
+
+## Deploy Storage Rules
+```bash
+
+firebase deploy --only storage
+
+```
+---
+
+## Deploy Everything
+
+```bash
+
+firebase deploy
+
 ```
 
-## 10) Other deployment
+---
 
-1. Install dependencies: `npm install`
-2. Configure environment files from each app’s `.env.example`.
-3. **Vercel (optional):** import `customer-web` and `admin-dashboard` as separate projects; set env vars from each app’s `.env.example`.
-4. **Expo:** `npm run dev:mobile` locally; use EAS Build / Submit for store releases.
+# 📱 Build Mobile Apps
 
-## 11) Environment Variables
+## Android APK
 
-- Root: `.env.example` (if present)
-- Customer web: `customer-web/.env.example`
-- Admin dashboard: `admin-dashboard/.env.example`
-- Staff mobile: `staff-mobile/.env.example`
-- Cloud Functions: configure secrets / env in Firebase for production
+Customer App
 
-## Local Development
+```bash
+cd customer-mobile/android
+./gradlew assembleRelease
 
-- Customer web: `npm run dev:customer`
-- Admin dashboard: `npm run dev:admin`
-- Staff mobile: `npm run dev:mobile`
-- All web + Expo web: `npm run dev` (see terminal banner for ports)
-- Typecheck all packages: `npm run typecheck`
+```
+Output
 
+```text
 
+android/app/build/outputs/apk/release/app-release.apk
 
+```
+---
+
+Staff App
 
 
+```bash
+
+cd staff-mobile/android
+./gradlew assembleRelease
+
+```
+---
+
+## Android AAB
+
+```bash
+
+./gradlew bundleRelease
+
+```
+
+Output
+
+```text
+
+android/app/build/outputs/bundle/release/app-release.aab
+
+```
+
+Upload the AAB to the Google Play Console.
+
+---
+
+
+# 📌 Notes
+
+- Admin Dashboard and Customer Website are deployed using Firebase Hosting.
+- Customer Mobile and Staff Mobile connect directly to Firebase services.
+- The Backend folder is optional and only required if you maintain a separate Node.js API.
+- Use the Firebase Emulator Suite for local testing of Cloud Functions and Firestore.
+
+---
+
+# 👨‍💻 Tech Stack
+
+- React
+- React Native
+- Electron
+- TypeScript
+- Node.js
+
+---
+
+# 📄 License
 
 
 
-
-
-waiter@gmail.com
+Private Project © Fruit Hotel Management Platform

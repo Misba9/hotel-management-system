@@ -1,8 +1,6 @@
-import { getFirestore } from "firebase-admin/firestore";
 import { onCall } from "firebase-functions/v2/https";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
-
-const db = getFirestore();
+import { db } from "./admin-app";
 
 const upsellMap: Record<string, string[]> = {
   mango_juice: ["fruit_bowl", "protein_smoothie"],

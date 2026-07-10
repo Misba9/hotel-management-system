@@ -75,7 +75,7 @@ export async function GET() {
   try {
     if (!getFirebaseAdminApp()) {
       console.error(
-        "[api/menu] Firebase Admin is not initialized. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY (or deploy on Cloud Functions with runtime credentials)."
+        "[api/menu] Firebase Admin is not initialized. Set ADMIN_SDK_PROJECT_ID, ADMIN_SDK_CLIENT_EMAIL, ADMIN_SDK_PRIVATE_KEY (or deploy on Cloud Functions with runtime credentials)."
       );
       return Response.json({ error: "Failed to fetch menu" }, { status: 503 });
     }

@@ -108,7 +108,7 @@ export async function GET(request: Request) {
     return jsonError(
       message,
       500,
-      "Ensure server env has FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY (see backend/firebase/admin.ts). For local dev, add them to customer-web/.env.local."
+      "Ensure server env has ADMIN_SDK_PROJECT_ID, ADMIN_SDK_CLIENT_EMAIL, and ADMIN_SDK_PRIVATE_KEY (see backend/firebase/admin.ts). For local dev, add them to customer-web/.env.local."
     );
   }
 }

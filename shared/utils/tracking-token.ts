@@ -8,7 +8,7 @@ type TrackingTokenPayload = {
 const DEFAULT_TRACKING_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 14;
 
 function getTrackingSecret(): string {
-  const secret = process.env.TRACKING_TOKEN_SECRET ?? process.env.FIREBASE_PRIVATE_KEY ?? "";
+  const secret = process.env.TRACKING_TOKEN_SECRET ?? process.env.ADMIN_SDK_PRIVATE_KEY ?? process.env.FIREBASE_PRIVATE_KEY ?? "";
   if (!secret) {
     throw new Error("TRACKING_TOKEN_SECRET is not configured.");
   }

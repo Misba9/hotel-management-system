@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { FirebaseError, getApp, initializeApp, type FirebaseApp } from "firebase/app";
+import { getApp, initializeApp, type FirebaseApp } from "firebase/app";
 import {
   GoogleAuthProvider,
   OAuthProvider,
@@ -10,12 +10,14 @@ import {
   signInWithPopup,
   type Auth
 } from "firebase/auth";
+import { mapFirebaseAuthError } from "@/lib/firebase-auth-errors";
 
 /**
  * In-browser OAuth bridge for customer-mobile (Expo Go / native).
  * Completes Google or Apple via Firebase popup, then deep-links back with a custom token.
  *
  * Uses the nausheen-fruits-new config (same project as customer-mobile).
+ * authDomain must stay *.firebaseapp.com — never a custom brand domain.
  */
 const bridgeFirebaseConfig = {
   apiKey:
@@ -24,10 +26,15 @@ const bridgeFirebaseConfig = {
     "AIzaSyALjFLpZYo4cCPYTls0JGxbqOZzcPBzch0",
   authDomain:
     process.env.NEXT_PUBLIC_MOBILE_BRIDGE_AUTH_DOMAIN ||
+    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ||
     "nausheen-fruits-new.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_MOBILE_BRIDGE_PROJECT_ID || "nausheen-fruits-new",
+  projectId:
+    process.env.NEXT_PUBLIC_MOBILE_BRIDGE_PROJECT_ID ||
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+    "nausheen-fruits-new",
   storageBucket:
     process.env.NEXT_PUBLIC_MOBILE_BRIDGE_STORAGE_BUCKET ||
+    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
     "nausheen-fruits-new.firebasestorage.app",
   messagingSenderId:
     process.env.NEXT_PUBLIC_MOBILE_BRIDGE_MESSAGING_SENDER_ID ||
@@ -36,7 +43,7 @@ const bridgeFirebaseConfig = {
   appId:
     process.env.NEXT_PUBLIC_MOBILE_BRIDGE_APP_ID ||
     process.env.NEXT_PUBLIC_FIREBASE_APP_ID ||
-    "1:611343650554:android:dccdea64063f0ff4df4343"
+    "1:611343650554:web:375eeb211c586448df4343"
 };
 
 function getBridgeAuth(): Auth {
@@ -57,24 +64,6 @@ function isAllowedRedirect(redirect: string): boolean {
   } catch {
     return false;
   }
-}
-
-function mapError(e: unknown): string {
-  if (e instanceof FirebaseError) {
-    switch (e.code) {
-      case "auth/popup-closed-by-user":
-      case "auth/cancelled-popup-request":
-        return "Sign-in was cancelled.";
-      case "auth/operation-not-allowed":
-        return "This sign-in method is disabled in Firebase Console → Authentication → Sign-in method.";
-      case "auth/unauthorized-domain":
-        return "Add this host to Firebase Authorized domains (e.g. localhost).";
-      default:
-        return e.message || "Sign-in failed.";
-    }
-  }
-  if (e instanceof Error) return e.message;
-  return "Sign-in failed.";
 }
 
 export default function MobileAuthBridgeInner() {
@@ -145,7 +134,7 @@ export default function MobileAuthBridgeInner() {
       } catch (e) {
         if (cancelled) return;
         setStatus("error");
-        setMessage(mapError(e));
+        setMessage(mapFirebaseAuthError(e, `${providerLabel} sign-in failed.`));
       }
     }
 

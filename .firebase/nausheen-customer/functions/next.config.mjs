@@ -1,4 +1,4 @@
-// next.config.mjs
+// customer-web/next.config.mjs
 import nextEnv from "@next/env";
 import path from "path";
 import { fileURLToPath } from "url";

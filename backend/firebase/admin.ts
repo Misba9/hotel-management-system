@@ -3,25 +3,45 @@ import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getMessaging, type Messaging } from "firebase-admin/messaging";
 
-const REQUIRED_SERVICE_ACCOUNT_ENV = [
-  "FIREBASE_PROJECT_ID",
-  "FIREBASE_CLIENT_EMAIL",
-  "FIREBASE_PRIVATE_KEY"
-] as const;
-
-type RequiredServiceEnvKey = (typeof REQUIRED_SERVICE_ACCOUNT_ENV)[number];
+/**
+ * Service-account env names.
+ * Do NOT use the FIREBASE_ prefix — Firebase Hosting / Cloud Functions rejects
+ * keys starting with FIREBASE_, X_GOOGLE_, or EXT_ when loading .env for frameworks.
+ */
+const SERVICE_ACCOUNT_ENV = {
+  projectId: ["ADMIN_SDK_PROJECT_ID", "FIREBASE_PROJECT_ID"],
+  clientEmail: ["ADMIN_SDK_CLIENT_EMAIL", "FIREBASE_CLIENT_EMAIL"],
+  privateKey: ["ADMIN_SDK_PRIVATE_KEY", "FIREBASE_PRIVATE_KEY"],
+  storageBucket: ["ADMIN_SDK_STORAGE_BUCKET", "FIREBASE_STORAGE_BUCKET", "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET"]
+} as const;
 
 /** Read at call time so Next.js does not bake runtime-only Cloud env vars into the server bundle. */
 function readRuntimeEnv(name: string): string | undefined {
   return process.env[name];
 }
 
-function hasServiceAccountEnv(): boolean {
-  return REQUIRED_SERVICE_ACCOUNT_ENV.every((key) => Boolean(readRuntimeEnv(key)?.trim()));
+function readFirstEnv(names: readonly string[]): string | undefined {
+  for (const name of names) {
+    const value = readRuntimeEnv(name)?.trim();
+    if (value) return value;
+  }
+  return undefined;
 }
 
-function getMissingServiceAccountEnv(): RequiredServiceEnvKey[] {
-  return REQUIRED_SERVICE_ACCOUNT_ENV.filter((key) => !readRuntimeEnv(key)?.trim());
+function hasServiceAccountEnv(): boolean {
+  return Boolean(
+    readFirstEnv(SERVICE_ACCOUNT_ENV.projectId) &&
+      readFirstEnv(SERVICE_ACCOUNT_ENV.clientEmail) &&
+      readFirstEnv(SERVICE_ACCOUNT_ENV.privateKey)
+  );
+}
+
+function getMissingServiceAccountEnv(): string[] {
+  const missing: string[] = [];
+  if (!readFirstEnv(SERVICE_ACCOUNT_ENV.projectId)) missing.push("ADMIN_SDK_PROJECT_ID");
+  if (!readFirstEnv(SERVICE_ACCOUNT_ENV.clientEmail)) missing.push("ADMIN_SDK_CLIENT_EMAIL");
+  if (!readFirstEnv(SERVICE_ACCOUNT_ENV.privateKey)) missing.push("ADMIN_SDK_PRIVATE_KEY");
+  return missing;
 }
 
 function shouldUseRuntimeDefaultCredentials(): boolean {
@@ -49,9 +69,8 @@ function getExistingApp(): App | null {
 }
 
 function getRuntimeProjectId(): string | undefined {
-  if (process.env.FIREBASE_PROJECT_ID?.trim()) {
-    return process.env.FIREBASE_PROJECT_ID.trim();
-  }
+  const fromAdmin = readFirstEnv(SERVICE_ACCOUNT_ENV.projectId);
+  if (fromAdmin) return fromAdmin;
   if (process.env.GCLOUD_PROJECT?.trim()) {
     return process.env.GCLOUD_PROJECT.trim();
   }
@@ -71,9 +90,7 @@ function getRuntimeProjectId(): string | undefined {
 
 function getAppInitOptions() {
   const projectId = getRuntimeProjectId();
-  const storageBucket = sanitizeBucket(
-    process.env.FIREBASE_STORAGE_BUCKET ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-  );
+  const storageBucket = sanitizeBucket(readFirstEnv(SERVICE_ACCOUNT_ENV.storageBucket));
   return {
     ...(projectId ? { projectId } : {}),
     ...(storageBucket ? { storageBucket } : {})
@@ -83,9 +100,9 @@ function getAppInitOptions() {
 function initializeWithServiceAccount(): App {
   return initializeApp({
     credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: sanitizePrivateKey(process.env.FIREBASE_PRIVATE_KEY)
+      projectId: readFirstEnv(SERVICE_ACCOUNT_ENV.projectId),
+      clientEmail: readFirstEnv(SERVICE_ACCOUNT_ENV.clientEmail),
+      privateKey: sanitizePrivateKey(readFirstEnv(SERVICE_ACCOUNT_ENV.privateKey))
     }),
     ...getAppInitOptions()
   });
@@ -95,10 +112,11 @@ function initializeWithRuntimeCredentials(): App {
   return initializeApp(getAppInitOptions());
 }
 
-function createMissingEnvError(missing: RequiredServiceEnvKey[]): Error {
+function createMissingEnvError(missing: string[]): Error {
   return new Error(
     `[firebase-admin] Missing required env vars: ${missing.join(", ")}. ` +
-      "Provide FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY."
+      "Provide ADMIN_SDK_PROJECT_ID, ADMIN_SDK_CLIENT_EMAIL, and ADMIN_SDK_PRIVATE_KEY " +
+      "(do not use the FIREBASE_ prefix — reserved by Firebase frameworks deploy)."
   );
 }
 
@@ -167,7 +185,7 @@ function createLazyServiceProxy<T extends object>(serviceName: string, factory: 
         if (!app) {
           throw new Error(
             `[firebase-admin] ${serviceName} unavailable because Admin SDK is not initialized. ` +
-              "Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY."
+              "Set ADMIN_SDK_PROJECT_ID, ADMIN_SDK_CLIENT_EMAIL, and ADMIN_SDK_PRIVATE_KEY."
           );
         }
         cachedService = factory(app);

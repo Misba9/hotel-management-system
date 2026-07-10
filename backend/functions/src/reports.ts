@@ -1,7 +1,5 @@
-import { getFirestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-
-const db = getFirestore();
+import { db } from "./admin-app";
 
 export const exportDailyOrdersCsv = onCall(async (request) => {
   if (!request.auth?.token?.role || !["manager", "admin"].includes(String(request.auth.token.role))) {

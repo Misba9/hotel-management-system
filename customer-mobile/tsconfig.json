@@ -1,12 +1,12 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
-    "noEmit": true,
-    "allowJs": true,
-    "jsx": "react-jsx",
     "lib": ["esnext", "dom"],
-    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "noEmit": true,
     "paths": {
       "@/*": ["./*"],
       "@shared/constants/*": ["../shared/constants/*"],
@@ -17,10 +17,5 @@
       "@shared/theme/*": ["../shared/theme/*"]
     }
   },
-  "include": [
-    "app/**/*.ts",
-    "app/**/*.tsx",
-    "src/**/*.ts",
-    "src/**/*.tsx"
-  ]
+  "include": ["app/**/*.ts", "app/**/*.tsx", "src/**/*.ts", "src/**/*.tsx"]
 }

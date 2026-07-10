@@ -1,7 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
-
-const db = getFirestore();
+import { FieldValue } from "firebase-admin/firestore";
+import { db } from "./admin-app";
 
 export const seedInitialData = onCall(async (request) => {
   if (!request.auth?.token?.admin) {

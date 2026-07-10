@@ -155,7 +155,7 @@ export async function GET(request: Request) {
   try {
     if (!getFirebaseAdminApp()) {
       console.error(
-        "[api/products] Firebase Admin is not initialized. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY (or GOOGLE_APPLICATION_CREDENTIALS)."
+        "[api/products] Firebase Admin is not initialized. Set ADMIN_SDK_PROJECT_ID, ADMIN_SDK_CLIENT_EMAIL, ADMIN_SDK_PRIVATE_KEY (or GOOGLE_APPLICATION_CREDENTIALS)."
       );
       return Response.json(
         {

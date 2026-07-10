@@ -91,6 +91,7 @@ export async function createUserIfNotExists(user: User): Promise<void> {
     }
     return;
   }
+  await ensureFirestoreOnline();
   const ref = doc(db, USERS, user.uid);
   await withRetry(
     async () => {
@@ -113,6 +114,7 @@ export async function createUserIfNotExists(user: User): Promise<void> {
 /** Merge login timestamp without overwriting edited profile fields. */
 export async function mergeUserLoginStamp(user: User): Promise<void> {
   if (isBrowserOffline()) return;
+  await ensureFirestoreOnline();
   await withRetry(
     () =>
       setDoc(

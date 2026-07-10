@@ -1,7 +1,5 @@
-import { getFirestore } from "firebase-admin/firestore";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
-
-const db = getFirestore();
+import { db } from "./admin-app";
 
 function norm(s: unknown): string {
   return String(s ?? "")

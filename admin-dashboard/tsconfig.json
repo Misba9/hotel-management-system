@@ -1,62 +1,27 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "baseUrl": ".",
+    "lib": ["dom", "dom.iterable", "esnext"],
     "jsx": "preserve",
-    "types": [
-      "node",
-      "react",
-      "react-dom"
-    ],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node", "react", "react-dom"],
     "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@shared/components/*": [
-        "./src/shared/components/*"
-      ],
-      "@shared/firebase/*": [
-        "../backend/firebase/*"
-      ],
-      "@shared/utils/*": [
-        "../shared/utils/*"
-      ],
-      "@shared/hooks/*": [
-        "../shared/hooks/*"
-      ],
-      "@shared/types/*": [
-        "../shared/types/*"
-      ],
-      "@shared/lib/*": [
-        "../shared/lib/*"
-      ],
-      "@shared/theme/*": [
-        "../shared/theme/*"
-      ]
-    },
     "allowJs": true,
     "noEmit": true,
-    "isolatedModules": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/components/*": ["./src/shared/components/*"],
+      "@shared/firebase/*": ["../backend/firebase/*"],
+      "@shared/utils/*": ["../shared/utils/*"],
+      "@shared/hooks/*": ["../shared/hooks/*"],
+      "@shared/types/*": ["../shared/types/*"],
+      "@shared/lib/*": ["../shared/lib/*"],
+      "@shared/theme/*": ["../shared/theme/*"]
+    },
     "strictNullChecks": true
   },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["next-env.d.ts", "src/global.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
 }

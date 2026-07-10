@@ -39,9 +39,12 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Unsupported image format. Please upload JPG or PNG." }, { status: 400 });
     }
 
-    const projectId = process.env.FIREBASE_PROJECT_ID?.trim();
+    const projectId =
+      process.env.ADMIN_SDK_PROJECT_ID?.trim() ||
+      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim() ||
+      process.env.FIREBASE_PROJECT_ID?.trim();
     if (!projectId) {
-      return Response.json({ error: "FIREBASE_PROJECT_ID is not configured." }, { status: 500 });
+      return Response.json({ error: "ADMIN_SDK_PROJECT_ID is not configured." }, { status: 500 });
     }
 
     const app = getFirebaseAdminApp();
@@ -51,7 +54,9 @@ export async function POST(request: Request): Promise<Response> {
 
     const bucketName = normalizeBucket(
       projectId,
-      process.env.FIREBASE_STORAGE_BUCKET ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+      process.env.ADMIN_SDK_STORAGE_BUCKET ??
+        process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ??
+        process.env.FIREBASE_STORAGE_BUCKET
     );
     const bucket = getStorage(app).bucket(bucketName);
     const folder =

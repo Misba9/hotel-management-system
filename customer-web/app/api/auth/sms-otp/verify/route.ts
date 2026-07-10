@@ -22,7 +22,7 @@ function otpHash(phoneE164: string, otp: string): string {
   const secret =
     process.env.SMS_OTP_SECRET ||
     process.env.WHATSAPP_OTP_SECRET ||
-    process.env.FIREBASE_PRIVATE_KEY ||
+    process.env.ADMIN_SDK_PRIVATE_KEY ||
     "fallback-otp-secret";
   return createHash("sha256").update(`${phoneE164}:${otp}:${secret}`).digest("hex");
 }

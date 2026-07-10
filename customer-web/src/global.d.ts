@@ -1,5 +1,7 @@
 import type { RecaptchaVerifier } from "firebase/auth";
 
+declare module "*.css";
+
 declare global {
   interface Window {
     /** Single phone-auth RecaptchaVerifier instance (invisible) — see `getOrCreatePhoneRecaptchaVerifier`. */

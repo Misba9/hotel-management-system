@@ -1,11 +1,10 @@
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { db } from "./admin-app";
 import { assignDeliveryAgentWhenOrderReady, DEFAULT_ASSIGNED_TO } from "./autoStaffAssignment";
 import { assertValidTransition } from "./orderStatusLifecycle";
 import { assertRole, placeOrderSchema, rateLimit, withIdempotency } from "./security";
 import { syncDeliveryTrackingDoc } from "./v1/common";
-
-const db = getFirestore();
 
 async function syncOrderFeedDoc(orderId: string, data: Record<string, unknown>, merge = true) {
   await db.collection("orderFeeds").doc(orderId).set(data, { merge });

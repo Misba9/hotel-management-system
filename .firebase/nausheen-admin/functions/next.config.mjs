@@ -1,4 +1,4 @@
-// ../admin-dashboard/next.config.mjs
+// admin-dashboard/next.config.mjs
 import nextEnv from "@next/env";
 import path from "path";
 import { fileURLToPath } from "url";

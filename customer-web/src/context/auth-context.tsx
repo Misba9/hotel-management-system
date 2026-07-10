@@ -12,7 +12,7 @@ import {
 } from "react";
 import type { User } from "firebase/auth";
 import { browserLocalPersistence, onAuthStateChanged, setPersistence, signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, logFirebaseDiagnostics } from "@/lib/firebase";
 import { AuthLoginModal } from "@/components/auth/auth-login-modal";
 import { syncUserToFirestore } from "@/lib/sync-user-to-firestore";
 
@@ -67,9 +67,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await syncUserToFirestore(u);
         } catch (err) {
-          if (process.env.NODE_ENV === "development") {
-            console.warn("[auth] syncUserToFirestore skipped:", err);
-          }
+          logFirebaseDiagnostics("auth onAuthStateChanged syncUserToFirestore", {
+            uid: u.uid,
+            message: err instanceof Error ? err.message : String(err)
+          });
         }
       })();
     });

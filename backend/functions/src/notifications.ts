@@ -16,15 +16,10 @@
  * - `paymentStatus` → REQUESTED (table) → cashiers.
  */
 
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
-import { getAuth } from "firebase-admin/auth";
-import { getMessaging } from "firebase-admin/messaging";
+import { FieldValue } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
-
-const db = getFirestore();
-const messaging = getMessaging();
-const adminAuth = getAuth();
+import { db, messaging, auth as adminAuth } from "./admin-app";
 
 type OrderDocShape = {
   status?: string;

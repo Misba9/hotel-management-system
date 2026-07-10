@@ -34,7 +34,7 @@ export async function GET() {
     result.messaging = "not_configured";
     result.functions = "not_configured";
     details.config =
-      "Firebase Admin SDK is not initialized. On Cloud Functions this should use runtime credentials; locally set FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY.";
+      "Firebase Admin SDK is not initialized. On Cloud Functions this should use runtime credentials; locally set ADMIN_SDK_PROJECT_ID/ADMIN_SDK_CLIENT_EMAIL/ADMIN_SDK_PRIVATE_KEY.";
     return Response.json(result, { status: 200 });
   }
 
@@ -68,9 +68,13 @@ export async function GET() {
   }
 
   try {
-    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const projectId =
+      process.env.ADMIN_SDK_PROJECT_ID ||
+      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+      process.env.GCLOUD_PROJECT ||
+      process.env.GOOGLE_CLOUD_PROJECT;
     if (!projectId) {
-      throw new Error("FIREBASE_PROJECT_ID not set");
+      throw new Error("ADMIN_SDK_PROJECT_ID (or NEXT_PUBLIC_FIREBASE_PROJECT_ID) not set");
     }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);

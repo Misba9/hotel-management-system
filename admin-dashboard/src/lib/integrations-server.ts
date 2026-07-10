@@ -29,7 +29,11 @@ function checkEnv(keys: string[]): EnvCheck {
 function cloudFunctionsOrigin(): string {
   const explicit = envTrim("NEXT_PUBLIC_CLOUD_FUNCTIONS_ORIGIN") ?? envTrim("CLOUD_FUNCTIONS_ORIGIN");
   if (explicit) return explicit.replace(/\/$/, "");
-  const projectId = envTrim("NEXT_PUBLIC_FIREBASE_PROJECT_ID") ?? envTrim("FIREBASE_PROJECT_ID") ?? "nausheen-fruits-new";
+  const projectId =
+    envTrim("NEXT_PUBLIC_FIREBASE_PROJECT_ID") ??
+    envTrim("ADMIN_SDK_PROJECT_ID") ??
+    envTrim("FIREBASE_PROJECT_ID") ??
+    "nausheen-fruits-new";
   return `https://us-central1-${projectId}.cloudfunctions.net`;
 }
 

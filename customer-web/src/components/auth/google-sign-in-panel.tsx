@@ -3,16 +3,25 @@
 import { useEffect, useState } from "react";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { Loader2 } from "lucide-react";
-import { auth } from "@/lib/firebase";
+import { auth, logFirebaseDiagnostics } from "@/lib/firebase";
 import { useToast } from "@/components/providers/toast-provider";
 import { GoogleMark } from "@/components/auth/google-mark";
 import { mapFirebaseAuthError } from "@/lib/firebase-auth-errors";
+import { syncUserToFirestore } from "@/lib/sync-user-to-firestore";
+
+const EXPECTED_AUTH_DOMAIN = "nausheen-fruits-new.firebaseapp.com";
+const EXPECTED_PROJECT_ID = "nausheen-fruits-new";
+const EXPECTED_REDIRECT_URI = `https://${EXPECTED_AUTH_DOMAIN}/__/auth/handler`;
 
 type GoogleSignInPanelProps = {
   onSuccess?: () => void;
   onAuthBusyChange?: (busy: boolean) => void;
 };
 
+/**
+ * Customer-web Google Sign-In — Firebase Auth ONLY.
+ * Uses GoogleAuthProvider + signInWithPopup. No GIS / gapi / manual OAuth URLs.
+ */
 export function GoogleSignInPanel({ onSuccess, onAuthBusyChange }: GoogleSignInPanelProps) {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -26,14 +35,37 @@ export function GoogleSignInPanel({ onSuccess, onAuthBusyChange }: GoogleSignInP
     setLoading(true);
     setError(null);
     try {
+      const opts = auth.app.options;
+      console.log("Firebase Project:", opts.projectId);
+      console.log("Auth Domain:", opts.authDomain);
+      console.log("App ID:", opts.appId);
+      console.log("Current URL:", typeof window !== "undefined" ? window.location.href : "(ssr)");
+      console.log("Using Popup:", true);
+      console.log("Expected Google redirect_uri:", EXPECTED_REDIRECT_URI);
+
+      if (opts.projectId !== EXPECTED_PROJECT_ID || opts.authDomain !== EXPECTED_AUTH_DOMAIN) {
+        const msg =
+          `Firebase Auth config mismatch. projectId="${opts.projectId}" authDomain="${opts.authDomain}". ` +
+          `Expected projectId="${EXPECTED_PROJECT_ID}" authDomain="${EXPECTED_AUTH_DOMAIN}". ` +
+          `Restart the Next.js server after fixing .env.local.`;
+        console.error("[Google Sign-In]", msg);
+        throw new Error(msg);
+      }
+
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
       provider.addScope("profile");
       provider.addScope("email");
 
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      await syncUserToFirestore(result.user);
       onSuccess?.();
     } catch (e) {
+      logFirebaseDiagnostics("Google signInWithPopup failed", {
+        code: e && typeof e === "object" && "code" in e ? String((e as { code?: string }).code) : "(none)",
+        message: e instanceof Error ? e.message : String(e),
+        expectedRedirectUri: EXPECTED_REDIRECT_URI
+      });
       const msg = mapFirebaseAuthError(e, "Could not sign in with Google.");
       setError(msg);
       const code = e && typeof e === "object" && "code" in e ? String((e as { code?: string }).code) : "";

@@ -1,8 +1,6 @@
-import { getFirestore } from "firebase-admin/firestore";
 import { getDistance } from "geolib";
+import { db } from "./admin-app";
 import { syncDeliveryTrackingDoc } from "./v1/common";
-
-const db = getFirestore();
 
 type RiderCandidate = {
   id: string;

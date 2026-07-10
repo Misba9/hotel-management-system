@@ -217,6 +217,7 @@ export function PhoneLoginForm({
         throw new Error("Session expired. Resend OTP.");
       }
       const credential = await confirmationRef.current.confirm(code);
+      // Auth succeeded — profile sync is best-effort (must not fail OTP on Firestore offline).
       await syncUserToFirestore(credential.user);
       clearVerifier();
       confirmationRef.current = null;

@@ -1,8 +1,6 @@
 import crypto from "node:crypto";
-import { getFirestore } from "firebase-admin/firestore";
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
-
-const db = getFirestore();
+import { db } from "./admin-app";
 
 export const verifyRazorpayPayment = onCall(async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Login required.");

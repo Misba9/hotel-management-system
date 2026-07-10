@@ -151,12 +151,65 @@ function checkFirebaseJson(firebaseJson) {
   }
 }
 
+function parseEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  const env = {};
+  for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const idx = trimmed.indexOf("=");
+    const key = trimmed.slice(0, idx).trim();
+    let value = trimmed.slice(idx + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
 function checkEnvFiles() {
   for (const app of ["customer-web", "admin-dashboard"]) {
     const prodEnv = path.join(repoRoot, app, ".env.production");
     const localEnv = path.join(repoRoot, app, ".env.local");
     if (!fs.existsSync(prodEnv) && !fs.existsSync(localEnv)) {
       warnings.push(`${app}: no .env.production or .env.local — production build may miss secrets.`);
+      continue;
+    }
+
+    const env = parseEnvFile(fs.existsSync(localEnv) ? localEnv : prodEnv) || {};
+    const authDomain = env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "";
+    const projectIdEnv = env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "";
+    const senderId = env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "";
+    const appId = env.NEXT_PUBLIC_FIREBASE_APP_ID || "";
+
+    if (projectIdEnv && projectIdEnv !== projectId) {
+      errors.push(
+        `${app}: NEXT_PUBLIC_FIREBASE_PROJECT_ID="${projectIdEnv}" must be "${projectId}" (Google Sign-In / Auth).`
+      );
+    }
+    if (authDomain && !authDomain.endsWith(".firebaseapp.com")) {
+      errors.push(
+        `${app}: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="${authDomain}" must be *.firebaseapp.com ` +
+          `(custom brand domains cause Google redirect_uri_mismatch unless Custom Auth Domain is configured).`
+      );
+    }
+    if (authDomain && projectIdEnv && authDomain !== `${projectIdEnv}.firebaseapp.com`) {
+      errors.push(
+        `${app}: authDomain "${authDomain}" must match projectId → "${projectIdEnv}.firebaseapp.com".`
+      );
+    }
+    const appIdParts = appId.split(":");
+    if (appIdParts.length >= 2 && senderId && appIdParts[1] !== senderId) {
+      errors.push(
+        `${app}: APP_ID project number (${appIdParts[1]}) !== MESSAGING_SENDER_ID (${senderId}).`
+      );
+    }
+    if (authDomain === `${projectId}.firebaseapp.com`) {
+      info.push(`${app}: authDomain OK (${authDomain})`);
     }
   }
 
@@ -177,7 +230,19 @@ function printDnsGuide() {
   info.push("  2) CNAME admin → ghs.googlehosted.com OR site-specific target from Firebase Console");
   info.push("  3) SSL certificates are provisioned automatically by Firebase (allow up to 24h)");
   info.push("--- Firebase Auth authorized domains ---");
-  info.push(`  Add: ${domains.customer}, www.${domains.customer}, ${domains.admin}`);
+  info.push(`  Add: localhost, 127.0.0.1, ${domains.customer}, www.${domains.customer}, ${domains.admin}`);
+  info.push(`  Add: ${projectId}.firebaseapp.com, ${projectId}.web.app`);
+  info.push("--- Google Cloud OAuth (Web client) ---");
+  info.push("  Authorized JavaScript origins:");
+  info.push("    http://localhost:3000");
+  info.push("    http://localhost:3001");
+  info.push(`    https://${domains.customer}`);
+  info.push(`    https://www.${domains.customer}`);
+  info.push(`    https://${domains.admin}`);
+  info.push(`    https://${projectId}.firebaseapp.com`);
+  info.push(`    https://${projectId}.web.app`);
+  info.push("  Authorized redirect URIs (required for Google Sign-In):");
+  info.push(`    https://${projectId}.firebaseapp.com/__/auth/handler`);
 }
 
 function main() {
