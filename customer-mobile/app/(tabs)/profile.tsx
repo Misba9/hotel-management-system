@@ -16,7 +16,8 @@ const MENU: MenuItem[] = [
   { icon: "pricetag-outline", label: "Coupons", href: "/coupons" },
   { icon: "notifications-outline", label: "Notifications", href: "/notifications" },
   { icon: "settings-outline", label: "Settings", href: "/settings" },
-  { icon: "help-circle-outline", label: "Help & Support", href: "/help" }
+  { icon: "help-circle-outline", label: "Help & Support", href: "/help" },
+  { icon: "bug-outline", label: "Firebase debug", href: "/firebase-debug" }
 ];
 
 export default function ProfileScreen() {

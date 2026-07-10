@@ -38,6 +38,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (isSplash) return;
 
     if (!isAuthenticated && !inAuthGroup) {
+      // Allow Firebase debug without login while diagnosing OTP / network issues.
+      if (pathname === "/firebase-debug") return;
       router.replace("/auth/login");
       return;
     }
@@ -88,6 +90,7 @@ export default function RootLayout() {
                 <Stack.Screen name="addresses" options={{ animation: "slide_from_right" }} />
                 <Stack.Screen name="settings" options={{ animation: "slide_from_right" }} />
                 <Stack.Screen name="help" options={{ animation: "slide_from_right" }} />
+                <Stack.Screen name="firebase-debug" options={{ animation: "slide_from_right" }} />
               </Stack>
               <OfflineBanner />
               <FcmBootstrap />

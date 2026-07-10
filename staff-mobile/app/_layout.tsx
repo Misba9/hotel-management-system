@@ -1,3 +1,4 @@
+import "expo-dev-client";
 import "react-native-gesture-handler";
 import NetInfo from "@react-native-community/netinfo";
 import { Stack, usePathname, useRootNavigationState, useRouter } from "expo-router";

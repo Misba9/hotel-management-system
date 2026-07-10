@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nausheen — Google Sign-In</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        display: flex;
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        background: #f8fafc;
+        color: #0f172a;
+        text-align: center;
+        padding: 24px;
+      }
+      p { max-width: 28rem; line-height: 1.5; color: #475569; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Nausheen Fruits</h1>
+      <p id="status">Opening Google sign-in…</p>
+    </main>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+      import {
+        getAuth,
+        GoogleAuthProvider,
+        signInWithPopup
+      } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+      const statusEl = document.getElementById("status");
+      const params = new URLSearchParams(location.search);
+      const redirect = params.get("redirect") || "";
+
+      function allowed(url) {
+        try {
+          const u = new URL(url);
+          return u.protocol === "nausheen-customer:" || u.protocol === "exp:" || u.protocol === "exps:";
+        } catch {
+          return false;
+        }
+      }
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyALjFLpZYo4cCPYTls0JGxbqOZzcPBzch0",
+        authDomain: "nausheen-fruits-new.firebaseapp.com",
+        projectId: "nausheen-fruits-new",
+        storageBucket: "nausheen-fruits-new.firebasestorage.app",
+        messagingSenderId: "611343650554",
+        appId: "1:611343650554:android:dccdea64063f0ff4df4343"
+      };
+
+      async function run() {
+        if (!allowed(redirect)) {
+          statusEl.textContent = "Open this page from the Nausheen customer app.";
+          return;
+        }
+        try {
+          const app = initializeApp(firebaseConfig, "mobile-google-static");
+          const auth = getAuth(app);
+          const provider = new GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: "select_account" });
+          provider.addScope("profile");
+          provider.addScope("email");
+          const result = await signInWithPopup(auth, provider);
+          const cred = GoogleAuthProvider.credentialFromResult(result);
+          const idToken = cred?.idToken;
+          if (!idToken) throw new Error("No Google ID token returned.");
+          statusEl.textContent = "Returning to the app…";
+          const target = new URL(redirect);
+          target.searchParams.set("id_token", idToken);
+          target.searchParams.set("provider", "google");
+          location.href = target.toString();
+        } catch (e) {
+          statusEl.textContent = e?.message || "Google sign-in failed.";
+        }
+      }
+
+      run();
+    </script>
+  </body>
+</html>

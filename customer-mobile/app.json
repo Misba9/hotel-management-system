@@ -5,7 +5,9 @@
     "scheme": "nausheen-customer",
     "version": "1.0.0",
     "orientation": "portrait",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "plugins": [
       [
         "expo-notifications",
@@ -15,14 +17,18 @@
         }
       ],
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-apple-authentication",
+      "@react-native-google-signin/google-signin"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hotel.customerapp"
+      "bundleIdentifier": "com.hotel.customerapp",
+      "usesAppleSignIn": true
     },
     "android": {
-      "package": "com.hotel.customerapp",
+      "package": "com.hotel.customermobile",
       "googleServicesFile": "./google-services.json"
     },
     "extra": {

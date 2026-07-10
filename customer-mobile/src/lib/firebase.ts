@@ -1,13 +1,17 @@
-import { getAuth, initializeAuth } from "@firebase/auth";
+/**
+ * Auth (RN persistence) + Firestore db from `src/services/firebase.ts`.
+ *
+ * Import order matters: firebaseApp must be created before initializeAuth so
+ * Auth registers against the same @firebase/app singleton (see metro.config.js).
+ */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
-import type { Persistence } from "firebase/auth";
+import {
+  getAuth,
+  getReactNativePersistence,
+  initializeAuth
+} from "firebase/auth";
 import { firebaseApp, firestoreDb } from "../services/firebase";
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { getReactNativePersistence } = require("@firebase/auth") as {
-  getReactNativePersistence: (storage: typeof AsyncStorage) => Persistence;
-};
 
 function initCustomerAuth() {
   if (Platform.OS === "web") {
