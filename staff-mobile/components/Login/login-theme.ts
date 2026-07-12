@@ -1,5 +1,7 @@
 import { Platform, type TextStyle, type ViewStyle } from "react-native";
 
+import { BREAKPOINTS, getLoginFormMaxWidth, responsivePadding } from "../../src/lib/responsive";
+
 export const loginColors = {
   bg: "#0B1020",
   bgAccent: "rgba(255,255,255,0.04)",
@@ -32,8 +34,7 @@ export const loginWebText: TextStyle =
     ? ({
         whiteSpace: "normal",
         wordBreak: "normal",
-        overflowWrap: "break-word",
-        maxWidth: "100%"
+        overflowWrap: "break-word"
       } as TextStyle)
     : {};
 
@@ -66,21 +67,37 @@ export function loginButtonGradient(): ViewStyle {
   return { backgroundColor: loginColors.primary };
 }
 
-export const DESKTOP_BREAKPOINT = 992;
+/** Tablet+ two-column layout (brand left, form right) */
+export const TABLET_BREAKPOINT = BREAKPOINTS.tablet;
 
-export function loginGridLayout(isDesktop: boolean): ViewStyle {
-  if (Platform.OS !== "web") {
-    return isDesktop
-      ? { flexDirection: "row", alignItems: "center", gap: 48, width: "100%" }
-      : { width: "100%" };
+export function loginGridLayout(width: number, isTabletLayout: boolean): ViewStyle {
+  if (!isTabletLayout) {
+    return { width: "100%", flex: 1 };
   }
-  return isDesktop
-    ? ({
-        display: "grid",
-        width: "100%",
-        gridTemplateColumns: "1fr 420px",
-        gap: 48,
-        alignItems: "center"
-      } as unknown as ViewStyle)
-    : ({ width: "100%" } as ViewStyle);
+
+  const gap = width >= BREAKPOINTS.largeTablet ? 64 : 48;
+  const formWidth = getLoginFormMaxWidth(width);
+
+  if (Platform.OS === "web") {
+    return {
+      display: "grid",
+      width: "100%",
+      flex: 1,
+      gridTemplateColumns: `minmax(0, 1fr) minmax(280px, ${formWidth}px)`,
+      gap,
+      alignItems: "center"
+    } as unknown as ViewStyle;
+  }
+
+  return {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    flex: 1,
+    gap
+  };
+}
+
+export function loginHorizontalPadding(width: number): number {
+  return responsivePadding(width);
 }

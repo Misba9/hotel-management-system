@@ -15,11 +15,15 @@ import {
 
 import { DeliveryCard } from "../DeliveryCard";
 import { fetchDeliveryByOrderId, fetchOrderByTokenNumber, subscribeAssignedDeliveries, type DeliveryRow } from "../../services/delivery";
+import { useResponsiveLayout } from "../../src/hooks/use-responsive-layout";
+import { getGridColumnCount } from "../../src/lib/responsive";
 
 type DeliveryHomeTab = "runs" | "start";
 
 export function DeliveryHomeView() {
   const router = useRouter();
+  const { padding, width } = useResponsiveLayout();
+  const listColumns = getGridColumnCount(width, { phone: 1, tablet: 2, largeTablet: 3 });
   const [tab, setTab] = useState<DeliveryHomeTab>("runs");
   const [rows, setRows] = useState<DeliveryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,9 +90,9 @@ export function DeliveryHomeView() {
 
       {tab === "runs" ? (
         <View style={styles.flex}>
-          <Text style={styles.heading}>Deliveries</Text>
-          <Text style={styles.sub}>Assigned to you — live from the deliveries collection.</Text>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Text style={[styles.heading, { paddingHorizontal: padding }]}>Deliveries</Text>
+          <Text style={[styles.sub, { paddingHorizontal: padding }]}>Assigned to you — live from the deliveries collection.</Text>
+          {error ? <Text style={[styles.error, { paddingHorizontal: padding }]}>{error}</Text> : null}
           {loading && rows.length === 0 ? (
             <View style={styles.loaderWrap}>
               <ActivityIndicator size="large" color="#0f172a" />
@@ -96,9 +100,16 @@ export function DeliveryHomeView() {
           ) : null}
           <FlatList
             data={rows}
+            key={listColumns}
+            numColumns={listColumns}
             keyExtractor={(r) => r.id}
-            contentContainerStyle={styles.list}
-            renderItem={({ item }) => <DeliveryCard row={item} />}
+            contentContainerStyle={[styles.list, { paddingHorizontal: padding }]}
+            columnWrapperStyle={listColumns > 1 ? styles.listRow : undefined}
+            renderItem={({ item }) => (
+              <View style={listColumns > 1 ? styles.listCell : styles.listCellFull}>
+                <DeliveryCard row={item} />
+              </View>
+            )}
             ListEmptyComponent={
               !loading ? (
                 <Text style={styles.empty}>No orders available</Text>
@@ -110,30 +121,32 @@ export function DeliveryHomeView() {
         </View>
       ) : (
         <KeyboardAvoidingView
-          style={styles.startWrap}
+          style={[styles.startWrap, { paddingHorizontal: padding }]}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <Text style={styles.heading}>Start by token</Text>
-          <Text style={styles.sub}>Enter the kitchen token from the receipt to open the assigned run.</Text>
-          <TextInput
-            value={tokenText}
-            onChangeText={setTokenText}
-            placeholder="Token #"
-            keyboardType="number-pad"
-            style={styles.input}
-            editable={!lookupBusy}
-          />
-          <Pressable
-            onPress={() => void onLookup()}
-            disabled={lookupBusy}
-            style={({ pressed }) => [
-              styles.btn,
-              lookupBusy && styles.btnDisabled,
-              pressed && !lookupBusy && styles.pressed
-            ]}
-          >
-            {lookupBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Open delivery</Text>}
-          </Pressable>
+          <View style={styles.startInner}>
+            <Text style={styles.heading}>Start by token</Text>
+            <Text style={styles.sub}>Enter the kitchen token from the receipt to open the assigned run.</Text>
+            <TextInput
+              value={tokenText}
+              onChangeText={setTokenText}
+              placeholder="Token #"
+              keyboardType="number-pad"
+              style={styles.input}
+              editable={!lookupBusy}
+            />
+            <Pressable
+              onPress={() => void onLookup()}
+              disabled={lookupBusy}
+              style={({ pressed }) => [
+                styles.btn,
+                lookupBusy && styles.btnDisabled,
+                pressed && !lookupBusy && styles.pressed
+              ]}
+            >
+              {lookupBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Open delivery</Text>}
+            </Pressable>
+          </View>
         </KeyboardAvoidingView>
       )}
     </View>
@@ -141,14 +154,15 @@ export function DeliveryHomeView() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#f8fafc" },
-  flex: { flex: 1 },
+  screen: { flex: 1, width: "100%", backgroundColor: "#f8fafc" },
+  flex: { flex: 1, width: "100%" },
   tabRow: {
     flexDirection: "row",
     gap: 8,
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 8
+    paddingBottom: 8,
+    width: "100%"
   },
   tabBtn: {
     flex: 1,
@@ -162,13 +176,17 @@ const styles = StyleSheet.create({
   tabBtnOn: { backgroundColor: "#0f172a", borderColor: "#0f172a" },
   tabText: { fontSize: 15, fontWeight: "800", color: "#475569" },
   tabTextOn: { color: "#fff" },
-  heading: { fontSize: 24, fontWeight: "800", color: "#0f172a", paddingHorizontal: 16, paddingTop: 8 },
-  sub: { fontSize: 14, color: "#64748b", paddingHorizontal: 16, marginBottom: 8 },
-  error: { color: "#b91c1c", paddingHorizontal: 16, marginBottom: 8 },
-  list: { paddingBottom: 24 },
+  heading: { fontSize: 24, fontWeight: "800", color: "#0f172a", paddingTop: 8 },
+  sub: { fontSize: 14, color: "#64748b", marginBottom: 8 },
+  error: { color: "#b91c1c", marginBottom: 8 },
+  list: { paddingBottom: 24, width: "100%" },
+  listRow: { gap: 10 },
+  listCell: { flex: 1, minWidth: 0 },
+  listCellFull: { width: "100%" },
   empty: { textAlign: "center", marginTop: 48, color: "#64748b", fontSize: 15 },
   loaderWrap: { paddingVertical: 24, alignItems: "center" },
-  startWrap: { flex: 1, padding: 16, paddingTop: 20 },
+  startWrap: { flex: 1, paddingTop: 20, width: "100%" },
+  startInner: { width: "100%" },
   input: {
     backgroundColor: "#fff",
     borderWidth: 1,

@@ -12,7 +12,10 @@ import {
 } from "react";
 import type { User } from "firebase/auth";
 import { useAuth } from "@/context/auth-context";
-import { isFirebaseClientConfigured } from "@/lib/firebase";
+import {
+  isFirebaseClientConfigured,
+  isFirestoreInternalAssertionError
+} from "@/lib/firebase";
 import {
   getUser,
   type FirestoreUserProfile
@@ -58,7 +61,11 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     }
     if (!isFirebaseClientConfigured()) return;
     try {
-      const p = await withRetry(() => getUser(user.uid), { maxAttempts: 3, baseDelayMs: 400 });
+      const p = await withRetry(() => getUser(user.uid), {
+        maxAttempts: 2,
+        baseDelayMs: 400,
+        shouldRetry: (err) => !isFirestoreInternalAssertionError(err)
+      });
       if (p) {
         setProfile(p);
         setError(null);
@@ -66,6 +73,11 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
         setProfile(fallbackProfileFromAuth(user));
       }
     } catch (e) {
+      if (isFirestoreInternalAssertionError(e)) {
+        setProfile((prev) => prev ?? fallbackProfileFromAuth(user));
+        setError("Connection issue — refresh the page if data looks stale.");
+        return;
+      }
       const msg = e instanceof Error ? e.message : "Could not load profile.";
       setError(msg);
       console.error("[user-profile] refreshProfile", e);

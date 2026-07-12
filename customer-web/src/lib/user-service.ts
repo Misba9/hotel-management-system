@@ -15,9 +15,20 @@ import {
 import { CUSTOMERS_COLLECTION } from "@/lib/customer-doc-sync";
 import type { DeliveryAddress } from "@/lib/delivery-address-types";
 import { parseAddressesField } from "@/lib/parse-embedded-addresses";
-import { db, ensureFirestoreOnline, safeGetDoc } from "@/lib/firebase";
+import {
+  db,
+  ensureFirestoreOnline,
+  isFirestoreInternalAssertionError,
+  isOfflineLikeFirestoreError,
+  safeGetDoc
+} from "@/lib/firebase";
 import { summarizeOrderItems } from "@shared/utils/order-items-summary";
 import { withRetry } from "@shared/utils/retry";
+
+function shouldRetryFirestoreWrite(error: unknown): boolean {
+  if (isFirestoreInternalAssertionError(error)) return false;
+  return isOfflineLikeFirestoreError(error);
+}
 
 const USERS = "users";
 const ORDERS = "orders";
@@ -83,7 +94,11 @@ export function mapUserProfileFromDoc(uid: string, data: Record<string, unknown>
   };
 }
 
-/** Create `users/{uid}` only if missing (initial signup / first sign-in). */
+/**
+ * Upsert `users/{uid}` on sign-in via write-only `setDoc({ merge })`.
+ * Avoids cold `getDoc` (Firestore ca9 / b815 — firebase-js-sdk#9267 / #10008).
+ * Does not set `createdAt` so existing accounts keep their original timestamp.
+ */
 export async function createUserIfNotExists(user: User): Promise<void> {
   if (isBrowserOffline()) {
     if (process.env.NODE_ENV !== "production") {
@@ -94,43 +109,28 @@ export async function createUserIfNotExists(user: User): Promise<void> {
   await ensureFirestoreOnline();
   const ref = doc(db, USERS, user.uid);
   await withRetry(
-    async () => {
-      const snap = await safeGetDoc(ref);
-      if (snap.exists()) return;
-      await setDoc(ref, {
-        uid: user.uid,
-        name: user.displayName?.trim() || "",
-        email: user.email || "",
-        phone: user.phoneNumber?.trim() || "",
-        role: "customer",
-        address: null,
-        createdAt: serverTimestamp()
-      });
-    },
-    { maxAttempts: 3, baseDelayMs: 500 }
-  );
-}
-
-/** Merge login timestamp without overwriting edited profile fields. */
-export async function mergeUserLoginStamp(user: User): Promise<void> {
-  if (isBrowserOffline()) return;
-  await ensureFirestoreOnline();
-  await withRetry(
     () =>
       setDoc(
-        doc(db, USERS, user.uid),
+        ref,
         {
           uid: user.uid,
           name: user.displayName?.trim() || "",
           email: user.email || "",
           phone: user.phoneNumber?.trim() || "",
+          role: "customer",
+          // createdAt omitted on merge so existing accounts keep their original value.
           lastLoginAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         },
         { merge: true }
       ),
-    { maxAttempts: 3, baseDelayMs: 500 }
+    { maxAttempts: 2, baseDelayMs: 500, shouldRetry: shouldRetryFirestoreWrite }
   );
+}
+
+/** @deprecated Prefer createUserIfNotExists (same write-only merge). */
+export async function mergeUserLoginStamp(user: User): Promise<void> {
+  return createUserIfNotExists(user);
 }
 
 /** Ensure user doc exists, record login, return profile for UI. */

@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: posSpacing.lg
   },
-  cancelModal: { width: "100%", maxWidth: 360, padding: posSpacing.xl, gap: 8 },
+  cancelModal: { width: "100%", padding: posSpacing.xl, gap: 8 },
   reasonRow: {
     paddingVertical: 14,
     paddingHorizontal: posSpacing.md,

@@ -6,8 +6,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  View,
-  useWindowDimensions
+  View
 } from "react-native";
 import { useRouter } from "expo-router";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
@@ -17,6 +16,8 @@ import { useAuthStore } from "../../../store/useAuthStore";
 import { staffDb } from "../../lib/firebase";
 import { subscribeStaffDirectory, type StaffDirectoryRow } from "../../../services/manager";
 import { useManagerModule } from "./manager-module-context";
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
+import { getGridColumnCount, getMetricCardBasis } from "../../lib/responsive";
 
 function toDate(value: unknown): Date {
   if (value && typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
@@ -100,6 +101,7 @@ function ManagerScaffold({
 }) {
   const { colors } = useMobileTheme();
   const { isOnline, fromCache, lastSyncAt, refresh } = useManagerModule();
+  const { padding } = useResponsiveLayout();
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -108,7 +110,8 @@ function ManagerScaffold({
           styles.headerCard,
           {
             backgroundColor: colors.surface,
-            borderColor: colors.border
+            borderColor: colors.border,
+            marginHorizontal: padding
           }
         ]}
       >
@@ -154,7 +157,7 @@ function ManagerScaffold({
           ) : null}
         </View>
       </View>
-      {children}
+      <View style={{ flex: 1, width: "100%", paddingHorizontal: padding }}>{children}</View>
     </View>
   );
 }
@@ -163,6 +166,8 @@ export function ManagerDashboardScreen() {
   const { colors } = useMobileTheme();
   const router = useRouter();
   const { orders, kitchenOrders, tables, loading, error } = useManagerModule();
+  const { padding, width } = useResponsiveLayout();
+  const metricBasis = getMetricCardBasis(width);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -202,7 +207,10 @@ export function ManagerDashboardScreen() {
           ].map(([label, value, icon]) => (
             <View
               key={label}
-              style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              style={[
+                styles.metricCard,
+                { backgroundColor: colors.surface, borderColor: colors.border, flexBasis: metricBasis }
+              ]}
             >
               <MaterialCommunityIcons name={icon as any} size={18} color={colors.primary} />
               <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>{label}</Text>
@@ -512,8 +520,9 @@ export function ManagerTablesScreen() {
   const { colors } = useMobileTheme();
   const router = useRouter();
   const { tables, loading } = useManagerModule();
-  const { width } = useWindowDimensions();
-  const numColumns = width >= 900 ? 4 : width >= 600 ? 3 : 2;
+  const { width, padding } = useResponsiveLayout();
+  const numColumns = getGridColumnCount(width, { phone: 2, tablet: 3, largeTablet: 4 });
+  const gridGap = 10;
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [tableFilter, setTableFilter] = useState<"all" | "available" | "occupied" | "reserved" | "cleaning">("all");
   const [waiters, setWaiters] = useState<StaffDirectoryRow[]>([]);
@@ -1258,6 +1267,8 @@ export function ManagerNotificationsScreen() {
 export function ManagerReportsScreen() {
   const { colors } = useMobileTheme();
   const { orders } = useManagerModule();
+  const { width } = useResponsiveLayout();
+  const metricBasis = getMetricCardBasis(width);
 
   const report = useMemo(() => {
     const now = new Date();
@@ -1346,19 +1357,19 @@ export function ManagerReportsScreen() {
     <ManagerScaffold title="Reports" subtitle="Lightweight mobile reports with compact charts">
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.metricGrid}>
-          <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border, flexBasis: metricBasis }]}>
             <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Today's Sales</Text>
             <Text style={[styles.metricValue, { color: colors.textPrimary }]}>₹{Math.round(report.todaySales)}</Text>
           </View>
-          <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border, flexBasis: metricBasis }]}>
             <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Today's Orders</Text>
             <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{report.todayOrdersCount}</Text>
           </View>
-          <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border, flexBasis: metricBasis }]}>
             <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Revenue</Text>
             <Text style={[styles.metricValue, { color: colors.textPrimary }]}>₹{Math.round(report.revenue)}</Text>
           </View>
-          <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border, flexBasis: metricBasis }]}>
             <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Average Bill</Text>
             <Text style={[styles.metricValue, { color: colors.textPrimary }]}>₹{Math.round(report.averageBill)}</Text>
           </View>
@@ -1440,9 +1451,8 @@ export function ManagerReportsScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: { flex: 1, width: "100%" },
   headerCard: {
-    marginHorizontal: 14,
     marginTop: 10,
     marginBottom: 8,
     borderWidth: 1,
@@ -1466,16 +1476,17 @@ const styles = StyleSheet.create({
   badge: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5 },
   badgeText: { fontSize: 11, fontWeight: "700" },
   syncText: { fontSize: 11, fontWeight: "600" },
-  content: { paddingHorizontal: 14, paddingBottom: 32, gap: 10 },
+  content: { paddingBottom: 32, gap: 10, width: "100%" },
   error: { fontSize: 12, fontWeight: "700" },
-  ordersToolbar: { marginHorizontal: 14, borderWidth: 1, borderRadius: 18, padding: 10, gap: 8 },
+  ordersToolbar: { borderWidth: 1, borderRadius: 18, padding: 10, gap: 8 },
   searchInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, fontWeight: "500" },
   filterRow: { flexDirection: "row", gap: 8 },
   filterChip: { borderWidth: 1, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 12 },
   filterChipText: { fontSize: 12, fontWeight: "700" },
   metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   metricCard: {
-    width: "48%",
+    flexGrow: 1,
+    minWidth: 140,
     borderRadius: 20,
     borderWidth: 1,
     padding: 12,
@@ -1484,7 +1495,8 @@ const styles = StyleSheet.create({
   quickCard: { borderRadius: 20, borderWidth: 1, padding: 12, marginTop: 2 },
   quickGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 2 },
   quickAction: {
-    width: "48%",
+    flexGrow: 1,
+    minWidth: 140,
     borderRadius: 14,
     borderWidth: 1,
     paddingVertical: 10,

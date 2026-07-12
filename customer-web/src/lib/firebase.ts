@@ -10,8 +10,7 @@ import {
   getDocFromCache,
   getFirestore,
   initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
+  memoryLocalCache,
   type Firestore,
   type FirestoreSettings
 } from "firebase/firestore";
@@ -51,9 +50,14 @@ function resolveAuthDomain(projectId: string, rawAuthDomain: string): string {
 
 /**
  * Customer web Firebase — `initializeApp` once (`getApps()` guard).
- * Browser: `initializeFirestore` + long polling + `useFetchStreams: false` (stable behind proxies/VPNs).
- * Server / RSC: `getFirestore` only.
- * Opt out: `NEXT_PUBLIC_FIRESTORE_LONG_POLLING=false`.
+ *
+ * Firestore uses in-memory cache (not IndexedDB multi-tab persistence).
+ * Forced long-polling + persistentMultipleTabManager caused production crashes:
+ * FIRESTORE INTERNAL ASSERTION FAILED (ID: ca9, ve: -1) after Google Sign-In.
+ * See firebase-js-sdk#9267.
+ *
+ * Opt-in long polling only when needed: NEXT_PUBLIC_FIRESTORE_LONG_POLLING=true
+ * (uses experimentalAutoDetectLongPolling, never experimentalForceLongPolling).
  */
 function buildFirebaseConfig() {
   const projectId = trimEnv(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) || EXPECTED_PROJECT_ID;
@@ -113,21 +117,18 @@ function createFirestoreInstance(): Firestore {
     return getFirestore(app);
   }
 
-  const useLongPolling = process.env.NEXT_PUBLIC_FIRESTORE_LONG_POLLING !== "false";
-  if (!useLongPolling) {
-    return getFirestore(app);
-  }
-
-  const settings: FirestoreSettings & { useFetchStreams?: boolean } = {
-    experimentalForceLongPolling: true,
-    useFetchStreams: false,
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager()
-    })
+  const settings: FirestoreSettings = {
+    localCache: memoryLocalCache()
   };
 
+  // Prefer auto-detect over force — force + persistence caused ca9 assertions in production.
+  if (process.env.NEXT_PUBLIC_FIRESTORE_LONG_POLLING === "true") {
+    (settings as FirestoreSettings & { experimentalAutoDetectLongPolling?: boolean }).experimentalAutoDetectLongPolling =
+      true;
+  }
+
   try {
-    return initializeFirestore(app, settings as FirestoreSettings);
+    return initializeFirestore(app, settings);
   } catch {
     return getFirestore(app);
   }
@@ -177,18 +178,29 @@ export function logFirebaseConfigDebug(): void {
   if (typeof window === "undefined" || process.env.NODE_ENV === "production") return;
   console.info("[firebase] config", getFirebaseClientDiagnostics());
 }
-const ENSURE_FIRESTORE_ONLINE_CAP_MS = 8_000;
 
+const ENSURE_FIRESTORE_ONLINE_CAP_MS = 8_000;
+let firestoreNetworkReady: Promise<void> | null = null;
+
+/**
+ * Wake Firestore once per page load. Repeated enableNetwork() calls have been
+ * linked to b815 assertions (firebase-js-sdk#9968).
+ */
 export async function ensureFirestoreOnline(): Promise<void> {
   if (typeof window === "undefined") return;
-  try {
-    await Promise.race([
-      enableNetwork(db),
-      new Promise<void>((resolve) => setTimeout(resolve, ENSURE_FIRESTORE_ONLINE_CAP_MS))
-    ]);
-  } catch {
-    /* already enabled or transient */
+  if (!firestoreNetworkReady) {
+    firestoreNetworkReady = (async () => {
+      try {
+        await Promise.race([
+          enableNetwork(db),
+          new Promise<void>((resolve) => setTimeout(resolve, ENSURE_FIRESTORE_ONLINE_CAP_MS))
+        ]);
+      } catch {
+        /* already enabled or transient */
+      }
+    })();
   }
+  await firestoreNetworkReady;
 }
 
 if (typeof window !== "undefined") {
@@ -198,7 +210,14 @@ if (typeof window !== "undefined") {
   }
 }
 
+/** SDK hardAssert failures (e.g. ca9 / b815) — AsyncQueue is dead; retries make it worse. */
+export function isFirestoreInternalAssertionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /INTERNAL ASSERTION FAILED/i.test(message) || /\(ID:\s*(ca9|b815)\)/i.test(message);
+}
+
 export function isOfflineLikeFirestoreError(error: unknown): boolean {
+  if (isFirestoreInternalAssertionError(error)) return false;
   if (error instanceof FirebaseError) {
     if (error.code === "unavailable") return true;
     if (/offline/i.test(error.message)) return true;
@@ -223,18 +242,25 @@ export async function tryGetDocFromCache<T extends DocumentData>(
 }
 
 /**
- * Network getDoc with online wake-up + retries.
- * Handles the common "Failed to get document because the client is offline" case
- * after tab sleep / long-polling stalls.
+ * Network getDoc with online wake-up + limited retries.
+ * Does not retry Firestore INTERNAL ASSERTION failures (client is unrecoverable until reload).
  */
 export async function safeGetDoc<T extends DocumentData>(
   ref: DocumentReference<T>,
-  retries = 3
+  retries = 2
 ): Promise<DocumentSnapshot<T>> {
   await ensureFirestoreOnline();
   try {
     return await getDoc(ref);
   } catch (error) {
+    if (isFirestoreInternalAssertionError(error)) {
+      logFirebaseDiagnostics("safeGetDoc aborted — Firestore internal assertion (reload required)", {
+        path: ref.path,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+
     const code =
       typeof error === "object" && error && "code" in error
         ? String((error as { code?: unknown }).code)

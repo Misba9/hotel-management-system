@@ -385,7 +385,7 @@ export function ManagerDashboardView() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#f8fafc" },
+  screen: { flex: 1, width: "100%", backgroundColor: "#f8fafc" },
   headerBlock: { paddingBottom: 8 },
   heading: { fontSize: 24, fontWeight: "800", color: "#0f172a", paddingHorizontal: 16, paddingTop: 16 },
   sub: { fontSize: 13, color: "#64748b", paddingHorizontal: 16, marginBottom: 10, lineHeight: 18 },
@@ -418,7 +418,8 @@ const styles = StyleSheet.create({
   mono: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
   staffRow: { flexDirection: "row", gap: 10, paddingVertical: 4 },
   staffChip: {
-    width: 132,
+    minWidth: 132,
+    flexGrow: 1,
     padding: 10,
     borderRadius: 12,
     backgroundColor: "#f8fafc",

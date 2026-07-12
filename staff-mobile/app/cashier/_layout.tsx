@@ -82,8 +82,8 @@ export default function CashierLayout() {
 }
 
 const styles = StyleSheet.create({
-  actions: { flexDirection: "row", alignItems: "center", gap: 2, maxWidth: 280 },
-  userText: { fontSize: 12, color: "#94a3b8", marginRight: 4, maxWidth: 120 },
+  actions: { flexDirection: "row", alignItems: "center", gap: 2, flexShrink: 1 },
+  userText: { fontSize: 12, color: "#94a3b8", marginRight: 4, flexShrink: 1 },
   profileBtn: { paddingHorizontal: 10, paddingVertical: 6 },
   profileText: { fontSize: 15, fontWeight: "700", color: "#3b82f6" },
   logoutBtn: { paddingHorizontal: 10, paddingVertical: 6 },

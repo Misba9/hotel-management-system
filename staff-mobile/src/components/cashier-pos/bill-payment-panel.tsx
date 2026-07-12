@@ -767,7 +767,6 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: "100%",
-    maxWidth: 400,
     ...posCard(),
     padding: posSpacing.lg,
     gap: posSpacing.sm

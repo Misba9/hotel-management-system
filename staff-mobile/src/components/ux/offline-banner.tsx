@@ -1,13 +1,17 @@
 import React from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import { useNetworkStatus } from "../../hooks/use-network-status";
+
 /**
  * Floating banner when the device has no usable network (native; hidden on web if NetInfo is limited).
  */
 export function OfflineBanner() {
   const { isOnline } = useNetworkStatus();
   const insets = useSafeAreaInsets();
+  const { padding } = useResponsiveLayout();
 
   if (isOnline) return null;
 
@@ -17,7 +21,8 @@ export function OfflineBanner() {
       style={[
         styles.wrap,
         {
-          paddingTop: Platform.OS === "web" ? 8 : Math.max(insets.top, 8)
+          paddingTop: Platform.OS === "web" ? 8 : Math.max(insets.top, 8),
+          paddingHorizontal: padding
         }
       ]}
     >
@@ -36,11 +41,10 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     zIndex: 1000,
-    alignItems: "center",
-    paddingHorizontal: 12
+    alignItems: "stretch",
+    width: "100%"
   },
   pill: {
-    maxWidth: 400,
     width: "100%",
     backgroundColor: "#1e293b",
     borderRadius: 14,

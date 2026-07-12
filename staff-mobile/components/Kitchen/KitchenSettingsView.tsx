@@ -1,14 +1,16 @@
 import React from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Switch, Text, View } from "react-native";
 
+import { useResponsiveLayout } from "../../src/hooks/use-responsive-layout";
 import { useKitchenAutoPrintSetting } from "../../src/hooks/use-kitchen-auto-print-setting";
 
 export function KitchenSettingsView() {
   const { autoPrintEnabled, autoPrintReady, savingAutoPrint, setAutoPrintEnabled } =
     useKitchenAutoPrintSetting();
+  const { padding } = useResponsiveLayout();
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { padding }]}>
       <Text style={styles.heading}>Kitchen Settings</Text>
       <Text style={styles.sub}>Configure how tickets behave on this device.</Text>
 
@@ -48,7 +50,7 @@ export function KitchenSettingsView() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#0f172a", padding: 16 },
+  screen: { flex: 1, width: "100%", backgroundColor: "#0f172a" },
   heading: { fontSize: 28, fontWeight: "900", color: "#f8fafc", marginBottom: 6 },
   sub: { fontSize: 14, color: "#94a3b8", marginBottom: 16, lineHeight: 20 },
   card: {
@@ -56,7 +58,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#334155",
-    padding: 16
+    padding: 16,
+    width: "100%"
   },
   row: { flexDirection: "row", alignItems: "center", gap: 12 },
   copy: { flex: 1, minWidth: 0 },

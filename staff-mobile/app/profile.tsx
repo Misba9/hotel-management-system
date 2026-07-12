@@ -5,6 +5,8 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { MobileThemeSwitcher } from "../../shared/theme/react-native/MobileThemeSwitcher";
 import { useThemeColors } from "../../shared/theme/react-native/MobileThemeProvider";
+import { ResponsiveScreen } from "../src/components/layout/responsive-screen";
+import { useResponsiveLayout } from "../src/hooks/use-responsive-layout";
 import { roleHomeHref } from "../src/lib/staff-role-home";
 import { staffAuth } from "../src/lib/firebase";
 import { logout as signOutStaff } from "../services/auth";
@@ -22,6 +24,7 @@ const ROLE_LABEL: Record<StaffRoleId, string> = {
 export default function ProfileScreen() {
   const colors = useThemeColors();
   const router = useRouter();
+  const { padding } = useResponsiveLayout();
   const [authUser, setAuthUser] = useState<User | null>(staffAuth.currentUser);
   const [loading, setLoading] = useState(true);
   const [submittingLogout, setSubmittingLogout] = useState(false);
@@ -31,13 +34,15 @@ export default function ProfileScreen() {
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        screen: { flex: 1, backgroundColor: colors.background, padding: 20 },
+        screen: { flex: 1, width: "100%", backgroundColor: colors.background },
+        inner: { width: "100%" },
         centered: {
           flex: 1,
+          width: "100%",
           backgroundColor: colors.background,
           alignItems: "center",
           justifyContent: "center",
-          padding: 20
+          padding: padding
         },
         stateTitle: { fontSize: 22, fontWeight: "800", color: colors.textPrimary, marginBottom: 8 },
         stateText: { fontSize: 14, color: colors.textSecondary, textAlign: "center", marginTop: 10, marginBottom: 16 },
@@ -86,7 +91,7 @@ export default function ProfileScreen() {
         logoutText: { color: "#fff", fontWeight: "800", fontSize: 16 },
         themeSection: { marginTop: 20 }
       }),
-    [colors]
+    [colors, padding]
   );
 
   useEffect(() => onAuthStateChanged(staffAuth, setAuthUser), []);
@@ -207,35 +212,37 @@ export default function ProfileScreen() {
   const loadedProfile = profileResult.profile;
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.top}>
-        <Pressable onPress={goHome} hitSlop={12}>
-          <Text style={styles.back}>← Home</Text>
+    <ResponsiveScreen style={{ backgroundColor: colors.background }} scroll contentContainerStyle={{ paddingVertical: padding }}>
+      <View style={styles.inner}>
+        <View style={styles.top}>
+          <Pressable onPress={goHome} hitSlop={12}>
+            <Text style={styles.back}>← Home</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.title}>Profile</Text>
+        <View style={styles.card}>
+          <View style={styles.badgeRow}>
+            <View style={[styles.badge, roleColor]}>
+              <Text style={styles.badgeText}>{roleLabel}</Text>
+            </View>
+          </View>
+          <Text style={styles.label}>Name</Text>
+          <Text style={styles.value}>{loadedProfile.name}</Text>
+          <Text style={[styles.label, { marginTop: 16 }]}>Phone</Text>
+          <Text style={styles.value}>{phoneNumber}</Text>
+          <Text style={[styles.label, { marginTop: 16 }]}>Role</Text>
+          <Text style={styles.value}>{roleLabel}</Text>
+          <Text style={[styles.label, { marginTop: 16 }]}>Email</Text>
+          <Text style={styles.value}>{loadedProfile.email || authUser.email || "Not available"}</Text>
+        </View>
+        <View style={styles.themeSection}>
+          <MobileThemeSwitcher />
+        </View>
+        {renderRoleAction()}
+        <Pressable style={styles.logout} onPress={() => void onLogout()} disabled={submittingLogout}>
+          <Text style={styles.logoutText}>{submittingLogout ? "Signing out..." : "Sign out"}</Text>
         </Pressable>
       </View>
-      <Text style={styles.title}>Profile</Text>
-      <View style={styles.card}>
-        <View style={styles.badgeRow}>
-          <View style={[styles.badge, roleColor]}>
-            <Text style={styles.badgeText}>{roleLabel}</Text>
-          </View>
-        </View>
-        <Text style={styles.label}>Name</Text>
-        <Text style={styles.value}>{loadedProfile.name}</Text>
-        <Text style={[styles.label, { marginTop: 16 }]}>Phone</Text>
-        <Text style={styles.value}>{phoneNumber}</Text>
-        <Text style={[styles.label, { marginTop: 16 }]}>Role</Text>
-        <Text style={styles.value}>{roleLabel}</Text>
-        <Text style={[styles.label, { marginTop: 16 }]}>Email</Text>
-        <Text style={styles.value}>{loadedProfile.email || authUser.email || "Not available"}</Text>
-      </View>
-      <View style={styles.themeSection}>
-        <MobileThemeSwitcher />
-      </View>
-      {renderRoleAction()}
-      <Pressable style={styles.logout} onPress={() => void onLogout()} disabled={submittingLogout}>
-        <Text style={styles.logoutText}>{submittingLogout ? "Signing out..." : "Sign out"}</Text>
-      </Pressable>
-    </View>
+    </ResponsiveScreen>
   );
 }

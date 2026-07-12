@@ -161,7 +161,8 @@ const styles = StyleSheet.create({
   orderCard: { padding: posSpacing.md, marginBottom: 2 },
   orderCardBottom: {
     padding: posSpacing.md,
-    width: 168,
+    minWidth: 168,
+    flexGrow: 1,
     minHeight: 148,
     marginRight: posSpacing.sm
   },

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 
 import { KitchenHistoryPanel } from "./KitchenHistoryPanel";
@@ -16,6 +16,8 @@ import {
 } from "../../services/orders";
 import { useKitchenAutoPrintSetting } from "../../src/hooks/use-kitchen-auto-print-setting";
 import { useKitchenStageOrders } from "../../src/hooks/use-kitchen-stage-orders";
+import { useResponsiveLayout } from "../../src/hooks/use-responsive-layout";
+import { getGridColumnCount } from "../../src/lib/responsive";
 import type { KitchenStage } from "../../src/lib/kitchen-order-mapper";
 import type { KitchenOrder } from "../../src/lib/kitchen-kds";
 import { useNetworkStatus } from "../../src/hooks/use-network-status";
@@ -38,6 +40,8 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
 
 export function KitchenView() {
   const { isOnline } = useNetworkStatus();
+  const { padding, isTablet, width } = useResponsiveLayout();
+  const readyColumns = getGridColumnCount(width, { phone: 1, tablet: 2, largeTablet: 3 });
   const [stage, setStage] = useState<KitchenStage>("active");
   const { autoPrintEnabled, autoPrintReady, reloadAutoPrintSetting } = useKitchenAutoPrintSetting();
   const { orders, historyOrders, rowsById, counts, loading, error } = useKitchenStageOrders(stage, isOnline);
@@ -205,21 +209,21 @@ export function KitchenView() {
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.heading}>Kitchen</Text>
-      <Text style={styles.sub}>{connectionLabel}</Text>
+      <Text style={[styles.heading, { paddingHorizontal: padding }]}>Kitchen</Text>
+      <Text style={[styles.sub, { paddingHorizontal: padding }]}>{connectionLabel}</Text>
 
-      {!isOnline ? <Text style={styles.banner}>No connection</Text> : null}
-      {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+      {!isOnline ? <Text style={[styles.banner, { marginHorizontal: padding }]}>No connection</Text> : null}
+      {error ? <Text style={[styles.errorBanner, { marginHorizontal: padding }]}>{error}</Text> : null}
       {statusMessage ? (
         <Pressable onPress={() => setStatusMessage(null)}>
-          <Text style={styles.successBanner}>{statusMessage}</Text>
+          <Text style={[styles.successBanner, { marginHorizontal: padding }]}>{statusMessage}</Text>
         </Pressable>
       ) : null}
 
       <KitchenNav stage={stage} counts={counts} onStageChange={setStage} />
 
       {loading ? (
-        <View style={styles.loadingWrap}>
+        <View style={[styles.loadingWrap, { paddingHorizontal: padding }]}>
           <ActivityIndicator size="small" color="#cbd5e1" />
           <Text style={styles.state}>Loading tickets…</Text>
         </View>
@@ -228,9 +232,14 @@ export function KitchenView() {
       ) : stage === "ready" ? (
         <FlatList
           data={readyOrders}
+          key={readyColumns}
+          numColumns={readyColumns}
           keyExtractor={(o) => o.orderId}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => renderCard(item, true)}
+          contentContainerStyle={[styles.list, { paddingHorizontal: padding }]}
+          columnWrapperStyle={readyColumns > 1 ? styles.readyRow : undefined}
+          renderItem={({ item }) => (
+            <View style={readyColumns > 1 ? styles.readyCell : undefined}>{renderCard(item, true)}</View>
+          )}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyTitle}>No orders ready</Text>
@@ -238,6 +247,22 @@ export function KitchenView() {
             </View>
           }
         />
+      ) : isTablet ? (
+        <ScrollView contentContainerStyle={[styles.list, styles.tabletActive, { paddingHorizontal: padding }]}>
+          {activeListData.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyTitle}>No active orders</Text>
+              <Text style={styles.emptyHint}>New and in-progress tickets appear here</Text>
+            </View>
+          ) : (
+            activeListData.map((section) => (
+              <View key={section.key} style={styles.tabletColumn}>
+                <SectionHeader title={section.title} count={section.orders.length} />
+                {section.orders.map((order) => renderCard(order, false))}
+              </View>
+            ))
+          )}
+        </ScrollView>
       ) : (
         <FlatList
           data={activeListData}
@@ -262,25 +287,22 @@ export function KitchenView() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#0f172a" },
+  screen: { flex: 1, width: "100%", backgroundColor: "#0f172a" },
   heading: {
     fontSize: 28,
     fontWeight: "900",
     color: "#f8fafc",
-    paddingHorizontal: 16,
     paddingTop: 16
   },
   sub: {
     fontSize: 14,
     color: "#94a3b8",
-    paddingHorizontal: 16,
     marginBottom: 8,
     lineHeight: 20
   },
   banner: {
     color: "#f8fafc",
     backgroundColor: "#334155",
-    marginHorizontal: 16,
     marginBottom: 8,
     borderRadius: 10,
     paddingVertical: 8,
@@ -291,7 +313,6 @@ const styles = StyleSheet.create({
   errorBanner: {
     color: "#fecaca",
     backgroundColor: "#7f1d1d",
-    marginHorizontal: 16,
     marginBottom: 8,
     borderRadius: 10,
     paddingVertical: 8,
@@ -302,7 +323,6 @@ const styles = StyleSheet.create({
   successBanner: {
     color: "#ccfbf1",
     backgroundColor: "#134e4a",
-    marginHorizontal: 16,
     marginBottom: 8,
     borderRadius: 10,
     paddingVertical: 8,
@@ -310,9 +330,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "600"
   },
-  loadingWrap: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, marginBottom: 8 },
+  loadingWrap: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
   state: { color: "#cbd5e1", fontSize: 14 },
-  list: { paddingBottom: 32 },
+  list: { paddingBottom: 32, width: "100%" },
+  tabletActive: { flexDirection: "row", flexWrap: "wrap", gap: 12, alignItems: "flex-start" },
+  tabletColumn: { flex: 1, minWidth: 280 },
+  readyRow: { gap: 10 },
+  readyCell: { flex: 1, minWidth: 0 },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",

@@ -1,7 +1,19 @@
 import type { User } from "firebase/auth";
 import { collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
-import { db, ensureFirestoreOnline, safeGetDoc } from "@/lib/firebase";
+import {
+  db,
+  ensureFirestoreOnline,
+  isFirestoreInternalAssertionError,
+  isOfflineLikeFirestoreError,
+  logFirebaseDiagnostics,
+  safeGetDoc
+} from "@/lib/firebase";
 import { withRetry } from "@shared/utils/retry";
+
+function shouldRetryFirestoreWrite(error: unknown): boolean {
+  if (isFirestoreInternalAssertionError(error)) return false;
+  return isOfflineLikeFirestoreError(error);
+}
 
 export const CUSTOMERS_COLLECTION = "customers";
 
@@ -55,56 +67,45 @@ function primaryDocToCustomerAddress(data: Record<string, unknown>): CustomerDoc
  */
 export async function mirrorUserAddressesToCustomerDoc(userId: string): Promise<void> {
   if (isBrowserOffline()) return;
-  await ensureFirestoreOnline();
 
-  const byId = new Map<string, CustomerDocAddress>();
-  const colSnap = await getDocs(collection(db, "users", userId, "addresses"));
-  colSnap.forEach((d) => {
-    const row = subDocToCustomerAddress(d.id, d.data() as Record<string, unknown>);
-    if (row) byId.set(row.id, row);
-  });
+  try {
+    await ensureFirestoreOnline();
 
-  if (byId.size === 0) {
-    const primarySnap = await safeGetDoc(doc(db, "users", userId, "address", "default"));
-    if (primarySnap.exists()) {
-      const row = primaryDocToCustomerAddress(primarySnap.data() as Record<string, unknown>);
+    const byId = new Map<string, CustomerDocAddress>();
+    const colSnap = await getDocs(collection(db, "users", userId, "addresses"));
+    colSnap.forEach((d) => {
+      const row = subDocToCustomerAddress(d.id, d.data() as Record<string, unknown>);
       if (row) byId.set(row.id, row);
+    });
+
+    if (byId.size === 0) {
+      const primarySnap = await safeGetDoc(doc(db, "users", userId, "address", "default"));
+      if (primarySnap.exists()) {
+        const row = primaryDocToCustomerAddress(primarySnap.data() as Record<string, unknown>);
+        if (row) byId.set(row.id, row);
+      }
     }
-  }
 
-  const addresses = [...byId.values()];
-  const customerRef = doc(db, CUSTOMERS_COLLECTION, userId);
-  const existing = await safeGetDoc(customerRef);
-  const userSnap = await safeGetDoc(doc(db, "users", userId));
-  const urow = userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : {};
-
-  if (!existing.exists()) {
+    // Write-only merge — no customer/user getDoc (avoids Firestore ca9 on login).
     await setDoc(
-      customerRef,
+      doc(db, CUSTOMERS_COLLECTION, userId),
       {
         uid: userId,
-        name: String(urow.name ?? urow.fullName ?? "").trim(),
-        email: String(urow.email ?? "").trim(),
-        phone: String(urow.phone ?? "").trim(),
-        addresses,
-        createdAt: serverTimestamp(),
-        lastLoginAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        totalOrders: 0
+        addresses: [...byId.values()],
+        updatedAt: serverTimestamp()
       },
       { merge: true }
     );
-    return;
+  } catch (error) {
+    if (isFirestoreInternalAssertionError(error)) {
+      logFirebaseDiagnostics("mirrorUserAddressesToCustomerDoc aborted — internal assertion", {
+        userId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return;
+    }
+    throw error;
   }
-
-  await setDoc(
-    customerRef,
-    {
-      addresses,
-      updatedAt: serverTimestamp()
-    },
-    { merge: true }
-  );
 }
 
 function readProfileBasics(user: User, userRow: Record<string, unknown> | undefined) {
@@ -121,58 +122,31 @@ function readProfileBasics(user: User, userRow: Record<string, unknown> | undefi
 }
 
 /**
- * Upsert `customers/{uid}` on sign-in: create if missing (with `totalOrders: 0`), else merge phone/profile + `lastLoginAt`.
+ * Upsert `customers/{uid}` on sign-in via write-only merge (Auth profile fields only).
+ * Avoids cold `getDoc` that triggers Firestore ca9 after Google Sign-In.
  */
 export async function upsertCustomerOnLogin(user: User): Promise<void> {
   if (isBrowserOffline()) return;
+
+  const basics = readProfileBasics(user, undefined);
 
   await withRetry(
     async () => {
       await ensureFirestoreOnline();
       const uid = user.uid;
-      const userRef = doc(db, "users", uid);
-      const customerRef = doc(db, CUSTOMERS_COLLECTION, uid);
-      const [userSnap, customerSnap] = await Promise.all([safeGetDoc(userRef), safeGetDoc(customerRef)]);
-      const basics = readProfileBasics(
-        user,
-        userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : undefined
-      );
-
-      if (!customerSnap.exists()) {
-        await setDoc(customerRef, {
+      await setDoc(
+        doc(db, CUSTOMERS_COLLECTION, uid),
+        {
           uid,
           name: basics.name,
           email: basics.email,
           phone: basics.phone,
-          addresses: [] as CustomerDocAddress[],
-          createdAt: serverTimestamp(),
           lastLoginAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          totalOrders: 0
-        });
-        return;
-      }
-
-      const prev = customerSnap.data() as Record<string, unknown>;
-      const prevPhone = String(prev.phone ?? "").trim();
-      const phone = basics.phone || prevPhone;
-      const totalOrders =
-        typeof prev.totalOrders === "number" && Number.isFinite(prev.totalOrders) ? prev.totalOrders : 0;
-
-      await setDoc(
-        customerRef,
-        {
-          uid,
-          name: basics.name || String(prev.name ?? ""),
-          email: basics.email || String(prev.email ?? ""),
-          phone,
-          lastLoginAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          totalOrders
+          updatedAt: serverTimestamp()
         },
         { merge: true }
       );
     },
-    { maxAttempts: 3, baseDelayMs: 400 }
+    { maxAttempts: 2, baseDelayMs: 400, shouldRetry: shouldRetryFirestoreWrite }
   );
 }

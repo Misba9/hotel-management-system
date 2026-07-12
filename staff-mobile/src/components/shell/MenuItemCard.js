@@ -58,8 +58,8 @@ export function MenuItemRow({ name, price, onAdd, currency = "₹" }) {
 
 const styles = StyleSheet.create({
   wrap: {
-    width: "47%",
-    maxWidth: 200,
+    flexGrow: 1,
+    minWidth: 140,
     borderRadius: 16,
     padding: 12,
     backgroundColor: shell.surface,

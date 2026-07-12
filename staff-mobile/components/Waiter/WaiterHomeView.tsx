@@ -22,7 +22,6 @@ import {
   Text,
   TouchableWithoutFeedback,
   UIManager,
-  useWindowDimensions,
   View
 } from "react-native";
 
@@ -34,6 +33,8 @@ import {
 } from "../../services/orders";
 import { patchWaiterTable, subscribeAllTables, type FloorTable } from "../../services/tables";
 import { staffAuth } from "../../src/lib/firebase";
+import { useResponsiveLayout } from "../../src/hooks/use-responsive-layout";
+import { getGridCellWidth, getGridColumnCount } from "../../src/lib/responsive";
 import { useAuthStore } from "../../store/useAuthStore";
 
 type WaiterTab = "tables" | "orders" | "history";
@@ -98,7 +99,7 @@ function fallbackTableLabel(order: StaffOrderRow): string {
 
 export function WaiterHomeView() {
   const router = useRouter();
-  const { width: winWidth } = useWindowDimensions();
+  const { width: winWidth, padding } = useResponsiveLayout();
   const role = useAuthStore((s) => s.role);
   const profile = useAuthStore((s) => s.profile);
   const user = useAuthStore((s) => s.user);
@@ -237,10 +238,10 @@ export function WaiterHomeView() {
     }
   }, [tables, ordersLoading, activePosCountByTableId]);
 
-  const gridColumns = winWidth >= 960 ? 4 : winWidth >= 700 ? 3 : 2;
+  const gridColumns = getGridColumnCount(winWidth, { phone: 2, tablet: 3, largeTablet: 4 });
   const gridGap = 10;
-  const gridPad = 16;
-  const cellWidth = (winWidth - gridPad * 2 - gridGap * (gridColumns - 1)) / gridColumns;
+  const gridPad = padding;
+  const cellWidth = getGridCellWidth(winWidth, gridColumns, gridPad, gridGap);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -349,7 +350,7 @@ export function WaiterHomeView() {
             numColumns={gridColumns}
             keyExtractor={(t) => t.id}
             columnWrapperStyle={gridColumns > 1 ? styles.gridRow : undefined}
-            contentContainerStyle={styles.gridContent}
+            contentContainerStyle={[styles.gridContent, { paddingHorizontal: gridPad }]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             renderItem={({ item }) => (
               <View style={{ width: cellWidth }}>
@@ -529,7 +530,7 @@ export function WaiterHomeView() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#f8fafc" },
+  screen: { flex: 1, width: "100%", backgroundColor: "#f8fafc" },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -539,14 +540,16 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
-    backgroundColor: "#ffffff"
+    backgroundColor: "#ffffff",
+    width: "100%"
   },
   topBarTitle: { fontSize: 22, fontWeight: "800", color: "#0f172a" },
   profileTrigger: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    maxWidth: "62%",
+    flexShrink: 1,
+    maxWidth: "70%",
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 999,
@@ -572,7 +575,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16
   },
   dropdownMenu: {
-    width: 170,
+    minWidth: 170,
     borderRadius: 14,
     backgroundColor: "#ffffff",
     borderWidth: 1,
@@ -592,10 +595,11 @@ const styles = StyleSheet.create({
   tabRow: {
     flexDirection: "row",
     gap: 8,
-    alignSelf: "center",
+    alignSelf: "stretch",
     justifyContent: "center",
     marginTop: 12,
     marginBottom: 8,
+    marginHorizontal: 16,
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 999,
@@ -605,6 +609,7 @@ const styles = StyleSheet.create({
     minHeight: 48
   },
   tabBtn: {
+    flex: 1,
     minWidth: 92,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -623,7 +628,7 @@ const styles = StyleSheet.create({
   },
   tabText: { fontSize: 14, fontWeight: "700", color: "#64748b" },
   tabTextOn: { color: "#ffffff" },
-  panel: { flex: 1 },
+  panel: { flex: 1, width: "100%" },
   heading: { fontSize: 24, fontWeight: "800", color: "#0f172a", paddingHorizontal: 16, paddingTop: 8 },
   sub: { fontSize: 14, color: "#64748b", paddingHorizontal: 16, marginBottom: 8 },
   error: { color: "#b91c1c", paddingHorizontal: 16, marginBottom: 8 },

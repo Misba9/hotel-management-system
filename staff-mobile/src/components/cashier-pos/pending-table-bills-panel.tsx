@@ -83,7 +83,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", paddingRight: space.lg },
   cardSpacing: { marginRight: space.md },
   card: {
-    width: 168,
+    minWidth: 168,
+    flexGrow: 1,
     backgroundColor: staffColors.surface,
     borderRadius: radius.md,
     padding: space.md,

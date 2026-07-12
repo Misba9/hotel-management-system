@@ -1,5 +1,6 @@
 import React from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import type { PosNotification } from "./pos-types";
 import { PosIcon } from "./pos-icons";
 import { posCard, posColors, posRadius, posSpacing, posType } from "./pos-theme";
@@ -37,10 +38,13 @@ export function PosNotificationsBell({ unreadCount, onPress }: { unreadCount: nu
 }
 
 export function PosNotificationsPanel({ visible, notifications, onClose, onMarkRead }: Props) {
+  const { width, padding, isTablet } = useResponsiveLayout();
+  const panelWidth = isTablet ? Math.min(width * 0.42, 480) : width - padding * 2;
+
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={[posCard(true), styles.panel]} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={[posCard(true), styles.panel, { width: panelWidth }]} onPress={(e) => e.stopPropagation()}>
           <View style={styles.header}>
             <Text style={posType.h3}>Notifications</Text>
             <Pressable onPress={onMarkRead}>
@@ -86,7 +90,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 56,
     right: 16,
-    width: 340,
     maxHeight: 420,
     overflow: "hidden"
   },

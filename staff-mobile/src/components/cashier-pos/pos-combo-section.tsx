@@ -41,7 +41,7 @@ function ComboCard({ combo, products, onAdd }: { combo: ComboDeal; products: Men
 
 const styles = StyleSheet.create({
   row: { paddingHorizontal: posSpacing.lg, paddingVertical: posSpacing.sm, gap: posSpacing.md },
-  card: { width: 180, padding: posSpacing.md },
+  card: { flexGrow: 1, minWidth: 160, padding: posSpacing.md },
   badge: { fontSize: 9, fontWeight: "800", color: posColors.warning, marginBottom: 4 },
   price: { fontSize: 20, fontWeight: "900", color: posColors.primary, marginTop: posSpacing.sm },
   add: { fontSize: 11, fontWeight: "800", color: posColors.success, marginTop: 6 }

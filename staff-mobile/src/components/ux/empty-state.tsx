@@ -1,5 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import { staffColors } from "../../theme/staff-ui";
 import { elevation, radius, space } from "../../theme/design-tokens";
 
@@ -10,8 +12,10 @@ type Props = {
 };
 
 export const EmptyState = React.memo(function EmptyState({ icon = "📭", title, subtitle }: Props) {
+  const { padding } = useResponsiveLayout();
+
   return (
-    <View style={styles.wrap} accessibilityRole="text">
+    <View style={[styles.wrap, { paddingHorizontal: padding }]} accessibilityRole="text">
       <View style={styles.card}>
         <Text style={styles.icon} accessibilityLabel="">
           {icon}
@@ -25,14 +29,14 @@ export const EmptyState = React.memo(function EmptyState({ icon = "📭", title,
 
 const styles = StyleSheet.create({
   wrap: {
+    flex: 1,
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: space.xxl,
-    paddingHorizontal: space.lg
+    paddingVertical: space.xxl
   },
   card: {
     alignItems: "center",
-    maxWidth: 320,
     width: "100%",
     backgroundColor: staffColors.surface,
     borderRadius: radius.lg,

@@ -134,7 +134,6 @@ const styles = StyleSheet.create({
   },
   panel: {
     width: "100%",
-    maxWidth: 480,
     borderRadius: posRadius.xl,
     padding: posSpacing.xl
   },

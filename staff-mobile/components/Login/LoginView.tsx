@@ -12,7 +12,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
   type ViewStyle
 } from "react-native";
@@ -20,13 +19,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuthStore } from "../../store/useAuthStore";
 import { friendlyAuthMessage } from "./auth-messages";
+import { useResponsiveLayout } from "../../src/hooks/use-responsive-layout";
 import {
-  DESKTOP_BREAKPOINT,
   loginButtonGradient,
   loginCardShadow,
   loginColors,
   loginFont,
   loginGridLayout,
+  loginHorizontalPadding,
   loginRadius,
   loginWebText
 } from "./login-theme";
@@ -286,19 +286,12 @@ const LoginFormCard = memo(function LoginFormCard({
   );
 });
 
-function horizontalPadding(width: number): number {
-  if (width >= 1440) return 64;
-  if (width >= 1024) return 48;
-  if (width >= 768) return 32;
-  return 20;
-}
-
 export function LoginView() {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
-  const { width, height } = useWindowDimensions();
+  const { width, height, isTablet, loginFormMaxWidth } = useResponsiveLayout();
   const insets = useSafeAreaInsets();
-  const isDesktop = width >= DESKTOP_BREAKPOINT;
+  const isTabletLayout = isTablet;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -311,9 +304,17 @@ export function LoginView() {
   const [canRetry, setCanRetry] = useState(false);
   const submitLock = useRef(false);
 
-  const padX = horizontalPadding(width);
+  const padX = loginHorizontalPadding(width);
 
-  const gridStyle = useMemo(() => loginGridLayout(isDesktop), [isDesktop]);
+  const gridStyle = useMemo(() => loginGridLayout(width, isTabletLayout), [width, isTabletLayout]);
+
+  const formColumnStyle = useMemo(
+    (): ViewStyle =>
+      isTabletLayout
+        ? { width: "100%", maxWidth: loginFormMaxWidth, flexShrink: 0, flexGrow: 0 }
+        : { width: "100%", flex: 1 },
+    [isTabletLayout, loginFormMaxWidth]
+  );
 
   const webScreenStyle = useMemo(
     (): ViewStyle =>
@@ -401,7 +402,7 @@ export function LoginView() {
   }, [busy, email, login, logout, password, persistRememberEmail, rememberMe]);
 
   const formProps: LoginFormProps = {
-    showMobileBrand: !isDesktop,
+    showMobileBrand: !isTabletLayout,
     hotelName: HOTEL_NAME,
     onSubmit: () => void onSubmit(),
     busy,
@@ -444,6 +445,7 @@ export function LoginView() {
           styles.scrollContent,
           {
             paddingHorizontal: padX,
+            width: "100%",
             minHeight: Platform.OS === "web" ? ("100%" as unknown as number) : Math.max(height - insets.top - insets.bottom, 0)
           }
         ]}
@@ -452,9 +454,13 @@ export function LoginView() {
         bounces={false}
       >
         <View style={[styles.page, gridStyle]}>
-          {isDesktop ? <LoginBrandPanel hotelName={HOTEL_NAME} /> : null}
+          {isTabletLayout ? (
+            <View style={styles.brandColumn}>
+              <LoginBrandPanel hotelName={HOTEL_NAME} />
+            </View>
+          ) : null}
 
-          <View style={styles.formColumn}>
+          <View style={[styles.formColumn, formColumnStyle]}>
             <LoginFormCard {...formProps} />
           </View>
         </View>
@@ -476,20 +482,20 @@ const styles = StyleSheet.create({
   },
   bgGlowTop: {
     position: "absolute",
-    top: -140,
-    right: -100,
-    width: 420,
-    height: 420,
+    top: "-18%",
+    right: "-12%",
+    width: "55%",
+    aspectRatio: 1,
     borderRadius: 999,
     backgroundColor: loginColors.primaryGlow,
     opacity: 0.55
   },
   bgGlowBottom: {
     position: "absolute",
-    bottom: -120,
-    left: -80,
-    width: 360,
-    height: 360,
+    bottom: "-15%",
+    left: "-10%",
+    width: "48%",
+    aspectRatio: 1,
     borderRadius: 999,
     backgroundColor: "rgba(56,189,248,0.1)"
   },
@@ -501,14 +507,17 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
-    alignItems: "center",
     width: "100%",
     paddingVertical: 32
   },
   page: {
     width: "100%",
-    maxWidth: 1200,
-    alignSelf: "center"
+    flex: 1
+  },
+  brandColumn: {
+    flex: 1,
+    minWidth: 0,
+    width: "100%"
   },
   brandPanel: {
     width: "100%",
@@ -568,7 +577,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     color: loginColors.textSecondary,
-    maxWidth: 420,
+    width: "100%",
     ...loginWebText
   },
   illustrationWrap: {
@@ -582,8 +591,7 @@ const styles = StyleSheet.create({
     backgroundColor: loginColors.bgAccent,
     padding: 24,
     gap: 8,
-    width: "100%",
-    maxWidth: 480
+    width: "100%"
   },
   illustrationIconWrap: {
     width: 44,
@@ -609,8 +617,7 @@ const styles = StyleSheet.create({
   },
   featureList: {
     gap: 12,
-    width: "100%",
-    maxWidth: 480
+    width: "100%"
   },
   featureRow: {
     flexDirection: "row",
@@ -636,19 +643,10 @@ const styles = StyleSheet.create({
   },
   formColumn: {
     width: "100%",
-    minWidth: Platform.OS === "web" ? 280 : undefined,
-    maxWidth: 420,
-    alignSelf: "center",
-    ...(Platform.OS === "web"
-      ? ({
-          justifySelf: "center",
-          flexShrink: 0
-        } as object)
-      : null)
+    ...(Platform.OS === "web" ? ({ justifySelf: "stretch" } as object) : null)
   },
   card: {
     width: "100%",
-    minWidth: 280,
     borderRadius: loginRadius.card,
     borderWidth: 1,
     borderColor: loginColors.cardBorder,

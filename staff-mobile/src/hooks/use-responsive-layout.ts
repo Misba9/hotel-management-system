@@ -4,6 +4,8 @@ import {
   BREAKPOINTS,
   getBillSplitRatio,
   getCategorySidebarWidth,
+  getGridColumnCount,
+  getLoginFormMaxWidth,
   getProductGridColumns,
   getResponsiveTier,
   hp,
@@ -40,12 +42,14 @@ export type ResponsiveLayout = {
   /** Full-screen bill on phone portrait */
   showMobileBillTabs: boolean;
   productColumns: number;
+  gridColumns: number;
   billSplitRatio: number;
   categorySidebarWidth: number | "100%";
   padding: number;
   radius: number;
   iconSize: number;
   minTouch: number;
+  loginFormMaxWidth: number;
   productFonts: ReturnType<typeof productCardFonts>;
   wp: (percent: number) => number;
   hp: (percent: number) => number;
@@ -77,12 +81,14 @@ export function useResponsiveLayout(): ResponsiveLayout {
       showSplitBill: splitBill,
       showMobileBillTabs: phone && !landscape,
       productColumns: getProductGridColumns(width, landscape),
+      gridColumns: getGridColumnCount(width),
       billSplitRatio: getBillSplitRatio(width),
       categorySidebarWidth: getCategorySidebarWidth(width),
       padding: responsivePadding(width),
       radius: responsiveRadius(width),
       iconSize: responsiveIconSize(width),
       minTouch: touchTarget(48),
+      loginFormMaxWidth: getLoginFormMaxWidth(width),
       productFonts: productCardFonts(width),
       wp: (percent: number) => wp(percent, width),
       hp: (percent: number) => hp(percent, height),
