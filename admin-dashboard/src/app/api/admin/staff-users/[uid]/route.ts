@@ -156,17 +156,25 @@ export async function DELETE(request: Request, context: { params: { uid: string 
       return Response.json({ error: "Staff user not found." }, { status: 404, headers: NO_STORE });
     }
 
-    await ref.delete();
-    await adminDb.collection("users").doc(uid).delete().catch(() => undefined);
-
+    // Delete the Auth account first: if this fails we abort before touching Firestore,
+    // so we never leave an orphaned Auth account that blocks re-adding the same email.
     try {
       await adminAuth.deleteUser(uid);
     } catch (e) {
       const code = (e as { code?: string })?.code;
-      if (code !== "auth/user-not-found" && process.env.NODE_ENV !== "production") {
-        console.error("[staff-users DELETE] auth delete:", e);
+      if (code !== "auth/user-not-found") {
+        if (process.env.NODE_ENV !== "production") {
+          console.error("[staff-users DELETE] auth delete:", e);
+        }
+        return Response.json(
+          { error: "Failed to delete the authentication account. Please try again." },
+          { status: 500, headers: NO_STORE }
+        );
       }
     }
+
+    await ref.delete();
+    await adminDb.collection("users").doc(uid).delete().catch(() => undefined);
 
     return Response.json({ success: true }, { status: 200, headers: NO_STORE });
   } catch (error) {

@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -37,6 +38,7 @@ const HOTEL_NAME = process.env.EXPO_PUBLIC_HOTEL_NAME?.trim() || "Nausheen Fruit
 const BRANCH_NAME = process.env.EXPO_PUBLIC_BRANCH_NAME?.trim() || "Main Branch";
 const SAAS_NAME = "Fruit Hotel Platform";
 const APP_VERSION = "v1.0";
+const STAFF_LOGO = require("../../assets/staff-mobile-logo.png");
 
 const FEATURES = [
   { icon: "restaurant-outline" as const, label: "Live order queue & kitchen tracking" },
@@ -49,9 +51,7 @@ const LoginBrandPanel = memo(function LoginBrandPanel({ hotelName }: { hotelName
     <View style={styles.brandPanel} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <View style={styles.brandTop}>
         <View style={styles.logoMark}>
-          <Text style={styles.logoEmoji} accessibilityLabel="Restaurant logo">
-            🍊
-          </Text>
+          <Image source={STAFF_LOGO} style={styles.logoImage} resizeMode="cover" accessibilityLabel="Restaurant logo" />
         </View>
         <Text style={styles.brandRestaurant}>{hotelName}</Text>
         <Text style={styles.brandTagline}>{BRANCH_NAME}</Text>
@@ -135,7 +135,7 @@ const LoginFormCard = memo(function LoginFormCard({
       {showMobileBrand ? (
         <View style={styles.mobileBrand}>
           <View style={styles.logoMarkSmall}>
-            <Text style={styles.logoEmojiSmall}>🍊</Text>
+            <Image source={STAFF_LOGO} style={styles.logoImageSmall} resizeMode="cover" accessibilityLabel="Restaurant logo" />
           </View>
           <View style={styles.mobileBrandText}>
             <Text style={styles.mobileRestaurant}>{hotelName}</Text>
@@ -533,28 +533,22 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: loginColors.bgAccent,
-    borderWidth: 1,
-    borderColor: loginColors.cardBorder,
-    alignItems: "center",
-    justifyContent: "center",
+    overflow: "hidden",
     marginBottom: 20
   },
   logoMarkSmall: {
     width: 48,
     height: 48,
     borderRadius: 14,
-    backgroundColor: loginColors.bgAccent,
-    borderWidth: 1,
-    borderColor: loginColors.cardBorder,
-    alignItems: "center",
-    justifyContent: "center"
+    overflow: "hidden"
   },
-  logoEmoji: {
-    fontSize: 28
+  logoImage: {
+    width: "100%",
+    height: "100%"
   },
-  logoEmojiSmall: {
-    fontSize: 26
+  logoImageSmall: {
+    width: "100%",
+    height: "100%"
   },
   brandRestaurant: {
     fontSize: 32,

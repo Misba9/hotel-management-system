@@ -13,3 +13,4 @@ coverage
 .DS_Store
 staff-mobile-legacy-backup
 firebase-debug.*.log
+*.apk

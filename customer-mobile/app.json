@@ -5,6 +5,12 @@
     "scheme": "nausheen-customer",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/customer-mobile-logo.png",
+    "splash": {
+      "image": "./assets/customer-mobile-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1f2e"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -29,6 +35,10 @@
     },
     "android": {
       "package": "com.hotel.customermobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/customer-mobile-logo.png",
+        "backgroundColor": "#1a1f2e"
+      },
       "googleServicesFile": "./google-services.json"
     },
     "extra": {

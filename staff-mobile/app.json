@@ -5,6 +5,12 @@
     "scheme": "nausheen-staff",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/staff-mobile-logo.png",
+    "splash": {
+      "image": "./assets/staff-mobile-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B1020"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -35,6 +41,10 @@
     },
     "android": {
       "package": "com.hotel.staffapp",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/staff-mobile-logo.png",
+        "backgroundColor": "#0B1020"
+      },
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
