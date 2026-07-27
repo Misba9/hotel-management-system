@@ -20,9 +20,40 @@ function readIso(ts: StaffOrderRow["createdAt"]): string {
 
 function readFieldIso(data: Record<string, unknown>, key: string): string | undefined {
   const raw = data[key];
-  if (raw && typeof raw === "object" && typeof (raw as { toDate?: () => Date }).toDate === "function") {
-    return (raw as { toDate: () => Date }).toDate().toISOString();
+  if (raw == null) return undefined;
+
+  if (typeof raw === "string") {
+    const parsed = Date.parse(raw);
+    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
   }
+
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const ms = raw > 1e12 ? raw : raw * 1000;
+    const d = new Date(ms);
+    return Number.isFinite(d.getTime()) ? d.toISOString() : undefined;
+  }
+
+  if (typeof raw === "object") {
+    const o = raw as {
+      toDate?: () => Date;
+      toMillis?: () => number;
+      seconds?: number;
+      _seconds?: number;
+    };
+    if (typeof o.toDate === "function") {
+      const d = o.toDate();
+      return Number.isFinite(d.getTime()) ? d.toISOString() : undefined;
+    }
+    if (typeof o.toMillis === "function") {
+      const ms = o.toMillis();
+      return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+    }
+    const sec = typeof o.seconds === "number" ? o.seconds : typeof o._seconds === "number" ? o._seconds : undefined;
+    if (typeof sec === "number" && Number.isFinite(sec)) {
+      return new Date(sec * 1000).toISOString();
+    }
+  }
+
   return undefined;
 }
 
@@ -71,6 +102,7 @@ export type KitchenHistoryOrder = {
   specialNotes?: string;
   acceptedAt?: string;
   preparingAt?: string;
+  preparingStartedAt?: string;
   readyAt?: string;
   deliveredAt?: string;
   paidAt?: string;
@@ -92,6 +124,10 @@ export function mapStaffOrderToKitchen(
     order.tableName ??
     (typeof order.tableNumber === "number" ? String(order.tableNumber) : undefined);
 
+  const preparingStartedAt =
+    readFieldIso(raw, "preparingStartedAt") ?? readFieldIso(raw, "preparingAt");
+  const preparingAt = readFieldIso(raw, "preparingAt") ?? preparingStartedAt;
+
   return {
     orderId: order.id,
     orderNumber: resolveOrderNumber(order),
@@ -105,7 +141,8 @@ export function mapStaffOrderToKitchen(
     orderType: order.orderType,
     waiterName: typeof raw.waiterName === "string" ? raw.waiterName : undefined,
     acceptedAt: readFieldIso(raw, "acceptedAt"),
-    preparingAt: readFieldIso(raw, "preparingAt"),
+    preparingAt,
+    preparingStartedAt,
     readyAt: readFieldIso(raw, "readyAt"),
     items: mapItems(order, true)
   };
@@ -136,7 +173,9 @@ export function mapStaffOrderToHistory(
     createdAt: readIso(order.createdAt),
     specialNotes: order.notes,
     acceptedAt: readFieldIso(data, "acceptedAt"),
-    preparingAt: readFieldIso(data, "preparingAt"),
+    preparingAt: readFieldIso(data, "preparingAt") ?? readFieldIso(data, "preparingStartedAt"),
+    preparingStartedAt:
+      readFieldIso(data, "preparingStartedAt") ?? readFieldIso(data, "preparingAt"),
     readyAt: readFieldIso(data, "readyAt"),
     deliveredAt: readFieldIso(data, "deliveredAt") ?? readFieldIso(data, "servedAt"),
     paidAt: readFieldIso(data, "paidAt"),
@@ -152,7 +191,9 @@ export function sortKitchenOrders(orders: KitchenOrder[]): KitchenOrder[] {
 }
 
 export function stageProgressIso(order: KitchenOrder): string {
-  if (order.status === "preparing" && order.preparingAt) return order.preparingAt;
+  if (order.status === "preparing") {
+    return order.preparingStartedAt ?? order.preparingAt ?? order.createdAt;
+  }
   if (order.status === "accepted" && order.acceptedAt) return order.acceptedAt;
   return order.createdAt;
 }

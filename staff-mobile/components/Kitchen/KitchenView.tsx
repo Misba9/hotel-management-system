@@ -1,9 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View
+} from "react-native";
 import { useFocusEffect } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 
+import { KitchenBottomNav, type KitchenNavTab } from "./KitchenBottomNav";
 import { KitchenHistoryPanel } from "./KitchenHistoryPanel";
-import { KitchenNav } from "./KitchenNav";
+import { KitchenProfilePanel } from "./KitchenProfilePanel";
 import { KitchenTicketCard } from "../KitchenTicketCard";
 import { printKitchenKot } from "../../services/kitchen-kot-print";
 import {
@@ -25,6 +37,8 @@ import { useSyncStaffAppBadge } from "../../src/services/notifications";
 
 type BusyAction = "accept" | "preparing" | "ready" | "print" | "picked-up" | null;
 
+const NAV_CLEARANCE = 108;
+
 function SectionHeader({ title, count }: { title: string; count: number }) {
   return (
     <View style={styles.sectionHeader}>
@@ -38,13 +52,40 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
   );
 }
 
+function SuccessToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(1800),
+      Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true })
+    ]).start(({ finished }) => {
+      if (finished) onDismiss();
+    });
+  }, [message, onDismiss, opacity]);
+
+  return (
+    <Pressable onPress={onDismiss}>
+      <Animated.View style={[styles.successBanner, { opacity }]}>
+        <Text style={styles.successBannerText}>{message}</Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 export function KitchenView() {
   const { isOnline } = useNetworkStatus();
   const { padding, isTablet, width } = useResponsiveLayout();
   const readyColumns = getGridColumnCount(width, { phone: 1, tablet: 2, largeTablet: 3 });
-  const [stage, setStage] = useState<KitchenStage>("active");
+  const activeColumns = getGridColumnCount(width, { phone: 1, tablet: 2, largeTablet: 3 });
+  const [tab, setTab] = useState<KitchenNavTab>("active");
+  const stage: KitchenStage = tab === "profile" ? "active" : tab;
   const { autoPrintEnabled, autoPrintReady, reloadAutoPrintSetting } = useKitchenAutoPrintSetting();
-  const { orders, historyOrders, rowsById, counts, loading, error } = useKitchenStageOrders(stage, isOnline);
+  const { orders, historyOrders, rowsById, counts, loading, error } = useKitchenStageOrders(
+    tab === "profile" ? "active" : tab,
+    isOnline
+  );
   const [busy, setBusy] = useState<{ id: string; action: BusyAction } | null>(null);
   const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set());
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -83,23 +124,27 @@ export function KitchenView() {
   }, []);
 
   useEffect(() => {
-    if (stage !== "active" || newOrders.length === 0) return;
+    if (stage !== "active" || tab === "profile" || newOrders.length === 0) return;
     for (const order of newOrders) {
       if (!newOrderIds.has(order.orderId)) markAsNew(order.orderId);
     }
-  }, [newOrders, stage, markAsNew, newOrderIds]);
+  }, [newOrders, stage, tab, markAsNew, newOrderIds]);
 
   useEffect(() => {
-    if (!autoPrintReady || !autoPrintEnabled || !isOnline || stage !== "active") return;
+    if (!autoPrintReady || !autoPrintEnabled || !isOnline || stage !== "active" || tab === "profile") {
+      return;
+    }
     for (const order of newOrders) {
       const row = rowsById.get(order.orderId);
       if (!row || row.printed === true) continue;
       pendingAutoPrintIdsRef.current.add(order.orderId);
     }
-  }, [newOrders, rowsById, isOnline, stage, autoPrintEnabled, autoPrintReady]);
+  }, [newOrders, rowsById, isOnline, stage, tab, autoPrintEnabled, autoPrintReady]);
 
   useEffect(() => {
-    if (!autoPrintReady || !autoPrintEnabled || !isOnline || stage !== "active") return;
+    if (!autoPrintReady || !autoPrintEnabled || !isOnline || stage !== "active" || tab === "profile") {
+      return;
+    }
 
     const queue = pendingAutoPrintIdsRef.current;
     const run = async () => {
@@ -128,7 +173,9 @@ export function KitchenView() {
     };
 
     void run();
-  }, [newOrders, rowsById, isOnline, stage, autoPrintEnabled, autoPrintReady]);
+  }, [newOrders, rowsById, isOnline, stage, tab, autoPrintEnabled, autoPrintReady]);
+
+  const dismissStatus = useCallback(() => setStatusMessage(null), []);
 
   const runAction = useCallback(
     async (order: KitchenOrder, action: BusyAction) => {
@@ -145,13 +192,14 @@ export function KitchenView() {
         else if (action === "picked-up") await kitchenMarkPickedUp(row);
 
         const labels: Record<Exclude<BusyAction, null | "print">, string> = {
-          accept: "accepted",
-          preparing: "marked preparing",
+          accept: "accepted — preparing started",
+          preparing: "started preparing",
           ready: "marked ready",
           "picked-up": "marked picked up"
         };
         if (action && action !== "print") {
           setStatusMessage(`Order ${order.orderNumber} ${labels[action]}`);
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
       } catch (e) {
         Alert.alert("Action failed", e instanceof Error ? e.message : "Could not update order.");
@@ -174,10 +222,10 @@ export function KitchenView() {
   }, []);
 
   const connectionLabel = !isOnline
-    ? "Offline · reconnect to sync"
-    : loading
+    ? "Offline • reconnect to sync"
+    : loading && tab !== "profile"
       ? "Connecting to kitchen queue…"
-      : "Live · Cloud connected";
+      : "Live • Cloud Connected";
 
   const renderCard = (order: KitchenOrder, showReadyActions = false) => {
     const row = rowsById.get(order.orderId);
@@ -188,7 +236,6 @@ export function KitchenView() {
         order={order}
         busy={busy?.id === order.orderId ? (busy?.action ?? null) : null}
         onAccept={() => void runAction(order, "accept")}
-        onPreparing={() => void runAction(order, "preparing")}
         onMarkReady={() => void runAction(order, "ready")}
         onPickedUp={() => void runAction(order, "picked-up")}
         onPrint={() => void runPrint(row)}
@@ -198,108 +245,115 @@ export function KitchenView() {
     );
   };
 
-  const activeListData = useMemo(() => {
-    const sections: Array<{ key: string; title: string; orders: KitchenOrder[] }> = [];
-    if (newOrders.length > 0) sections.push({ key: "new", title: "New", orders: newOrders });
-    if (preparingOrders.length > 0) {
-      sections.push({ key: "preparing", title: "Preparing", orders: preparingOrders });
-    }
-    return sections;
+  const activeFlatOrders = useMemo(() => {
+    return [...newOrders, ...preparingOrders];
   }, [newOrders, preparingOrders]);
 
-  return (
-    <View style={styles.screen}>
-      <Text style={[styles.heading, { paddingHorizontal: padding }]}>Kitchen</Text>
-      <Text style={[styles.sub, { paddingHorizontal: padding }]}>{connectionLabel}</Text>
+  const listBottomPad = { paddingBottom: NAV_CLEARANCE + 16 };
 
-      {!isOnline ? <Text style={[styles.banner, { marginHorizontal: padding }]}>No connection</Text> : null}
-      {error ? <Text style={[styles.errorBanner, { marginHorizontal: padding }]}>{error}</Text> : null}
+  return (
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+      <View style={[styles.header, { paddingHorizontal: padding }]}>
+        <Text style={[styles.heading, isTablet && styles.headingTablet]}>Kitchen</Text>
+        <Text style={[styles.sub, isTablet && styles.subTablet]}>{connectionLabel}</Text>
+      </View>
+
+      {!isOnline ? (
+        <Text style={[styles.banner, { marginHorizontal: padding }]}>No connection</Text>
+      ) : null}
+      {error && tab !== "profile" ? (
+        <Text style={[styles.errorBanner, { marginHorizontal: padding }]}>{error}</Text>
+      ) : null}
       {statusMessage ? (
-        <Pressable onPress={() => setStatusMessage(null)}>
-          <Text style={[styles.successBanner, { marginHorizontal: padding }]}>{statusMessage}</Text>
-        </Pressable>
+        <View style={{ marginHorizontal: padding }}>
+          <SuccessToast message={statusMessage} onDismiss={dismissStatus} />
+        </View>
       ) : null}
 
-      <KitchenNav stage={stage} counts={counts} onStageChange={setStage} />
-
-      {loading ? (
-        <View style={[styles.loadingWrap, { paddingHorizontal: padding }]}>
-          <ActivityIndicator size="small" color="#cbd5e1" />
-          <Text style={styles.state}>Loading tickets…</Text>
-        </View>
-      ) : stage === "history" ? (
-        <KitchenHistoryPanel orders={historyOrders} />
-      ) : stage === "ready" ? (
-        <FlatList
-          data={readyOrders}
-          key={readyColumns}
-          numColumns={readyColumns}
-          keyExtractor={(o) => o.orderId}
-          contentContainerStyle={[styles.list, { paddingHorizontal: padding }]}
-          columnWrapperStyle={readyColumns > 1 ? styles.readyRow : undefined}
-          renderItem={({ item }) => (
-            <View style={readyColumns > 1 ? styles.readyCell : undefined}>{renderCard(item, true)}</View>
-          )}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <Text style={styles.emptyTitle}>No orders ready</Text>
-              <Text style={styles.emptyHint}>Finished tickets wait here for pickup</Text>
-            </View>
-          }
-        />
-      ) : isTablet ? (
-        <ScrollView contentContainerStyle={[styles.list, styles.tabletActive, { paddingHorizontal: padding }]}>
-          {activeListData.length === 0 ? (
-            <View style={styles.emptyWrap}>
-              <Text style={styles.emptyTitle}>No active orders</Text>
-              <Text style={styles.emptyHint}>New and in-progress tickets appear here</Text>
-            </View>
-          ) : (
-            activeListData.map((section) => (
-              <View key={section.key} style={styles.tabletColumn}>
-                <SectionHeader title={section.title} count={section.orders.length} />
-                {section.orders.map((order) => renderCard(order, false))}
+      <View style={styles.body}>
+        {tab === "profile" ? (
+          <KitchenProfilePanel contentBottomInset={NAV_CLEARANCE} />
+        ) : loading ? (
+          <View style={[styles.loadingWrap, { paddingHorizontal: padding }]}>
+            <ActivityIndicator size="small" color="#cbd5e1" />
+            <Text style={styles.state}>Loading tickets…</Text>
+          </View>
+        ) : tab === "history" ? (
+          <KitchenHistoryPanel orders={historyOrders} />
+        ) : tab === "ready" ? (
+          <FlatList
+            data={readyOrders}
+            key={`ready-${readyColumns}`}
+            numColumns={readyColumns}
+            keyExtractor={(o) => o.orderId}
+            contentContainerStyle={[styles.list, { paddingHorizontal: padding }, listBottomPad]}
+            columnWrapperStyle={readyColumns > 1 ? styles.gridRow : undefined}
+            renderItem={({ item }) => (
+              <View style={readyColumns > 1 ? styles.gridCell : styles.gridCellSingle}>
+                {renderCard(item, true)}
               </View>
-            ))
-          )}
-        </ScrollView>
-      ) : (
-        <FlatList
-          data={activeListData}
-          keyExtractor={(s) => s.key}
-          contentContainerStyle={styles.list}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <Text style={styles.emptyTitle}>No active orders</Text>
-              <Text style={styles.emptyHint}>New and in-progress tickets appear here</Text>
-            </View>
-          }
-          renderItem={({ item: section }) => (
-            <View>
-              <SectionHeader title={section.title} count={section.orders.length} />
-              {section.orders.map((order) => renderCard(order, false))}
-            </View>
-          )}
-        />
-      )}
-    </View>
+            )}
+            ListEmptyComponent={
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyTitle}>No orders ready</Text>
+                <Text style={styles.emptyHint}>Finished tickets wait here for pickup</Text>
+              </View>
+            }
+          />
+        ) : (
+          <FlatList
+            data={activeFlatOrders}
+            key={`active-${activeColumns}`}
+            numColumns={activeColumns}
+            keyExtractor={(o) => o.orderId}
+            contentContainerStyle={[styles.list, { paddingHorizontal: padding }, listBottomPad]}
+            columnWrapperStyle={activeColumns > 1 ? styles.gridRow : undefined}
+            ListHeaderComponent={
+              activeFlatOrders.length > 0 ? (
+                <SectionHeader
+                  title="Orders"
+                  count={activeFlatOrders.length}
+                />
+              ) : null
+            }
+            renderItem={({ item }) => (
+              <View style={activeColumns > 1 ? styles.gridCell : styles.gridCellSingle}>
+                {renderCard(item, false)}
+              </View>
+            )}
+            ListEmptyComponent={
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyTitle}>No active orders</Text>
+                <Text style={styles.emptyHint}>New and in-progress tickets appear here</Text>
+              </View>
+            }
+          />
+        )}
+      </View>
+
+      <KitchenBottomNav stage={tab} counts={counts} onStageChange={setTab} />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, width: "100%", backgroundColor: "#0f172a" },
+  screen: { flex: 1, width: "100%", height: "100%", alignSelf: "stretch", backgroundColor: "#0f172a" },
+  header: { paddingTop: 8, paddingBottom: 4, width: "100%" },
   heading: {
     fontSize: 28,
     fontWeight: "900",
-    color: "#f8fafc",
-    paddingTop: 16
+    color: "#f8fafc"
   },
+  headingTablet: { fontSize: 34 },
   sub: {
     fontSize: 14,
     color: "#94a3b8",
-    marginBottom: 8,
+    marginTop: 2,
+    marginBottom: 6,
     lineHeight: 20
   },
+  subTablet: { fontSize: 16 },
+  body: { flex: 1, width: "100%", alignSelf: "stretch" },
   banner: {
     color: "#f8fafc",
     backgroundColor: "#334155",
@@ -321,27 +375,27 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   successBanner: {
-    color: "#ccfbf1",
     backgroundColor: "#134e4a",
     marginBottom: 8,
     borderRadius: 10,
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 12
+  },
+  successBannerText: {
+    color: "#ccfbf1",
     textAlign: "center",
     fontWeight: "600"
   },
   loadingWrap: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
   state: { color: "#cbd5e1", fontSize: 14 },
-  list: { paddingBottom: 32, width: "100%" },
-  tabletActive: { flexDirection: "row", flexWrap: "wrap", gap: 12, alignItems: "flex-start" },
-  tabletColumn: { flex: 1, minWidth: 280 },
-  readyRow: { gap: 10 },
-  readyCell: { flex: 1, minWidth: 0 },
+  list: { width: "100%", flexGrow: 1 },
+  gridRow: { gap: 12 },
+  gridCell: { flex: 1, minWidth: 0, marginBottom: 4 },
+  gridCellSingle: { width: "100%", marginBottom: 4 },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 16,
     marginBottom: 10,
     marginTop: 4
   },

@@ -3,10 +3,27 @@ export type FieldErrors = {
   password?: string;
 };
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
+
+const COMMON_EMAIL_TYPO_TLDS = [
+  /\.comc$/i,
+  /\.con$/i,
+  /\.cpm$/i,
+  /\.comm$/i,
+  /\.ocm$/i,
+  /\.coom$/i,
+  /\.gmal\.com$/i,
+  /\.gmial\.com$/i,
+  /\.gamil\.com$/i
+];
+
 export function validateEmail(value: string): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return "Email is required";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "Invalid email";
+  if (!EMAIL_RE.test(trimmed)) return "Invalid email";
+  if (COMMON_EMAIL_TYPO_TLDS.some((re) => re.test(trimmed))) {
+    return "Invalid email — check the domain spelling (e.g. .com)";
+  }
   return undefined;
 }
 

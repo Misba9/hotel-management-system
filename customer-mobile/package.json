@@ -9,11 +9,13 @@
     }
   },
   "scripts": {
-    "dev": "expo start --clear",
-    "start": "expo start",
+    "dev": "REACT_NATIVE_PACKAGER_HOSTNAME=localhost expo start --localhost --clear",
+    "start": "REACT_NATIVE_PACKAGER_HOSTNAME=localhost expo start --localhost",
     "start:lan": "expo start --lan",
     "dev:tunnel": "expo start --tunnel",
-    "android": "JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}\" expo run:android",
+    "android": "bash scripts/run-android-usb.sh",
+    "android:lan": "JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}\" expo run:android",
+    "android:reverse": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:8082 tcp:8082",
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit"
   },

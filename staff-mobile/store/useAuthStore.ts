@@ -5,12 +5,17 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import type { StaffRoleId } from "../src/constants/staff-roles";
 import { staffAuth, staffDb } from "../src/lib/firebase";
 import { isExpectedAuthError } from "../components/Login/auth-messages";
-import { logFirestoreOperationError } from "../src/lib/firestore-listener";
-import { subscribeFirestoreDocument } from "../src/lib/firestore-listener";
+import {
+  isOfflineLikeFirestoreError,
+  logFirestoreOperationError,
+  subscribeFirestoreDocument
+} from "../src/lib/firestore-listener";
 import { assertValidUid } from "../src/lib/firestore-path";
 import { STAFF_USERS_COLLECTION } from "../src/navigation/staff-role-routes";
 import { login as firebaseEmailLogin, logout as firebaseLogout } from "../src/services/auth.js";
 import { resolveStaffSession, type StaffProfile } from "../src/services/staffUsers";
+
+const OFFLINE_PROFILE_MSG = "Unable to connect. Check your internet connection and try again.";
 
 type AuthState = {
   user: User | null;
@@ -64,6 +69,19 @@ function logAuthStoreError(scope: string, error: unknown) {
   logFirestoreOperationError(scope, error);
 }
 
+async function fetchStaffProfileDoc(uid: string, retries = 2) {
+  const ref = doc(staffDb, STAFF_USERS_COLLECTION, uid);
+  try {
+    return await getDoc(ref);
+  } catch (error) {
+    if (isOfflineLikeFirestoreError(error) && retries > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+      return fetchStaffProfileDoc(uid, retries - 1);
+    }
+    throw error;
+  }
+}
+
 async function hydrateStaffRole(user: User): Promise<{
   role: StaffRoleId | null;
   profile: StaffProfile | null;
@@ -79,14 +97,13 @@ async function hydrateStaffRole(user: User): Promise<{
     error: string | null;
   }> => {
     const uid = assertValidUid(user.uid);
-    const ref = doc(staffDb, STAFF_USERS_COLLECTION, uid);
-    const snap = await getDoc(ref);
+    const snap = await fetchStaffProfileDoc(uid);
 
     if (!snap.exists()) {
       return {
         role: null,
         profile: null,
-        error: "Profile not found. Contact your administrator."
+        error: "Invalid permission — staff profile not found. Contact an administrator"
       };
     }
 
@@ -100,22 +117,38 @@ async function hydrateStaffRole(user: User): Promise<{
       return { role: profile.role, profile, error: null };
     }
     if (gate === "pending") {
-      return { role: null, profile: null, error: "Your account is pending approval or role assignment." };
+      return {
+        role: null,
+        profile: null,
+        error: "Invalid permission — your account is pending approval"
+      };
     }
     if (gate === "needs_assignment") {
-      return { role: null, profile: null, error: "Your role is not assigned yet. Contact an administrator." };
+      return {
+        role: null,
+        profile: null,
+        error: "Invalid permission — no role assigned. Contact an administrator"
+      };
     }
     if (gate === "paused") {
-      return { role: null, profile: null, error: "This staff account is inactive." };
+      return {
+        role: null,
+        profile: null,
+        error: "Invalid permission — this staff account is inactive"
+      };
     }
     if (gate === "platform_blocked") {
       return {
         role: null,
         profile: null,
-        error: "Your role is not permitted on the mobile app. Use the desktop app or contact an administrator."
+        error: "Invalid permission — this role cannot use the mobile staff app"
       };
     }
-    return { role: null, profile: null, error: "Unable to activate staff session from Firestore." };
+    return {
+      role: null,
+      profile: null,
+      error: "Invalid permission — unable to activate staff session"
+    };
   };
 
   try {
@@ -130,7 +163,11 @@ async function hydrateStaffRole(user: User): Promise<{
     return {
       role: null,
       profile: null,
-      error: e instanceof Error ? e.message : "Failed to load staff profile."
+      error: isOfflineLikeFirestoreError(e)
+        ? OFFLINE_PROFILE_MSG
+        : e instanceof Error
+          ? e.message
+          : "Failed to load staff profile."
     };
   }
 }
@@ -152,6 +189,8 @@ function applyAuthenticatedSession(
     loading: false,
     authReady: true
   });
+  // Refresh JWT so Firestore rules see up-to-date custom claims.
+  void user.getIdToken(true).catch(() => undefined);
   attachStaffRoleListener(uid, user, set);
 }
 
@@ -181,6 +220,7 @@ function attachStaffRoleListener(uid: string, user: User, set: (partial: Partial
           return;
         }
         set({ role: profile.role, profile, isAuthenticated: true, authError: null, loading: false, authReady: true });
+        void staffAuth.currentUser?.getIdToken(true).catch(() => undefined);
       } else {
         sessionHydratedUid = null;
         if (!current.isAuthenticated && !current.role && !current.profile) return;
@@ -230,7 +270,11 @@ function refreshStaffSessionInBackground(
         role: null,
         profile: null,
         isAuthenticated: false,
-        authError: e instanceof Error ? e.message : "Failed to load staff profile.",
+        authError: isOfflineLikeFirestoreError(e)
+          ? OFFLINE_PROFILE_MSG
+          : e instanceof Error
+            ? e.message
+            : "Failed to load staff profile.",
         loading: false,
         authReady: true
       });

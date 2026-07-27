@@ -66,36 +66,38 @@ export const posType = {
   hero: { ...posFont, fontSize: 28, fontWeight: "800" as const, color: posColors.text, letterSpacing: -0.5 },
   h1: { ...posFont, fontSize: 22, fontWeight: "800" as const, color: posColors.text, letterSpacing: -0.3 },
   h2: { ...posFont, fontSize: 18, fontWeight: "700" as const, color: posColors.text },
-  h3: { ...posFont, fontSize: 15, fontWeight: "700" as const, color: posColors.text },
+  h3: { ...posFont, fontSize: 16, fontWeight: "700" as const, color: posColors.text },
   body: { ...posFont, fontSize: 14, fontWeight: "500" as const, color: posColors.text },
-  small: { ...posFont, fontSize: 12, fontWeight: "500" as const, color: posColors.textSecondary },
+  small: { ...posFont, fontSize: 13, fontWeight: "500" as const, color: posColors.textSecondary },
   label: {
     ...posFont,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700" as const,
     color: posColors.textDim,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
     textTransform: "uppercase" as const
   },
-  metric: { ...posFont, fontSize: 20, fontWeight: "800" as const, color: posColors.text, letterSpacing: -0.5 }
+  metric: { ...posFont, fontSize: 24, fontWeight: "800" as const, color: posColors.text, letterSpacing: -0.5 },
+  button: { ...posFont, fontSize: 16, fontWeight: "800" as const, color: posColors.text },
+  price: { ...posFont, fontSize: 24, fontWeight: "900" as const, color: posColors.primary }
 };
 
 export function posShadow(elevated = false): ViewStyle {
   if (Platform.OS === "web") {
     return {
       boxShadow: elevated
-        ? "0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)"
-        : "0 2px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)"
+        ? "0 10px 36px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)"
+        : "0 2px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)"
     } as ViewStyle;
   }
   return Platform.select({
     ios: {
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: elevated ? 8 : 4 },
-      shadowOpacity: elevated ? 0.35 : 0.2,
-      shadowRadius: elevated ? 16 : 8
+      shadowOffset: { width: 0, height: elevated ? 10 : 4 },
+      shadowOpacity: elevated ? 0.4 : 0.22,
+      shadowRadius: elevated ? 18 : 10
     },
-    android: { elevation: elevated ? 8 : 3 },
+    android: { elevation: elevated ? 10 : 4 },
     default: {}
   }) as ViewStyle;
 }
@@ -114,9 +116,9 @@ export function posPanel(): ViewStyle {
 export function posCard(elevated = false): ViewStyle {
   return {
     backgroundColor: posColors.card,
-    borderRadius: posRadius.md,
+    borderRadius: posRadius.lg,
     borderWidth: 1,
-    borderColor: posColors.border,
+    borderColor: posColors.borderStrong,
     ...posShadow(elevated)
   };
 }

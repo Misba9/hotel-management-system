@@ -4,11 +4,11 @@ import { Dimensions, PixelRatio } from "react-native";
 const BASE_WIDTH = 375;
 const BASE_HEIGHT = 812;
 
-/** Breakpoints (dp) — phone < 768, tablet >= 768, large tablet/desktop >= 1024 */
+/** Breakpoints (dp) — phone < 600, tablet 600–900, large tablet 900+ */
 export const BREAKPOINTS = {
   phone: 0,
-  tablet: 768,
-  largeTablet: 1024,
+  tablet: 600,
+  largeTablet: 900,
   /** Fine-grained phone sizing for typography */
   largePhone: 450
 } as const;
@@ -82,10 +82,10 @@ export function getResponsiveTier(width = screenWidth): ResponsiveTier {
   return "phone";
 }
 
-/** Horizontal screen padding: phone 16, tablet 24, large tablet 32 */
+/** Horizontal screen padding: phone 12–16, tablet 20–24, large tablet 28–32 */
 export function responsivePadding(width = screenWidth) {
-  if (width >= BREAKPOINTS.largeTablet) return 32;
-  if (width >= BREAKPOINTS.tablet) return 24;
+  if (width >= BREAKPOINTS.largeTablet) return 28;
+  if (width >= BREAKPOINTS.tablet) return 20;
   if (width >= BREAKPOINTS.largePhone) return 16;
   return 12;
 }
@@ -154,48 +154,93 @@ export function getDialogMaxWidth(width = screenWidth) {
   return width - responsivePadding(width) * 2;
 }
 
-/** Product grid column count */
+/** Product grid column count — phone 2 / tablet 4–5 / large tablet 5–6 */
 export function getProductGridColumns(width = screenWidth, landscape = isLandscape(width)) {
   if (width >= BREAKPOINTS.largeTablet) {
     if (width >= 1400) return 6;
-    if (width >= 1200) return 5;
-    return 4;
+    if (width >= 1100) return 5;
+    return landscape ? 5 : 4;
   }
-  if (width >= BREAKPOINTS.tablet) return 3;
+  if (width >= BREAKPOINTS.tablet) {
+    return landscape || width >= 800 ? 5 : 4;
+  }
   if (width >= BREAKPOINTS.largePhone || landscape) return 2;
-  return 1;
+  return 2;
 }
 
-/** Bill panel flex ratio (products side) */
+/**
+ * Three-panel POS flex weights (category | menu | bill).
+ * Tablet: ~18% | 52% | 30%. Large tablet: ~18% | 54% | 28%. Desktop: ~17% | 58% | 25%.
+ * Returns null on phone portrait (stacked / tabbed).
+ */
+export function getPosPanelFlex(width = screenWidth): { category: number; menu: number; bill: number } | null {
+  if (!isTablet(width) && !isLandscape(width)) return null;
+  if (width >= 1400) {
+    return { category: 0.17, menu: 0.58, bill: 0.25 };
+  }
+  if (width >= BREAKPOINTS.largeTablet) {
+    return { category: 0.18, menu: 0.54, bill: 0.28 };
+  }
+  if (width >= BREAKPOINTS.tablet) {
+    return { category: 0.18, menu: 0.52, bill: 0.3 };
+  }
+  // Phone landscape: hide dedicated category column weight (chips on top)
+  return { category: 0, menu: 0.62, bill: 0.38 };
+}
+
+/** @deprecated Prefer getPosPanelFlex — menu share of menu+bill when category is separate */
 export function getBillSplitRatio(width = screenWidth) {
-  if (width >= BREAKPOINTS.largeTablet) return 0.65;
-  if (width >= BREAKPOINTS.tablet) return 0.6;
-  if (isLandscape(width)) return 0.6;
-  return 1;
+  const panels = getPosPanelFlex(width);
+  if (!panels) return 1;
+  const menuBill = panels.menu + panels.bill;
+  return menuBill > 0 ? panels.menu / menuBill : 0.6;
 }
 
-/** Category sidebar width as percentage of screen */
+/** Category sidebar width as percentage of screen (tablet+) */
 export function getCategorySidebarWidth(width = screenWidth) {
   if (!isTablet(width)) return "100%" as const;
   if (width >= BREAKPOINTS.largeTablet) return wp(18, width);
-  return wp(22, width);
+  return wp(20, width);
 }
 
-/** Product card font sizes */
+/** Product card font sizes — name ~18, price ~24 on tablet */
 export function productCardFonts(width = screenWidth) {
-  const tablet = width >= BREAKPOINTS.tablet;
-  return {
-    title: moderateScale(tablet ? 20 : 16, 0.3, width),
-    price: moderateScale(tablet ? 28 : 22, 0.3, width),
-    category: moderateScale(tablet ? 15 : 12, 0.3, width),
-    stock: moderateScale(tablet ? 11 : 9, 0.3, width),
-    qty: moderateScale(tablet ? 17 : 15, 0.3, width)
-  };
+  const tier = getResponsiveTier(width);
+  if (tier === "largeTablet") {
+    return { title: 18, price: 24, category: 13, stock: 12, qty: 16 };
+  }
+  if (tier === "tablet") {
+    return { title: 17, price: 22, category: 12, stock: 11, qty: 15 };
+  }
+  return { title: 15, price: 18, category: 11, stock: 10, qty: 14 };
 }
 
 /** Respect system font scale for accessibility */
 export function scaledFontSize(size: number) {
   return Math.round(PixelRatio.roundToNearestPixel(size * PixelRatio.getFontScale()));
+}
+
+/**
+ * Responsive type scale:
+ * phone 14–16 body / tablet 16–18 / large tablet 18–22
+ * titles scale one step above body.
+ */
+export function responsiveFonts(width = screenWidth) {
+  const tier = getResponsiveTier(width);
+  if (tier === "largeTablet") {
+    return { body: 18, bodyLarge: 20, title: 28, subtitle: 18, caption: 14, button: 17 };
+  }
+  if (tier === "tablet") {
+    return { body: 16, bodyLarge: 18, title: 24, subtitle: 16, caption: 13, button: 16 };
+  }
+  return { body: 14, bodyLarge: 16, title: 22, subtitle: 14, caption: 12, button: 15 };
+}
+
+/** Button min height: phone 48 / tablet 52 / large tablet 56 */
+export function responsiveButtonHeight(width = screenWidth) {
+  if (width >= BREAKPOINTS.largeTablet) return 56;
+  if (width >= BREAKPOINTS.tablet) return 52;
+  return 48;
 }
 
 /** Order source bar: equal tab width on tablet */

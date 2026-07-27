@@ -45,6 +45,12 @@ export type StaffOrderRow = ReturnType<typeof mapOrderDoc> & {
   source?: string;
   notes?: string;
   canonicalStatus: string;
+  acceptedAt?: unknown;
+  preparingAt?: unknown;
+  preparingStartedAt?: unknown;
+  readyAt?: unknown;
+  servedAt?: unknown;
+  deliveredAt?: unknown;
 };
 
 export { updateOrderStatus, ORDERS_COLLECTION, MANAGER_ORDERS_LIMIT };
@@ -82,7 +88,13 @@ function enrichOrder(id: string, data: Record<string, unknown>): StaffOrderRow {
     paymentStatus: typeof ps === "string" ? ps : undefined,
     tokenNumber: typeof tok === "number" && Number.isFinite(tok) ? tok : undefined,
     printed: typeof printedRaw === "boolean" ? printedRaw : undefined,
-    canonicalStatus: canonicalOrderStatus(String(base.status ?? ""), orderType)
+    canonicalStatus: canonicalOrderStatus(String(base.status ?? ""), orderType),
+    acceptedAt: data.acceptedAt,
+    preparingAt: data.preparingAt,
+    preparingStartedAt: data.preparingStartedAt,
+    readyAt: data.readyAt,
+    servedAt: data.servedAt,
+    deliveredAt: data.deliveredAt
   };
 }
 
@@ -263,27 +275,48 @@ export function subscribeKitchenHistoryOrders(
 
 export async function kitchenAcceptOrder(order: StaffOrderRow): Promise<void> {
   const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(order.id));
-  const canon = canonicalOrderStatus(String(order.status ?? ""));
-  if (canon !== "new") throw new Error("Only new orders can be accepted.");
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("Order not found");
+  const data = snap.data() as Record<string, unknown>;
+  const canon = canonicalOrderStatus(String(data.status ?? order.status ?? ""));
+  if (canon === "preparing" || canon === "ready" || canon === "completed") {
+    return;
+  }
+  if (canon !== "new" && canon !== "accepted") {
+    throw new Error("Only new orders can be accepted.");
+  }
   const ts = serverTimestamp();
+  // Accept starts prep immediately — no separate "Start Preparing" step.
   await updateDoc(ref, {
-    status: "accepted",
-    acceptedAt: ts,
-    sentToKitchenAt: ts,
+    status: "preparing",
+    acceptedAt: data.acceptedAt ?? ts,
+    sentToKitchenAt: data.sentToKitchenAt ?? ts,
     kitchenNotified: true,
+    preparingAt: ts,
+    preparingStartedAt: ts,
     updatedAt: ts
   });
 }
 
 export async function kitchenMarkPreparing(order: StaffOrderRow): Promise<void> {
   const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(order.id));
-  const canon = canonicalOrderStatus(String(order.status ?? ""));
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("Order not found");
+  const data = snap.data() as Record<string, unknown>;
+  const canon = canonicalOrderStatus(String(data.status ?? order.status ?? ""));
   if (canon === "preparing") return;
-  if (canon !== "accepted") throw new Error("Order must be accepted before preparing.");
+  if (canon !== "accepted" && canon !== "new") {
+    throw new Error("Order must be new or accepted before preparing.");
+  }
+  const ts = serverTimestamp();
   await updateDoc(ref, {
     status: "preparing",
-    preparingAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
+    ...(canon === "new"
+      ? { acceptedAt: ts, sentToKitchenAt: ts, kitchenNotified: true }
+      : {}),
+    preparingAt: ts,
+    preparingStartedAt: ts,
+    updatedAt: ts
   });
 }
 
@@ -314,36 +347,52 @@ export async function kitchenMarkOrderReady(order: StaffOrderRow): Promise<void>
   const tokenNumber = typeof tok === "number" && Number.isFinite(tok) ? tok : undefined;
   const cur = String(data.status ?? "");
   const canon = canonicalOrderStatus(cur, orderType);
-  if (canon !== "preparing") {
+  if (canon === "ready") return;
+  if (canon !== "preparing" && canon !== "accepted") {
     throw new Error("Mark ready is only available while the order is preparing.");
   }
+  const ts = serverTimestamp();
+  const prepFields =
+    canon === "accepted"
+      ? {
+          preparingAt: data.preparingAt ?? ts,
+          preparingStartedAt: data.preparingStartedAt ?? data.preparingAt ?? ts
+        }
+      : {};
   if (orderType === "dine_in" || orderType === "table") {
     await updateDoc(ref, {
       status: "ready",
-      readyAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      readyAt: ts,
+      updatedAt: ts,
+      ...prepFields
     });
     return;
   }
   if (isWaiterPosDineInOrder({ orderType, tokenNumber })) {
     await updateDoc(ref, {
       status: "ready",
-      readyAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      readyAt: ts,
+      updatedAt: ts,
+      ...prepFields
     });
     return;
   }
   await updateDoc(ref, {
     status: "ready",
-    readyAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
+    readyAt: ts,
+    updatedAt: ts,
+    ...prepFields
   });
 }
 
 /** Waiter picked up — kitchen removes from ready queue. */
 export async function kitchenMarkPickedUp(order: StaffOrderRow): Promise<void> {
   const ref = doc(staffDb, ORDERS_COLLECTION, assertValidOrderId(order.id));
-  const canon = canonicalOrderStatus(String(order.status ?? ""));
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("Order not found");
+  const data = snap.data() as Record<string, unknown>;
+  const canon = canonicalOrderStatus(String(data.status ?? order.status ?? ""));
+  if (canon === "completed") return;
   if (canon !== "ready") throw new Error("Only ready orders can be marked picked up.");
   const ts = serverTimestamp();
   await updateDoc(ref, {

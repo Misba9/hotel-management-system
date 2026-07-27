@@ -113,8 +113,15 @@ export type PosNotification = {
 
 export type PosPanelTab = "orders" | "menu" | "bill";
 
-/** Cashier counter order channels — aggregators + dine-in/parcel only. */
-export type PosOrderChannel = "dine_in" | "parcel" | "swiggy" | "zomato";
+/** Cashier counter order channels for new bill creation. */
+export type PosOrderChannel =
+  | "dine_in"
+  | "parcel"
+  | "takeaway"
+  | "delivery"
+  | "online"
+  | "swiggy"
+  | "zomato";
 
 export type PosOrderChannelMeta = {
   id: PosOrderChannel;
@@ -123,6 +130,16 @@ export type PosOrderChannelMeta = {
   color: string;
 };
 
+/** Compact chips shown on Current Bill (fast workflow). */
+export const POS_BILL_ORDER_CHIPS: PosOrderChannelMeta[] = [
+  { id: "parcel", label: "Parcel", emoji: "🛍", color: "#FF7A00" },
+  { id: "dine_in", label: "Dine In", emoji: "🪑", color: "#22C55E" },
+  { id: "takeaway", label: "Takeaway", emoji: "🥡", color: "#38BDF8" },
+  { id: "delivery", label: "Delivery", emoji: "🛵", color: "#A78BFA" },
+  { id: "online", label: "Online", emoji: "🌐", color: "#60A5FA" }
+];
+
+/** @deprecated Prefer POS_BILL_ORDER_CHIPS for bill UI */
 export const POS_ORDER_CHANNELS: PosOrderChannelMeta[] = [
   { id: "dine_in", label: "Dine-In", emoji: "🪑", color: "#22C55E" },
   { id: "parcel", label: "Parcel", emoji: "🛍", color: "#FF7A00" },
@@ -135,6 +152,8 @@ export function channelToBackendOrder(channel: PosOrderChannel): {
   source?: string;
 } {
   if (channel === "dine_in") return { orderType: "dine_in" };
-  if (channel === "parcel") return { orderType: "parcel" };
+  if (channel === "parcel" || channel === "takeaway") return { orderType: "parcel" };
+  if (channel === "delivery") return { orderType: "online", source: "delivery" };
+  if (channel === "online") return { orderType: "online", source: "online" };
   return { orderType: "online", source: channel };
 }

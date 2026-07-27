@@ -25,7 +25,7 @@ export function ResponsiveScreen({
   refreshControl,
   keyboardShouldPersistTaps
 }: ResponsiveScreenProps) {
-  const { padding, width } = useResponsiveLayout();
+  const { padding } = useResponsiveLayout();
   const padX = paddingHorizontal ?? padding;
 
   if (scroll) {
@@ -34,7 +34,7 @@ export function ResponsiveScreen({
         style={[styles.screen, style]}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingHorizontal: padX, width: "100%", maxWidth: width },
+          { paddingHorizontal: padX, width: "100%", alignSelf: "stretch" },
           contentContainerStyle
         ]}
         showsVerticalScrollIndicator={false}

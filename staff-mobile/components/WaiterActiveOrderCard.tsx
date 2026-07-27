@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { formatItemExtras } from "@shared/lib/format-item-extras";
 
 import type { StaffOrderRow } from "../services/orders";
 
@@ -16,7 +17,7 @@ export function WaiterActiveOrderCard({ order }: { order: StaffOrderRow }) {
     order.tableName?.trim() ||
     (order.tableNumber != null ? `Table ${order.tableNumber}` : "Table");
   const st = statusStyle(String(order.status ?? ""));
-  const lines = (order.items ?? []).slice(0, 6).map((it) => `${it.qty}× ${it.name}`);
+  const lines = (order.items ?? []).slice(0, 6);
   return (
     <View style={styles.card}>
       <View style={styles.top}>
@@ -28,9 +29,23 @@ export function WaiterActiveOrderCard({ order }: { order: StaffOrderRow }) {
           <Text style={[styles.badgeText, { color: st.fg }]}>{st.label}</Text>
         </View>
       </View>
-      <Text style={styles.items} numberOfLines={4}>
-        {lines.length ? lines.join(" · ") : "—"}
-      </Text>
+      {lines.length === 0 ? (
+        <Text style={styles.items}>—</Text>
+      ) : (
+        <View style={styles.itemList}>
+          {lines.map((it, idx) => {
+            const extras = formatItemExtras(it);
+            return (
+              <View key={`${order.id}-${it.id || idx}-${it.name}`} style={styles.itemRow}>
+                <Text style={styles.itemName}>
+                  {it.qty}× {it.name}
+                </Text>
+                {extras ? <Text style={styles.itemMods}>+ {extras}</Text> : null}
+              </View>
+            );
+          })}
+        </View>
+      )}
       <View style={styles.footer}>
         <Text style={styles.total}>₹{Number(order.totalAmount ?? 0).toFixed(0)}</Text>
       </View>
@@ -54,6 +69,10 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   badgeText: { fontSize: 12, fontWeight: "800" },
   items: { marginTop: 10, fontSize: 14, color: "#475569", lineHeight: 20 },
+  itemList: { marginTop: 10, gap: 6 },
+  itemRow: { gap: 2 },
+  itemName: { fontSize: 14, fontWeight: "600", color: "#1e293b", lineHeight: 20 },
+  itemMods: { fontSize: 12, fontWeight: "600", color: "#b45309", lineHeight: 16 },
   footer: { marginTop: 12, flexDirection: "row", justifyContent: "flex-end" },
   total: { fontSize: 20, fontWeight: "900", color: "#0f172a" }
 });

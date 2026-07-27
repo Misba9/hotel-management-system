@@ -133,7 +133,7 @@ export const STAFF_POS_KIND = "staff_pos";
 
 const DEFAULT_BRANCH_ID = "hyderabad-main";
 
-/** @typedef {{ id: string; name: string; price: number; qty: number }} OrderLineItem */
+/** @typedef {{ id: string; name: string; price: number; qty: number; note?: string; modifications?: string[] }} OrderLineItem */
 /** @typedef {{ kitchenId?: string; deliveryId?: string; kitchen?: string; delivery?: string }} AssignedTo */
 /** @typedef {{ name: string; address: string; phone: string }} CustomerInfo */
 /**
@@ -227,11 +227,19 @@ export function mapOrderDoc(id, data) {
   const items = itemsRaw.map((row) => {
     const r = row && typeof row === "object" ? row : {};
     const qty = typeof r.qty === "number" ? r.qty : typeof r.quantity === "number" ? r.quantity : 0;
+    const note = typeof r.note === "string" && r.note.trim() ? r.note.trim() : undefined;
+    const modifications = Array.isArray(r.modifications)
+      ? r.modifications
+          .filter((m) => typeof m === "string" && m.trim().length > 0)
+          .map((m) => m.trim())
+      : undefined;
     return {
       id: typeof r.id === "string" ? r.id : typeof r.productId === "string" ? r.productId : "",
       name: typeof r.name === "string" ? r.name : "",
       price: typeof r.price === "number" ? r.price : typeof r.unitPrice === "number" ? r.unitPrice : 0,
-      qty: qty > 0 ? qty : 1
+      qty: qty > 0 ? qty : 1,
+      ...(note ? { note } : {}),
+      ...(modifications?.length ? { modifications } : {})
     };
   });
   const assignedRaw = data.assignedTo && typeof data.assignedTo === "object" ? data.assignedTo : {};

@@ -6,6 +6,7 @@ import {
   getCategorySidebarWidth,
   getGridColumnCount,
   getLoginFormMaxWidth,
+  getPosPanelFlex,
   getProductGridColumns,
   getResponsiveTier,
   hp,
@@ -17,6 +18,8 @@ import {
   isTablet,
   moderateScale,
   productCardFonts,
+  responsiveButtonHeight,
+  responsiveFonts,
   responsiveIconSize,
   responsivePadding,
   responsiveRadius,
@@ -41,6 +44,8 @@ export type ResponsiveLayout = {
   showSplitBill: boolean;
   /** Full-screen bill on phone portrait */
   showMobileBillTabs: boolean;
+  /** Three-panel POS flex (null on phone portrait) */
+  posPanels: { category: number; menu: number; bill: number } | null;
   productColumns: number;
   gridColumns: number;
   billSplitRatio: number;
@@ -49,6 +54,8 @@ export type ResponsiveLayout = {
   radius: number;
   iconSize: number;
   minTouch: number;
+  buttonHeight: number;
+  fonts: ReturnType<typeof responsiveFonts>;
   loginFormMaxWidth: number;
   productFonts: ReturnType<typeof productCardFonts>;
   wp: (percent: number) => number;
@@ -66,6 +73,7 @@ export function useResponsiveLayout(): ResponsiveLayout {
     const tablet = isTablet(width);
     const largeTablet = isLargeTablet(width);
     const splitBill = landscape || tablet;
+    const posPanels = getPosPanelFlex(width);
 
     return {
       width,
@@ -80,6 +88,7 @@ export function useResponsiveLayout(): ResponsiveLayout {
       isPortrait: !landscape,
       showSplitBill: splitBill,
       showMobileBillTabs: phone && !landscape,
+      posPanels,
       productColumns: getProductGridColumns(width, landscape),
       gridColumns: getGridColumnCount(width),
       billSplitRatio: getBillSplitRatio(width),
@@ -88,6 +97,8 @@ export function useResponsiveLayout(): ResponsiveLayout {
       radius: responsiveRadius(width),
       iconSize: responsiveIconSize(width),
       minTouch: touchTarget(48),
+      buttonHeight: responsiveButtonHeight(width),
+      fonts: responsiveFonts(width),
       loginFormMaxWidth: getLoginFormMaxWidth(width),
       productFonts: productCardFonts(width),
       wp: (percent: number) => wp(percent, width),

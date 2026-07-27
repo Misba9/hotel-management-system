@@ -4,6 +4,7 @@ import {
   normalizeOrderStatus,
   normalizePaymentStatus
 } from "@shared/utils/canonical-order-fields";
+import { formatItemExtras, formatOrderLineWithExtras } from "@shared/lib/format-item-extras";
 import { formatKitchenStatusLabel, formatPaymentStatusLabel } from "@shared/utils/order-display";
 import { useRouter } from "expo-router";
 import { signOut } from "firebase/auth";
@@ -17,7 +18,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableWithoutFeedback,
@@ -38,14 +38,10 @@ import { getGridCellWidth, getGridColumnCount } from "../../src/lib/responsive";
 import { useAuthStore } from "../../store/useAuthStore";
 
 type WaiterTab = "tables" | "orders" | "history";
+type OrdersPaymentFilter = "all" | "unpaid" | "paid";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-function isWaiterQueue(order: StaffOrderRow): boolean {
-  if (!isWaiterPosDineInOrder(order)) return false;
-  return isActivePipelineStatus(order.canonicalStatus ?? order.status);
 }
 
 function orderMatchesTable(o: StaffOrderRow, t: FloorTable): boolean {
@@ -55,10 +51,17 @@ function orderMatchesTable(o: StaffOrderRow, t: FloorTable): boolean {
   return false;
 }
 
-function isPendingPayment(order: StaffOrderRow): boolean {
-  const ps = normalizePaymentStatus(String(order.paymentStatus ?? ""));
-  const st = normalizeOrderStatus(String(order.status ?? ""));
-  return ps === "pending" && (st === "ready" || st === "completed");
+function isOrderUnpaid(order: StaffOrderRow): boolean {
+  return normalizePaymentStatus(String(order.paymentStatus ?? "")) !== "paid";
+}
+
+function isOrderPaid(order: StaffOrderRow): boolean {
+  return normalizePaymentStatus(String(order.paymentStatus ?? "")) === "paid";
+}
+
+/** Show Mark Paid when payment is still pending (any kitchen stage). */
+function canMarkPaid(order: StaffOrderRow): boolean {
+  return normalizePaymentStatus(String(order.paymentStatus ?? "")) === "pending";
 }
 
 function formatOrderAge(createdAt: StaffOrderRow["createdAt"]): string {
@@ -120,6 +123,7 @@ export function WaiterHomeView() {
   const [ordersErr, setOrdersErr] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
+  const [ordersPaymentFilter, setOrdersPaymentFilter] = useState<OrdersPaymentFilter>("unpaid");
 
   const [historyErr, setHistoryErr] = useState<string | null>(null);
 
@@ -193,8 +197,16 @@ export function WaiterHomeView() {
     [router]
   );
 
-  const activeOrders = useMemo(() => orders.filter(isWaiterQueue), [orders]);
-  const pendingPayments = useMemo(() => orders.filter(isPendingPayment), [orders]);
+  const allOrdersList = useMemo(() => {
+    const rows = orders.filter(isWaiterPosDineInOrder);
+    rows.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
+    return rows;
+  }, [orders]);
+  const filteredOrders = useMemo(() => {
+    if (ordersPaymentFilter === "unpaid") return allOrdersList.filter(isOrderUnpaid);
+    if (ordersPaymentFilter === "paid") return allOrdersList.filter(isOrderPaid);
+    return allOrdersList;
+  }, [allOrdersList, ordersPaymentFilter]);
   const historyOrders = useMemo(() => {
     const rows = orders.filter((o) => {
       if (!isWaiterPosDineInOrder(o)) return false;
@@ -239,6 +251,7 @@ export function WaiterHomeView() {
   }, [tables, ordersLoading, activePosCountByTableId]);
 
   const gridColumns = getGridColumnCount(winWidth, { phone: 2, tablet: 3, largeTablet: 4 });
+  const listColumns = getGridColumnCount(winWidth, { phone: 1, tablet: 2, largeTablet: 3 });
   const gridGap = 10;
   const gridPad = padding;
   const cellWidth = getGridCellWidth(winWidth, gridColumns, gridPad, gridGap);
@@ -287,7 +300,7 @@ export function WaiterHomeView() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { paddingHorizontal: padding }]}>
         <Text style={styles.topBarTitle}>Waiter</Text>
         <Pressable style={styles.profileTrigger} onPress={() => setMenuOpen((prev) => !prev)} hitSlop={8}>
           <View style={styles.avatarCircle}>
@@ -301,7 +314,7 @@ export function WaiterHomeView() {
 
       <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
         <TouchableWithoutFeedback onPress={() => setMenuOpen(false)}>
-          <View style={styles.dropdownBackdrop}>
+          <View style={[styles.dropdownBackdrop, { paddingHorizontal: padding }]}>
             <TouchableWithoutFeedback>
               <View style={styles.dropdownMenu}>
                 <Pressable style={styles.dropdownItem} onPress={openProfile}>
@@ -318,7 +331,7 @@ export function WaiterHomeView() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      <View style={styles.tabRow}>
+      <View style={[styles.tabRow, { marginHorizontal: padding }]}>
         <Pressable
           onPress={() => switchTab("tables")}
           style={[styles.tabBtn, tab === "tables" && styles.tabBtnOn]}
@@ -381,8 +394,11 @@ export function WaiterHomeView() {
           ) : (
             <FlatList
               data={historyOrders}
+              key={`history-${listColumns}`}
+              numColumns={listColumns}
               keyExtractor={(o) => o.id}
-              contentContainerStyle={styles.historyList}
+              columnWrapperStyle={listColumns > 1 ? styles.ordersGridRow : undefined}
+              contentContainerStyle={[styles.historyList, { paddingHorizontal: padding }]}
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
               renderItem={({ item }) => {
                 const when = item.createdAt?.toDate
@@ -393,25 +409,27 @@ export function WaiterHomeView() {
                   (item.tableNumber != null ? `Table ${item.tableNumber}` : "—");
                 const lines = (item.items ?? [])
                   .slice(0, 4)
-                  .map((it) => `${it.qty}x ${it.name}`)
-                  .join(" • ");
+                  .map((it) => formatOrderLineWithExtras(it))
+                  .join("\n");
                 return (
-                  <View style={styles.cleanCard}>
-                    <View style={styles.cleanTopRow}>
-                      <Text style={styles.cleanTitle}>{tablePart}</Text>
-                      <View style={styles.historyBadgeRow}>
-                        <View style={styles.doneBadge}>
-                          <Text style={styles.doneBadgeText}>Done</Text>
-                        </View>
-                        <View style={styles.paidBadge}>
-                          <Text style={styles.paidBadgeText}>Paid</Text>
+                  <View style={listColumns > 1 ? styles.ordersGridCell : styles.ordersGridCellSingle}>
+                    <View style={styles.cleanCard}>
+                      <View style={styles.cleanTopRow}>
+                        <Text style={styles.cleanTitle}>{tablePart}</Text>
+                        <View style={styles.historyBadgeRow}>
+                          <View style={styles.doneBadge}>
+                            <Text style={styles.doneBadgeText}>Done</Text>
+                          </View>
+                          <View style={styles.paidBadge}>
+                            <Text style={styles.paidBadgeText}>Paid</Text>
+                          </View>
                         </View>
                       </View>
-                    </View>
-                    <Text style={styles.cleanItems}>{lines || "No items"}</Text>
-                    <View style={styles.historyMetaRow}>
-                      <Text style={styles.cleanTotalRight}>₹{Number(item.totalAmount ?? 0).toFixed(0)}</Text>
-                      <Text style={styles.historyTime}>{when}</Text>
+                      <Text style={styles.cleanItems}>{lines || "No items"}</Text>
+                      <View style={styles.historyMetaRow}>
+                        <Text style={styles.cleanTotalRight}>₹{Number(item.totalAmount ?? 0).toFixed(0)}</Text>
+                        <Text style={styles.historyTime}>{when}</Text>
+                      </View>
                     </View>
                   </View>
                 );
@@ -423,79 +441,104 @@ export function WaiterHomeView() {
       ) : (
         <View style={styles.panel}>
           <Text style={styles.heading}>Orders</Text>
-          <Text style={styles.sub}>Kitchen queue and unpaid cheques.</Text>
+          <Text style={styles.sub}>Kitchen status and payments in one list.</Text>
+          <View style={styles.filterRow}>
+            {(
+              [
+                { id: "all", label: "All" },
+                { id: "unpaid", label: "Unpaid" },
+                { id: "paid", label: "Paid" }
+              ] as const
+            ).map((f) => {
+              const on = ordersPaymentFilter === f.id;
+              return (
+                <Pressable
+                  key={f.id}
+                  onPress={() => setOrdersPaymentFilter(f.id)}
+                  style={[styles.filterChip, on && styles.filterChipOn]}
+                >
+                  <Text style={[styles.filterChipText, on && styles.filterChipTextOn]}>{f.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
           {ordersErr ? <Text style={styles.error}>{ordersErr}</Text> : null}
-          {ordersLoading && activeOrders.length === 0 && pendingPayments.length === 0 ? (
+          {ordersLoading && filteredOrders.length === 0 ? (
             <View style={styles.loaderWrap}>
               <ActivityIndicator size="large" color="#0f172a" />
             </View>
           ) : null}
-          <ScrollView
+          <FlatList
+            data={filteredOrders}
+            key={`orders-${listColumns}`}
+            numColumns={listColumns}
+            keyExtractor={(order) => order.id}
             style={styles.ordersScroll}
-            contentContainerStyle={styles.ordersScrollContent}
+            columnWrapperStyle={listColumns > 1 ? styles.ordersGridRow : undefined}
+            contentContainerStyle={[styles.ordersScrollContent, { paddingHorizontal: padding }]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          >
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Active orders</Text>
-              {activeOrders.length === 0 && !ordersLoading ? (
-                <Text style={styles.emptyInline}>No active orders</Text>
-              ) : (
-                activeOrders.map((order) => {
-                  const tableLabel = fallbackTableLabel(order);
-                  const itemSummary = order.items.slice(0, 3).map((it) => `${it.qty}x ${it.name}`).join(" • ");
-                  const tokenLabel = fallbackTokenNumber(order);
-                  const age = formatOrderAge(order.createdAt);
-                  const urgent = isUrgentOrder(order.createdAt);
-                  const kitchenLabel = formatKitchenStatusLabel(order.canonicalStatus ?? order.status);
-                  const paymentLabel = formatPaymentStatusLabel(order.paymentStatus);
-                  return (
-                    <View key={order.id} style={[styles.cleanCard, urgent && styles.urgentCard]}>
-                      <View style={styles.cleanTopRow}>
-                        <Text style={styles.cleanTitle}>{tableLabel}</Text>
+            ListEmptyComponent={
+              !ordersLoading ? (
+                <Text style={styles.emptyInline}>
+                  {ordersPaymentFilter === "paid"
+                    ? "No paid orders yet."
+                    : ordersPaymentFilter === "unpaid"
+                      ? "No unpaid orders."
+                      : "No orders yet."}
+                </Text>
+              ) : null
+            }
+            renderItem={({ item: order }) => {
+              const tableLabel = fallbackTableLabel(order);
+              const orderItems = (order.items ?? []).slice(0, 6);
+              const tokenLabel = fallbackTokenNumber(order);
+              const age = formatOrderAge(order.createdAt);
+              const urgent = isUrgentOrder(order.createdAt);
+              const kitchenLabel = formatKitchenStatusLabel(order.canonicalStatus ?? order.status);
+              const paymentLabel = formatPaymentStatusLabel(order.paymentStatus);
+              const unpaid = canMarkPaid(order);
+              const paid = isOrderPaid(order);
+              const isPaying = payingOrderId === order.id;
+              return (
+                <View style={listColumns > 1 ? styles.ordersGridCell : styles.ordersGridCellSingle}>
+                  <View style={[styles.cleanCard, urgent && styles.urgentCard]}>
+                    <View style={styles.cleanTopRow}>
+                      <Text style={styles.cleanTitle}>{tableLabel}</Text>
+                      <View style={styles.badgeRow}>
                         <View style={styles.preparingBadge}>
                           <Text style={styles.preparingBadgeText}>{kitchenLabel}</Text>
                         </View>
-                      </View>
-                      <Text style={styles.cleanMeta}>Payment: {paymentLabel}</Text>
-                      <View style={styles.metaRow}>
-                        <Text style={styles.cleanMeta}>Token #{tokenLabel}</Text>
-                        <Text style={[styles.cleanMeta, urgent && styles.urgentMeta]}>{age}</Text>
-                      </View>
-                      <Text style={styles.cleanItems}>{itemSummary || "No items"}</Text>
-                      <Text style={styles.cleanTotalRight}>₹{Number(order.totalAmount ?? 0).toFixed(0)}</Text>
-                    </View>
-                  );
-                })
-              )}
-            </View>
-
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Pending payments</Text>
-              {pendingPayments.length === 0 && !ordersLoading ? (
-                <Text style={styles.emptyInline}>No pending payments</Text>
-              ) : (
-                pendingPayments.map((order) => {
-                  const tableLabel = fallbackTableLabel(order);
-                  const itemSummary = order.items.slice(0, 3).map((it) => `${it.qty}x ${it.name}`).join(" • ");
-                  const tokenLabel = fallbackTokenNumber(order);
-                  const age = formatOrderAge(order.createdAt);
-                  const urgent = isUrgentOrder(order.createdAt);
-                  const isPaying = payingOrderId === order.id;
-                  return (
-                    <View key={order.id} style={[styles.cleanCard, urgent && styles.urgentCard]}>
-                      <View style={styles.cleanTopRow}>
-                        <Text style={styles.cleanTitle}>{tableLabel}</Text>
-                        <View style={styles.pendingBadge}>
-                          <Text style={styles.pendingBadgeText}>Pending</Text>
+                        <View style={paid ? styles.paidBadge : styles.pendingBadge}>
+                          <Text style={paid ? styles.paidBadgeText : styles.pendingBadgeText}>
+                            {paymentLabel}
+                          </Text>
                         </View>
                       </View>
-                      <View style={styles.metaRow}>
-                        <Text style={styles.cleanMeta}>Token #{tokenLabel}</Text>
-                        <Text style={[styles.cleanMeta, urgent && styles.urgentMeta]}>{age}</Text>
+                    </View>
+                    <View style={styles.metaRow}>
+                      <Text style={styles.cleanMeta}>Token #{tokenLabel}</Text>
+                      <Text style={[styles.cleanMeta, urgent && styles.urgentMeta]}>{age}</Text>
+                    </View>
+                    {orderItems.length === 0 ? (
+                      <Text style={styles.cleanItems}>No items</Text>
+                    ) : (
+                      <View style={styles.itemList}>
+                        {orderItems.map((it, idx) => {
+                          const extras = formatItemExtras(it);
+                          return (
+                            <View key={`${order.id}-${it.id || idx}-${it.name}`} style={styles.itemRow}>
+                              <Text style={styles.itemName}>
+                                {it.qty}× {it.name}
+                              </Text>
+                              {extras ? <Text style={styles.itemMods}>+ {extras}</Text> : null}
+                            </View>
+                          );
+                        })}
                       </View>
-                      <Text style={styles.cleanItems}>{itemSummary || "No items"}</Text>
-                      <View style={styles.paymentRow}>
-                        <Text style={styles.cleanTotalRight}>₹{Number(order.totalAmount ?? 0).toFixed(0)}</Text>
+                    )}
+                    <View style={styles.paymentRow}>
+                      <Text style={styles.cleanTotalRight}>₹{Number(order.totalAmount ?? 0).toFixed(0)}</Text>
+                      {unpaid ? (
                         <Pressable
                           onPress={async () => {
                             if (isPaying) return;
@@ -516,13 +559,13 @@ export function WaiterHomeView() {
                         >
                           <Text style={styles.markPaidText}>{isPaying ? "Marking..." : "Mark Paid"}</Text>
                         </Pressable>
-                      </View>
+                      ) : null}
                     </View>
-                  );
-                })
-              )}
-            </View>
-          </ScrollView>
+                  </View>
+                </View>
+              );
+            }}
+          />
         </View>
       )}
     </View>
@@ -530,12 +573,11 @@ export function WaiterHomeView() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, width: "100%", backgroundColor: "#f8fafc" },
+  screen: { flex: 1, width: "100%", height: "100%", alignSelf: "stretch", backgroundColor: "#f8fafc" },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 10,
     borderBottomWidth: 1,
@@ -571,8 +613,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(2, 6, 23, 0.08)",
     alignItems: "flex-end",
-    paddingTop: 66,
-    paddingHorizontal: 16
+    paddingTop: 66
   },
   dropdownMenu: {
     minWidth: 170,
@@ -599,7 +640,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 12,
     marginBottom: 8,
-    marginHorizontal: 16,
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 999,
@@ -634,9 +674,33 @@ const styles = StyleSheet.create({
   error: { color: "#b91c1c", paddingHorizontal: 16, marginBottom: 8 },
   note: { fontSize: 13, color: "#64748b", paddingHorizontal: 16, marginBottom: 8 },
   list: { paddingBottom: 24 },
-  historyList: { paddingHorizontal: 16, paddingBottom: 24 },
+  historyList: { paddingBottom: 24, width: "100%" },
   ordersScroll: { flex: 1 },
-  ordersScrollContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 14 },
+  ordersScrollContent: { paddingBottom: 24, gap: 4, width: "100%" },
+  ordersGridRow: { gap: 12 },
+  ordersGridCell: { flex: 1, minWidth: 0, marginBottom: 4 },
+  ordersGridCellSingle: { width: "100%", marginBottom: 4 },
+  filterRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 10
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#eef2f7",
+    borderWidth: 1,
+    borderColor: "#e2e8f0"
+  },
+  filterChipOn: {
+    backgroundColor: "#0f172a",
+    borderColor: "#0f172a"
+  },
+  filterChipText: { fontSize: 13, fontWeight: "700", color: "#64748b" },
+  filterChipTextOn: { color: "#ffffff" },
+  badgeRow: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
   gridContent: { paddingHorizontal: 16, paddingBottom: 32 },
   gridRow: { gap: 10, marginBottom: 10 },
   empty: { textAlign: "center", marginTop: 24, color: "#64748b", fontSize: 15 },
@@ -676,6 +740,10 @@ const styles = StyleSheet.create({
   cleanMeta: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#64748b" },
   urgentMeta: { color: "#b91c1c" },
   cleanItems: { marginTop: 8, fontSize: 14, color: "#334155", lineHeight: 20 },
+  itemList: { marginTop: 8, gap: 6 },
+  itemRow: { gap: 2 },
+  itemName: { fontSize: 14, fontWeight: "600", color: "#1e293b", lineHeight: 20 },
+  itemMods: { fontSize: 12, fontWeight: "600", color: "#b45309", lineHeight: 16 },
   cleanTotal: { marginTop: 10, fontSize: 18, fontWeight: "900", color: "#0f172a" },
   cleanTotalRight: {
     marginTop: 10,

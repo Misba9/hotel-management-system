@@ -1,21 +1,15 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { memo, useEffect, useMemo, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { StaffOrderRow } from "../../../services/orders";
-import {
-  PAYMENT_METHOD_LABELS,
-  computePosBillTotals,
-  type PaymentMethodId
-} from "../../../services/restaurant-orders";
+import { computePosBillTotals, type PaymentMethodId } from "../../../services/restaurant-orders";
 import type { PosSettingsDoc } from "@shared/types/pos-settings";
 import { formatOrderTypeLabel, isOrderPaid } from "../../lib/cashier-order-filters";
 import { loadHeldOrders, type HeldOrder } from "../../lib/pos/hold-orders-store";
 import type { CartLine, DiscountMode, PosOrderChannel, SplitPaymentLine } from "./pos-types";
-import { POS_ITEM_MODIFICATIONS } from "./pos-types";
-import { PosCustomerPanel } from "./pos-customer-panel";
-import { PosKitchenTracker } from "./pos-kitchen-tracker";
-import { PosPaymentFlow } from "./pos-payment-flow";
+import { POS_BILL_ORDER_CHIPS } from "./pos-types";
+import { formatLineExtras, ItemModificationsModal } from "../../../components/ItemModificationsModal";
 import { PosSplitPayment } from "./pos-split-payment";
-import { PosBadge, PosButton, PosChip, PosDivider, PosEmpty, PosInput, PosSectionTitle } from "./pos-ui";
+import { PosBadge, PosEmpty, PosInput } from "./pos-ui";
 import { posCard, posColors, posPanel, posRadius, posSpacing, posType } from "./pos-theme";
 
 export type BillMode = "existing" | "new";
@@ -80,47 +74,30 @@ const PAYMENT_OPTIONS: { id: PaymentMethodId; label: string }[] = [
   { id: "cash", label: "Cash" },
   { id: "upi", label: "UPI" },
   { id: "card", label: "Card" },
-  { id: "wallet", label: "Wallet" },
   { id: "split", label: "Split" }
 ];
 
 function enabledPaymentOptions(posSettings: PosSettingsDoc) {
   const enabled = new Set(posSettings.enabledPaymentMethods ?? []);
-  return PAYMENT_OPTIONS.filter((o) => enabled.has(o.id as (typeof posSettings.enabledPaymentMethods)[number]));
+  const opts = PAYMENT_OPTIONS.filter((o) => enabled.has(o.id as (typeof posSettings.enabledPaymentMethods)[number]));
+  return opts.length > 0 ? opts : PAYMENT_OPTIONS;
 }
 
 function formatMoney(n: number) {
   return `₹${Number.isFinite(n) ? n.toFixed(2) : "0.00"}`;
 }
 
-function formatLineExtras(line: Pick<CartLine, "modifications" | "note">) {
-  const parts = [...(line.modifications ?? [])];
-  if (line.note?.trim()) parts.push(line.note.trim());
-  return parts.join(" · ");
-}
-
 function cartSubtotal(lines: CartLine[]) {
   return Math.round(lines.reduce((s, l) => s + l.unitPrice * l.qty, 0) * 100) / 100;
 }
 
-function formatOrderTime(value: unknown) {
-  if (!value || typeof value !== "object") return new Date().toLocaleTimeString();
-  const maybe = value as { toDate?: () => Date };
-  if (typeof maybe.toDate !== "function") return new Date().toLocaleTimeString();
-  return maybe.toDate().toLocaleString();
-}
-
-export function BillPaymentPanel({
+export const BillPaymentPanel = memo(function BillPaymentPanel({
   mode,
   selectedOrder,
   cartLines,
   orderChannel,
   customerName,
   phone,
-  tableLabel,
-  guestCount,
-  gstNumber,
-  address,
   paymentMethod,
   taxPercent,
   posSettings,
@@ -131,7 +108,6 @@ export function BillPaymentPanel({
   cashReceived,
   serviceChargePercent,
   busy,
-  orders,
   discountMode,
   splitLines,
   onDiscountModeChange,
@@ -143,13 +119,9 @@ export function BillPaymentPanel({
   onResumeHeld,
   onCustomerNameChange,
   onPhoneChange,
-  onGuestCountChange,
-  onGstChange,
-  onAddressChange,
   onOrderChannelChange,
   onPaymentMethod,
   onDiscountChange,
-  onServiceChargeChange,
   onCartQtyChange,
   onCartLineModify,
   onRemoveCartLine,
@@ -159,16 +131,19 @@ export function BillPaymentPanel({
   onPrint,
   onRefund,
   onCancelOrder,
-  onSaveDraft,
-  tables = [],
-  selectedTableId,
-  onSelectTable,
-  tablesLoading
+  onSaveDraft
 }: Props) {
   const [heldOrders, setHeldOrders] = useState<HeldOrder[]>([]);
+  const [customerOpen, setCustomerOpen] = useState(false);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [cashOpen, setCashOpen] = useState(false);
   const [modifyLineId, setModifyLineId] = useState<string | null>(null);
-  const [draftMods, setDraftMods] = useState<string[]>([]);
-  const [draftNote, setDraftNote] = useState("");
+  const [draftDiscountMode, setDraftDiscountMode] = useState<DiscountMode>(discountMode);
+  const [draftDiscountValue, setDraftDiscountValue] = useState("");
+
+  useEffect(() => {
+    if (paymentMethod !== "cash") setCashOpen(false);
+  }, [paymentMethod]);
 
   useEffect(() => {
     setHeldOrders(loadHeldOrders());
@@ -204,32 +179,6 @@ export function BillPaymentPanel({
     () => (modifyLineId ? lines.find((l) => l.menuItemId === modifyLineId) ?? null : null),
     [modifyLineId, lines]
   );
-
-  const openModifyModal = (line: CartLine) => {
-    setModifyLineId(line.menuItemId);
-    setDraftMods(line.modifications ?? []);
-    setDraftNote(line.note ?? "");
-  };
-
-  const closeModifyModal = () => {
-    setModifyLineId(null);
-    setDraftMods([]);
-    setDraftNote("");
-  };
-
-  const saveModifyModal = () => {
-    if (!modifyLineId) return;
-    onCartLineModify(modifyLineId, {
-      modifications: draftMods.length > 0 ? draftMods : undefined,
-      note: draftNote.trim() || undefined
-    });
-    closeModifyModal();
-  };
-
-  const toggleDraftMod = (mod: string) => {
-    setDraftMods((prev) => (prev.includes(mod) ? prev.filter((m) => m !== mod) : [...prev, mod]));
-  };
-
   const flatDiscount = discountMode === "coupon" || discountMode === "flat" ? discountFlatAmount : 0;
   const pctDiscount = discountMode === "percent" || discountMode === "promo" ? discountPercent : 0;
 
@@ -244,520 +193,652 @@ export function BillPaymentPanel({
   }, [totals.grandTotal]);
 
   const displayGrandTotal = totals.grandTotal + roundOff;
+  const cashChange = Math.max(0, Math.round(((Number(cashReceived) || 0) - displayGrandTotal) * 100) / 100);
 
   const paid = selectedOrder ? isOrderPaid(selectedOrder.paymentStatus) : false;
-  const canPay = mode === "existing" && selectedOrder && !paid;
-  const canSend = mode === "new" && cartLines.length > 0;
+  const canEditCart = mode === "new";
+  const hasItems = lines.length > 0;
+  const canPayNew = mode === "new" && hasItems && paymentMethod != null;
+  const canPayExisting = mode === "existing" && selectedOrder != null && !paid && paymentMethod != null;
+
   const token =
     selectedOrder && typeof selectedOrder.tokenNumber === "number" && selectedOrder.tokenNumber > 0
       ? `#${selectedOrder.tokenNumber}`
-      : "—";
+      : "New";
+
+  const customerLabel =
+    customerName.trim() || phone.trim() ? customerName.trim() || phone.trim() : "Walk-in Customer";
+
+  const useRazorpay =
+    posSettings.paymentProvider === "razorpay" && (paymentMethod === "upi" || paymentMethod === "card");
+
+  const payLabel = busy ? "Processing…" : paid ? "Paid" : "Confirm";
+
+  const handlePay = () => {
+    if (!paymentMethod) {
+      Alert.alert("Payment", "Select Cash, UPI, Card, or Split.");
+      return;
+    }
+    if (mode === "new") {
+      if (!hasItems) {
+        Alert.alert("Cart empty", "Tap products to add items.");
+        return;
+      }
+      if (useRazorpay) {
+        onPayRazorpay();
+        return;
+      }
+      onPayAndComplete();
+      return;
+    }
+    if (mode === "existing" && selectedOrder && !paid) {
+      if (useRazorpay) {
+        onPayRazorpay();
+        return;
+      }
+      onAcceptPayment();
+    }
+  };
+
+  const openDiscount = () => {
+    setDraftDiscountMode(discountMode === "promo" ? "percent" : discountMode === "coupon" ? "coupon" : discountMode);
+    setDraftDiscountValue(
+      discountMode === "flat"
+        ? String(discountFlatAmount || "")
+        : discountMode === "coupon"
+          ? couponCode
+          : String(discountPercent || "")
+    );
+    setDiscountOpen(true);
+  };
+
+  const applyDiscountPopup = () => {
+    onDiscountModeChange(draftDiscountMode);
+    if (draftDiscountMode === "coupon") {
+      onCouponCodeChange(draftDiscountValue.trim().toUpperCase());
+      onApplyCoupon();
+    } else if (draftDiscountMode === "flat") {
+      onDiscountChange(Math.max(0, Number(draftDiscountValue) || 0));
+    } else {
+      onDiscountChange(Math.max(0, Math.min(100, Number(draftDiscountValue) || 0)));
+    }
+    setDiscountOpen(false);
+  };
+
+  const clearDiscount = () => {
+    onDiscountModeChange("percent");
+    onDiscountChange(0);
+    onCouponCodeChange("");
+    setDiscountOpen(false);
+  };
 
   return (
     <>
-    <View style={[posPanel(), styles.stickyPanel]}>
-      <View style={styles.header}>
-        <Text style={posType.h2}>Current Bill</Text>
-        {mode === "existing" && selectedOrder ? (
-          <PosBadge label={formatOrderTypeLabel(selectedOrder.orderType)} color={posColors.primary} />
-        ) : null}
-      </View>
+      <View style={[posPanel(), styles.panel]}>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.headerTitle}>Current Bill</Text>
+            <Text style={styles.headerMeta} numberOfLines={1}>
+              {token}
+              {" · "}
+              {customerLabel}
+            </Text>
+          </View>
+          {mode === "existing" && selectedOrder ? (
+            <PosBadge label={formatOrderTypeLabel(selectedOrder.orderType)} color={posColors.primary} />
+          ) : null}
+        </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator>
         {mode === "existing" && !selectedOrder ? (
-          <PosEmpty message="No order selected" hint="Open from Recent Orders or press F2 for new" />
+          <View style={styles.emptyWrap}>
+            <PosEmpty message="No order selected" hint="Tap products or open Recent Orders" />
+          </View>
         ) : (
           <>
-            <PosCustomerPanel
-              phone={phone}
-              customerName={customerName}
-              guestCount={guestCount}
-              gstNumber={gstNumber}
-              address={address}
-              tableLabel={tableLabel}
-              orders={orders}
-              onPhoneChange={onPhoneChange}
-              onNameChange={onCustomerNameChange}
-              onGuestCountChange={onGuestCountChange}
-              onGstChange={onGstChange}
-              onAddressChange={onAddressChange}
-            />
+            <View style={styles.topMeta}>
+              <Pressable
+                onPress={() => setCustomerOpen((v) => !v)}
+                style={styles.customerChip}
+                accessibilityLabel="Customer"
+              >
+                <Text style={styles.customerChipText} numberOfLines={1}>
+                  {customerLabel}
+                </Text>
+                <Text style={styles.customerChevron}>{customerOpen ? "▲" : "▼"}</Text>
+              </Pressable>
 
-            {mode === "new" ? (
-              <View style={styles.channelSection}>
-                <PosSectionTitle title="Order Type" />
-                <View style={styles.channelGrid}>
-                  <View style={[styles.channelBtn, { backgroundColor: posColors.parcel, borderColor: posColors.parcel }]}>
-                    <Text style={styles.channelEmoji}>🛍</Text>
-                    <Text style={[styles.channelLabel, styles.channelLabelOn]}>Parcel</Text>
-                  </View>
-                </View>
-                <Text style={posType.small}>Cashier can only create new Parcel orders. Other channels sync automatically.</Text>
-              </View>
-            ) : null}
-
-            {false && mode === "new" && orderChannel === "dine_in" && tables.length > 0 ? (
-              <View style={[posCard(), styles.tablePicker]}>
-                <PosSectionTitle title="Select Table" />
-                {tablesLoading ? <Text style={posType.small}>Loading tables…</Text> : null}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tableRow}>
-                  {[...tables]
-                    .sort((a, b) => a.number - b.number)
-                    .map((t) => {
-                      const on = selectedTableId === t.id;
-                      const occupied = t.status === "occupied";
-                      return (
-                        <Pressable
-                          key={t.id}
-                          onPress={() => onSelectTable?.(t)}
-                          style={[styles.tableChip, on && styles.tableChipOn, occupied && !on && styles.tableChipBusy]}
-                        >
-                          <Text style={[styles.tableChipText, on && styles.tableChipTextOn]}>
-                            {t.displayName ?? `T${t.number}`}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
+              {canEditCart ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.typeRow}
+                >
+                  {POS_BILL_ORDER_CHIPS.map((chip) => {
+                    const on = orderChannel === chip.id;
+                    return (
+                      <Pressable
+                        key={chip.id}
+                        onPress={() => onOrderChannelChange(chip.id)}
+                        style={[styles.typeChip, on && { borderColor: chip.color, backgroundColor: `${chip.color}22` }]}
+                      >
+                        <Text style={styles.typeEmoji}>{chip.emoji}</Text>
+                        <Text style={[styles.typeLabel, on && { color: chip.color }]}>{chip.label}</Text>
+                      </Pressable>
+                    );
+                  })}
                 </ScrollView>
+              ) : null}
+            </View>
+
+            {customerOpen ? (
+              <View style={styles.customerForm}>
+                <PosInput
+                  value={phone}
+                  onChangeText={onPhoneChange}
+                  placeholder="Phone (optional)"
+                  keyboardType="phone-pad"
+                  style={styles.customerInput}
+                />
+                <PosInput
+                  value={customerName}
+                  onChangeText={onCustomerNameChange}
+                  placeholder="Name (optional)"
+                  style={styles.customerInput}
+                />
               </View>
             ) : null}
 
-            <PosKitchenTracker order={mode === "existing" ? selectedOrder : null} />
+            <ScrollView
+              style={styles.scrollFlex}
+              contentContainerStyle={styles.scroll}
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+            >
+              {lines.length === 0 ? (
+                <Text style={styles.hint}>Tap products to add · No confirmation needed</Text>
+              ) : (
+                lines.map((line) => {
+                  const extras = formatLineExtras(line);
+                  return (
+                    <Pressable
+                      key={line.menuItemId}
+                      onPress={() => {
+                        if (canEditCart) setModifyLineId(line.menuItemId);
+                      }}
+                      onLongPress={() => {
+                        if (!canEditCart) return;
+                        Alert.alert(line.name, undefined, [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Duplicate",
+                            onPress: () => onCartQtyChange(line.menuItemId, 1)
+                          },
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: () => onRemoveCartLine(line.menuItemId)
+                          }
+                        ]);
+                      }}
+                      style={({ pressed }) => [styles.lineRow, pressed && canEditCart && styles.lineRowPressed]}
+                    >
+                      <View style={styles.lineInfo}>
+                        <Text style={styles.lineName} numberOfLines={2}>
+                          {line.name}
+                        </Text>
+                        <Text style={styles.lineUnit}>
+                          {formatMoney(line.unitPrice)}
+                          {extras ? ` · ${extras}` : ""}
+                        </Text>
+                      </View>
+                      <Text style={styles.qtyReadonly}>×{line.qty}</Text>
+                      <Text style={styles.lineTotal}>{formatMoney(line.unitPrice * line.qty)}</Text>
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
 
-            <PosSectionTitle title="Items" />
-            {lines.length === 0 ? (
-              <Text style={posType.small}>Add products from the menu</Text>
-            ) : (
-              lines.map((line) => {
-                const extras = formatLineExtras(line);
-                return (
-                <View key={line.menuItemId} style={styles.lineRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.lineName}>{line.name}</Text>
-                    <Text style={styles.lineUnit}>
-                      {formatMoney(line.unitPrice)} · x{line.qty}
-                    </Text>
-                    {extras ? <Text style={styles.lineExtras}>{extras}</Text> : null}
-                  </View>
-                  {mode === "new" ? (
-                    <View style={styles.lineActions}>
-                      <Pressable onPress={() => onCartQtyChange(line.menuItemId, -1)} style={styles.lineBtn}>
-                        <Text style={styles.lineBtnText}>−</Text>
-                      </Pressable>
-                      <Pressable onPress={() => onCartQtyChange(line.menuItemId, 1)} style={styles.lineBtn}>
-                        <Text style={styles.lineBtnText}>+</Text>
-                      </Pressable>
-                      <Pressable onPress={() => openModifyModal(line)} style={[styles.lineBtn, extras ? styles.lineBtnActive : null]}>
-                        <Text style={styles.lineBtnText}>◇</Text>
-                      </Pressable>
-                      <Pressable onPress={() => onRemoveCartLine(line.menuItemId)} style={[styles.lineBtn, styles.lineBtnDel]}>
-                        <Text style={styles.lineBtnTextDel}>✕</Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
-                  <Text style={styles.lineTotal}>{formatMoney(line.unitPrice * line.qty)}</Text>
+            <View style={styles.footer}>
+              <View style={styles.totals}>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Subtotal</Text>
+                  <Text style={styles.totalValue}>{formatMoney(totals.subtotal)}</Text>
                 </View>
-              );
-              })
-            )}
-
-            <PosDivider />
-
-            <View style={styles.discountModes}>
-              {(["percent", "flat", "coupon"] as DiscountMode[]).map((m) => (
-                <PosChip key={m} label={m} active={discountMode === m} onPress={() => onDiscountModeChange(m)} />
-              ))}
-            </View>
-
-            <View style={[posCard(), styles.summary]}>
-              <SummaryRow label="Subtotal" value={formatMoney(totals.subtotal)} />
-              {totals.discountAmount > 0 ? (
-                <SummaryRow
-                  label={discountMode === "coupon" && couponCode ? `Coupon (${couponCode})` : "Discount"}
-                  value={`−${formatMoney(totals.discountAmount)}`}
-                  muted
-                />
-              ) : null}
-              <SummaryRow label={`Tax (${totals.taxPercent}%)`} value={formatMoney(totals.taxAmount)} muted />
-              {totals.serviceChargeAmount > 0 ? (
-                <SummaryRow label="Service Charge" value={formatMoney(totals.serviceChargeAmount)} muted />
-              ) : null}
-              <SummaryRow label="Round Off" value={formatMoney(roundOff)} muted />
-              <View style={styles.grandRow}>
-                <Text style={styles.grandLabel}>Grand Total</Text>
-                <Text style={styles.grandValue}>{formatMoney(displayGrandTotal)}</Text>
+                {totals.discountAmount > 0 ? (
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabelMuted}>Discount</Text>
+                    <Text style={styles.totalValueMuted}>−{formatMoney(totals.discountAmount)}</Text>
+                  </View>
+                ) : null}
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabelMuted}>Tax ({totals.taxPercent}%)</Text>
+                  <Text style={styles.totalValueMuted}>{formatMoney(totals.taxAmount)}</Text>
+                </View>
+                <View style={styles.grandRow}>
+                  <View style={styles.grandLeft}>
+                    <Text style={styles.grandLabel}>Grand Total</Text>
+                    <Pressable onPress={openDiscount} style={styles.discountIcon} hitSlop={10} accessibilityLabel="Add discount">
+                      <Text style={styles.discountIconText}>%</Text>
+                    </Pressable>
+                  </View>
+                  <Text style={styles.grandValue}>{formatMoney(displayGrandTotal)}</Text>
+                </View>
               </View>
-            </View>
 
-            {discountMode === "coupon" ? (
-              <View style={styles.couponRow}>
-                <PosInput
-                  value={couponCode}
-                  onChangeText={onCouponCodeChange}
-                  placeholder="Coupon code"
-                  autoCapitalize="characters"
-                  style={styles.couponInput}
-                />
-                <Pressable onPress={onApplyCoupon} style={styles.couponBtn}>
-                  <Text style={styles.couponBtnText}>Apply</Text>
-                </Pressable>
-              </View>
-            ) : null}
-            {couponError ? <Text style={styles.couponError}>{couponError}</Text> : null}
-
-            {discountMode === "percent" || discountMode === "promo" ? (
-              <View style={styles.inlineField}>
-                <Text style={posType.small}>Discount %</Text>
-                <PosInput
-                  value={String(discountPercent)}
-                  onChangeText={(v) => onDiscountChange(Math.max(0, Math.min(100, Number(v) || 0)))}
-                  keyboardType="decimal-pad"
-                  style={styles.pctInput}
-                />
-              </View>
-            ) : null}
-
-            {discountMode === "flat" ? (
-              <View style={styles.inlineField}>
-                <Text style={posType.small}>Discount ₹</Text>
-                <PosInput
-                  value={String(discountFlatAmount)}
-                  onChangeText={(v) => onDiscountChange(Math.max(0, Number(v) || 0))}
-                  keyboardType="decimal-pad"
-                  style={styles.pctInput}
-                />
-              </View>
-            ) : null}
-
-            {(canPay || canSend) && (
-              <>
-                <PosSectionTitle title="Payment" />
-                <View style={styles.payGrid}>
+              {(canPayNew || canPayExisting || (mode === "existing" && selectedOrder && !paid) || canEditCart) &&
+              !paid ? (
+                <View style={styles.payMethods}>
                   {enabledPaymentOptions(posSettings).map((m) => {
                     const on = paymentMethod === m.id;
                     return (
-                      <Pressable key={m.id} onPress={() => onPaymentMethod(m.id)} style={[styles.payBtn, on && styles.payBtnOn]}>
-                        <Text style={[styles.payBtnText, on && styles.payBtnTextOn]}>{m.label}</Text>
+                      <Pressable
+                        key={m.id}
+                        onPress={() => onPaymentMethod(m.id)}
+                        style={[styles.payMethod, on && styles.payMethodOn]}
+                      >
+                        <Text style={[styles.payMethodText, on && styles.payMethodTextOn]}>{m.label}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
-                {paymentMethod === "split" ? (
-                  <PosSplitPayment grandTotal={displayGrandTotal} lines={splitLines} onChange={onSplitChange} />
-                ) : null}
-                {paymentMethod && paymentMethod !== "split" ? (
-                  <PosPaymentFlow
-                    method={paymentMethod}
-                    grandTotal={displayGrandTotal}
-                    posSettings={posSettings}
-                    cashReceived={cashReceived}
-                    onCashReceivedChange={onCashReceivedChange}
-                    onConfirmManual={mode === "new" ? onPayAndComplete : onAcceptPayment}
-                    onConfirmRazorpay={onPayRazorpay}
-                    busy={busy}
-                  />
-                ) : null}
-              </>
-            )}
+              ) : null}
+
+              {paymentMethod === "cash" && !paid ? (
+                <View style={styles.cashOptional}>
+                  <Pressable
+                    onPress={() => setCashOpen((v) => !v)}
+                    style={styles.cashToggle}
+                    accessibilityLabel="Cash received optional"
+                  >
+                    <Text style={styles.cashToggleText}>
+                      {cashOpen ? "▼" : "▶"} Cash Received (Optional)
+                    </Text>
+                    {!cashOpen && Number(cashReceived) > 0 ? (
+                      <Text style={styles.cashToggleHint}>Change {formatMoney(cashChange)}</Text>
+                    ) : null}
+                  </Pressable>
+                  {cashOpen ? (
+                    <View style={styles.cashRow}>
+                      <PosInput
+                        value={cashReceived}
+                        onChangeText={onCashReceivedChange}
+                        placeholder="Cash received"
+                        keyboardType="decimal-pad"
+                        style={styles.cashInput}
+                      />
+                      <View style={styles.changeBox}>
+                        <Text style={styles.changeLabel}>Change</Text>
+                        <Text style={styles.changeValue}>{formatMoney(cashChange)}</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {paymentMethod === "split" && !paid ? (
+                <PosSplitPayment grandTotal={displayGrandTotal} lines={splitLines} onChange={onSplitChange} />
+              ) : null}
+
+              {mode === "existing" && selectedOrder && paid ? (
+                <View style={styles.actionStack}>
+                  <Pressable style={[styles.primaryBtn, { backgroundColor: posColors.purple }]} onPress={onPrint} disabled={busy}>
+                    <Text style={styles.primaryBtnText}>Print Bill</Text>
+                  </Pressable>
+                  <Pressable style={[styles.secondaryBtn, { borderColor: posColors.danger }]} onPress={onRefund} disabled={busy}>
+                    <Text style={[styles.secondaryBtnText, { color: posColors.danger }]}>Refund</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.actionStack}>
+                  <Pressable
+                    style={[
+                      styles.primaryBtn,
+                      (!canPayNew && !canPayExisting) || busy ? styles.primaryBtnDisabled : null
+                    ]}
+                    onPress={handlePay}
+                    disabled={busy || (!canPayNew && !canPayExisting)}
+                  >
+                    <Text style={styles.primaryBtnText}>{payLabel}</Text>
+                  </Pressable>
+                  <View style={styles.secondaryRow}>
+                    <Pressable style={[styles.secondaryBtn, styles.holdBtn]} onPress={onHold} disabled={busy}>
+                      <Text style={[styles.secondaryBtnText, { color: posColors.warning }]}>Hold</Text>
+                    </Pressable>
+                    {canEditCart ? (
+                      <Pressable style={[styles.secondaryBtn, styles.draftBtn]} onPress={onSaveDraft} disabled={busy}>
+                        <Text style={[styles.secondaryBtnText, { color: posColors.info }]}>Draft</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable style={[styles.secondaryBtn, styles.draftBtn]} onPress={onPrint} disabled={busy}>
+                        <Text style={[styles.secondaryBtnText, { color: posColors.info }]}>Print</Text>
+                      </Pressable>
+                    )}
+                    <Pressable style={[styles.secondaryBtn, styles.cancelBtn]} onPress={onCancelOrder} disabled={busy}>
+                      <Text style={[styles.secondaryBtnText, { color: posColors.danger }]}>Cancel</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
+              {heldOrders.length > 0 ? (
+                <View style={styles.heldBlock}>
+                  {heldOrders.slice(0, 2).map((h) => (
+                    <Pressable key={h.id} style={styles.heldRow} onPress={() => onResumeHeld(h)}>
+                      <Text style={styles.heldLabel} numberOfLines={1}>
+                        {h.label} · {h.cart.length} items
+                      </Text>
+                      <Text style={styles.heldResume}>Resume</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+            </View>
           </>
         )}
-      </ScrollView>
-
-      {heldOrders.length > 0 ? (
-        <View style={styles.heldBlock}>
-          <PosSectionTitle title={`Held orders (${heldOrders.length})`} />
-          {heldOrders.slice(0, 3).map((h) => (
-            <Pressable key={h.id} style={styles.heldRow} onPress={() => onResumeHeld(h)}>
-              <View style={{ flex: 1 }}>
-                <Text style={posType.body}>{h.label}</Text>
-                <Text style={posType.small}>{h.cart.length} items · {h.tableLabel ?? h.orderType}</Text>
-              </View>
-              <Text style={styles.heldResume}>Resume</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-
-      <View style={styles.actions}>
-        {mode === "existing" && selectedOrder ? (
-          <>
-            <View style={styles.actionRow}>
-              <ActionBtn label="Print Bill" emoji="🟣" color={posColors.purple} onPress={onPrint} disabled={busy} flex />
-              <ActionBtn label="Kitchen" emoji="🔵" color={posColors.info} onPress={onPrint} disabled={busy} flex />
-            </View>
-            {paid ? (
-              <ActionBtn label="Refund" emoji="🔴" color={posColors.danger} onPress={onRefund} disabled={busy} full />
-            ) : (
-              <ActionBtn
-                label={busy ? "Processing…" : "Complete Payment"}
-                emoji="🟢"
-                color={posColors.success}
-                onPress={() => {
-                  if (!paymentMethod) {
-                    Alert.alert("Payment", "Select a payment method first.");
-                    return;
-                  }
-                  onAcceptPayment();
-                }}
-                disabled={busy}
-                full
-              />
-            )}
-            <View style={styles.actionRow}>
-              <ActionBtn label="Hold Order" emoji="🟡" color={posColors.warning} onPress={onHold} flex />
-              <ActionBtn label="Cancel Order" emoji="🔴" color={posColors.danger} onPress={onCancelOrder} flex />
-            </View>
-          </>
-        ) : mode === "new" ? (
-          <>
-            <ActionBtn
-              label={paymentMethod ? (busy ? "Processing…" : "Pay & send to kitchen") : "Select payment method"}
-              emoji="🟢"
-              color={posColors.success}
-              onPress={() => {
-                if (!paymentMethod) {
-                  Alert.alert("Payment", "Select a payment method first.");
-                  return;
-                }
-                if (paymentMethod === "split") {
-                  onPayAndComplete();
-                  return;
-                }
-                Alert.alert("Payment", "Use the payment panel above to confirm and print.");
-              }}
-              disabled={busy || cartLines.length === 0 || !paymentMethod}
-              full
-            />
-            <View style={styles.actionRow}>
-              <ActionBtn label="Save Draft" emoji="🔵" color={posColors.info} onPress={onSaveDraft} flex />
-              <ActionBtn label="Hold Order" emoji="🟡" color={posColors.warning} onPress={onHold} flex />
-            </View>
-            <ActionBtn label="Cancel Order" emoji="🔴" color={posColors.danger} onPress={onCancelOrder} full />
-          </>
-        ) : null}
       </View>
-    </View>
 
-      <Modal visible={modifyLineId != null} transparent animationType="fade" onRequestClose={closeModifyModal}>
-        <Pressable style={styles.modalBackdrop} onPress={closeModifyModal}>
+      <Modal visible={discountOpen} transparent animationType="fade" onRequestClose={() => setDiscountOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setDiscountOpen(false)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Item modifications</Text>
-            {modifyLine ? <Text style={styles.modalSubtitle}>{modifyLine.name}</Text> : null}
-            <View style={styles.modGrid}>
-              {POS_ITEM_MODIFICATIONS.map((mod) => {
-                const on = draftMods.includes(mod);
-                return (
-                  <Pressable
-                    key={mod}
-                    onPress={() => toggleDraftMod(mod)}
-                    style={[styles.modChip, on && styles.modChipOn]}
-                  >
-                    <Text style={[styles.modChipText, on && styles.modChipTextOn]}>{mod}</Text>
-                  </Pressable>
-                );
-              })}
+            <Text style={styles.modalTitle}>Discount</Text>
+            <View style={styles.discountModes}>
+              {(
+                [
+                  { id: "percent" as const, label: "%" },
+                  { id: "flat" as const, label: "₹" },
+                  { id: "coupon" as const, label: "Coupon" }
+                ] as const
+              ).map((m) => (
+                <Pressable
+                  key={m.id}
+                  onPress={() => setDraftDiscountMode(m.id)}
+                  style={[styles.discountModeChip, draftDiscountMode === m.id && styles.discountModeChipOn]}
+                >
+                  <Text style={[styles.discountModeText, draftDiscountMode === m.id && styles.discountModeTextOn]}>
+                    {m.label}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
             <PosInput
-              value={draftNote}
-              onChangeText={setDraftNote}
-              placeholder="Other instructions (e.g. less sweet)"
-              style={styles.modalNote}
+              value={draftDiscountValue}
+              onChangeText={setDraftDiscountValue}
+              placeholder={
+                draftDiscountMode === "coupon" ? "Code" : draftDiscountMode === "flat" ? "Amount ₹" : "Percent"
+              }
+              autoCapitalize={draftDiscountMode === "coupon" ? "characters" : "none"}
+              keyboardType={draftDiscountMode === "coupon" ? "default" : "decimal-pad"}
             />
+            {couponError ? <Text style={styles.couponError}>{couponError}</Text> : null}
             <View style={styles.modalActions}>
-              <Pressable onPress={closeModifyModal} style={[styles.modalBtn, styles.modalBtnGhost]}>
-                <Text style={styles.modalBtnGhostText}>Cancel</Text>
+              <Pressable onPress={clearDiscount} style={[styles.modalBtn, styles.modalBtnGhost]}>
+                <Text style={styles.modalBtnGhostText}>Clear</Text>
               </Pressable>
-              <Pressable onPress={saveModifyModal} style={[styles.modalBtn, styles.modalBtnPrimary]}>
-                <Text style={styles.modalBtnPrimaryText}>Save</Text>
+              <Pressable onPress={applyDiscountPopup} style={[styles.modalBtn, styles.modalBtnPrimary]}>
+                <Text style={styles.modalBtnPrimaryText}>Apply</Text>
               </Pressable>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ItemModificationsModal
+        visible={modifyLine != null && canEditCart}
+        productName={modifyLine?.name ?? ""}
+        initialModifications={modifyLine?.modifications ?? []}
+        initialNote={modifyLine?.note ?? ""}
+        quantity={modifyLine?.qty}
+        unitPrice={modifyLine?.unitPrice}
+        onQuantityChange={(qty) => {
+          if (!modifyLine) return;
+          const delta = qty - modifyLine.qty;
+          if (delta !== 0) onCartQtyChange(modifyLine.menuItemId, delta);
+        }}
+        onRemove={() => {
+          if (!modifyLine) return;
+          onRemoveCartLine(modifyLine.menuItemId);
+          setModifyLineId(null);
+        }}
+        onClose={() => setModifyLineId(null)}
+        onSave={(mods, note) => {
+          if (!modifyLine) return;
+          onCartLineModify(modifyLine.menuItemId, {
+            modifications: mods.length > 0 ? mods : undefined,
+            note: note || undefined
+          });
+          setModifyLineId(null);
+        }}
+      />
     </>
   );
-}
-
-function SummaryRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
-  return (
-    <View style={styles.summaryRow}>
-      <Text style={[posType.body, muted && { color: posColors.textSecondary }]}>{label}</Text>
-      <Text style={[posType.body, { fontWeight: "700" }]}>{value}</Text>
-    </View>
-  );
-}
-
-function ActionBtn({
-  label,
-  emoji,
-  color,
-  onPress,
-  disabled,
-  full,
-  flex
-}: {
-  label: string;
-  emoji: string;
-  color: string;
-  onPress: () => void;
-  disabled?: boolean;
-  full?: boolean;
-  flex?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={[
-        styles.actionBtn,
-        { backgroundColor: color, opacity: disabled ? 0.45 : 1 },
-        full && { width: "100%" },
-        flex && { flex: 1 }
-      ]}
-    >
-      <Text style={styles.actionEmoji}>{emoji}</Text>
-      <Text style={styles.actionLabel}>{label}</Text>
-    </Pressable>
-  );
-}
+});
 
 const styles = StyleSheet.create({
-  stickyPanel: { position: "relative" },
+  panel: {
+    flex: 1,
+    width: "100%",
+    alignSelf: "stretch",
+    minHeight: 0,
+    backgroundColor: posColors.secondary
+  },
   header: {
-    padding: posSpacing.md,
+    paddingHorizontal: posSpacing.md,
+    paddingVertical: posSpacing.sm,
+    minHeight: 56,
     borderBottomWidth: 1,
     borderBottomColor: posColors.border,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between"
+    justifyContent: "space-between",
+    gap: posSpacing.sm,
+    flexShrink: 0
   },
-  scroll: { padding: posSpacing.md, paddingBottom: 220, gap: posSpacing.md },
-  channelSection: { gap: posSpacing.sm },
-  channelGrid: { flexDirection: "row", flexWrap: "wrap", gap: posSpacing.xs },
-  channelBtn: {
+  headerText: { flex: 1, minWidth: 0, gap: 2 },
+  headerTitle: { fontSize: 18, fontWeight: "800", color: posColors.text, letterSpacing: -0.3 },
+  headerMeta: { fontSize: 12, fontWeight: "600", color: posColors.textSecondary },
+  emptyWrap: { flex: 1, justifyContent: "center" },
+  topMeta: { flexShrink: 0, gap: 8, paddingHorizontal: posSpacing.md, paddingTop: posSpacing.sm },
+  customerChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
+    gap: 8,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: posRadius.md,
     backgroundColor: posColors.card,
     borderWidth: 1,
-    borderColor: posColors.border,
-    minWidth: "30%" as unknown as number,
-    flexGrow: 1
+    borderColor: posColors.border
   },
-  channelEmoji: { fontSize: 14 },
-  channelLabel: { fontSize: 11, fontWeight: "800", color: posColors.textSecondary },
-  channelLabelOn: { color: "#fff" },
+  customerChipText: { flex: 1, fontSize: 13, fontWeight: "700", color: posColors.text },
+  customerChevron: { fontSize: 10, color: posColors.textDim },
+  customerForm: { paddingHorizontal: posSpacing.md, gap: 6, paddingTop: 6 },
+  customerInput: { paddingVertical: 8 },
+  typeRow: { gap: 6, paddingBottom: 4, alignItems: "center" },
+  typeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: posRadius.pill,
+    borderWidth: 1,
+    borderColor: posColors.border,
+    backgroundColor: posColors.card
+  },
+  typeEmoji: { fontSize: 12 },
+  typeLabel: { fontSize: 11, fontWeight: "700", color: posColors.textSecondary },
+  scrollFlex: { flex: 1, minHeight: 0 },
+  scroll: { paddingHorizontal: posSpacing.md, paddingVertical: posSpacing.sm, gap: 0, flexGrow: 1 },
+  hint: {
+    textAlign: "center",
+    color: posColors.textDim,
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 24
+  },
   lineRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: posSpacing.sm,
-    borderBottomWidth: 1,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: posColors.border,
-    gap: posSpacing.sm
+    gap: 8
   },
-  lineName: { fontSize: 13, fontWeight: "700", color: posColors.text },
+  lineRowPressed: { opacity: 0.75, backgroundColor: posColors.cardHover },
+  lineInfo: { flex: 1, minWidth: 0 },
+  lineName: { fontSize: 14, fontWeight: "700", color: posColors.text },
   lineUnit: { fontSize: 11, color: posColors.textDim, marginTop: 2 },
-  lineExtras: { fontSize: 10, color: posColors.primary, marginTop: 3, fontWeight: "600" },
-  lineTotal: { fontSize: 14, fontWeight: "800", color: posColors.text, minWidth: 72, textAlign: "right" },
-  lineActions: { flexDirection: "row", gap: 2 },
-  lineBtn: {
+  qtyControls: { flexDirection: "row", alignItems: "center", gap: 4 },
+  qtyBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: posColors.card,
+    borderWidth: 1,
+    borderColor: posColors.border,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  qtyBtnAdd: { backgroundColor: posColors.primary, borderColor: posColors.primary },
+  qtyBtnText: { fontSize: 16, fontWeight: "800", color: posColors.text },
+  qtyBtnTextAdd: { fontSize: 16, fontWeight: "800", color: "#fff" },
+  qtyValue: {
+    minWidth: 22,
+    textAlign: "center",
+    fontSize: 14,
+    fontWeight: "800",
+    color: posColors.text,
+    fontVariant: ["tabular-nums"]
+  },
+  qtyReadonly: { fontSize: 13, fontWeight: "700", color: posColors.textSecondary },
+  delBtn: {
     width: 28,
     height: 28,
-    borderRadius: posRadius.sm,
-    backgroundColor: posColors.card,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: posColors.border
+    backgroundColor: posColors.dangerMuted
   },
-  lineBtnActive: { borderColor: posColors.primary, backgroundColor: posColors.primaryMuted },
-  lineBtnDel: { backgroundColor: posColors.dangerMuted, borderColor: posColors.dangerMuted },
-  lineBtnText: { fontSize: 14, fontWeight: "800", color: posColors.text },
-  lineBtnTextDel: { fontSize: 12, fontWeight: "800", color: posColors.danger },
-  summary: { padding: posSpacing.md, gap: 6 },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
-  inlineField: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  pctInput: { width: 64, paddingVertical: 8, textAlign: "center" },
-  couponRow: { flexDirection: "row", gap: posSpacing.xs, alignItems: "center" },
-  couponInput: { flex: 1 },
-  couponBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: posRadius.md,
-    backgroundColor: posColors.primary
+  delBtnText: { fontSize: 12, fontWeight: "800", color: posColors.danger },
+  lineTotal: {
+    minWidth: 64,
+    textAlign: "right",
+    fontSize: 14,
+    fontWeight: "800",
+    color: posColors.text,
+    fontVariant: ["tabular-nums"]
   },
-  couponBtnText: { fontSize: 12, fontWeight: "800", color: "#fff" },
-  couponError: { fontSize: 11, color: posColors.danger, fontWeight: "600" },
-  grandRow: {
-    marginTop: posSpacing.sm,
-    paddingTop: posSpacing.sm,
-    borderTopWidth: 2,
-    borderTopColor: posColors.primary,
+  cashOptional: { gap: 6 },
+  cashToggle: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
+    paddingVertical: 6,
+    paddingHorizontal: 2
+  },
+  cashToggleText: { fontSize: 12, fontWeight: "700", color: posColors.textSecondary },
+  cashToggleHint: { fontSize: 12, fontWeight: "800", color: posColors.success },
+  cashRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+  cashInput: { flex: 1, paddingVertical: 10 },
+  changeBox: {
+    minWidth: 88,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: posRadius.md,
+    backgroundColor: posColors.successMuted,
     alignItems: "center"
   },
+  changeLabel: { fontSize: 10, fontWeight: "700", color: posColors.success },
+  changeValue: { fontSize: 14, fontWeight: "900", color: posColors.success },
+  footer: {
+    flexShrink: 0,
+    borderTopWidth: 1,
+    borderTopColor: posColors.borderStrong,
+    paddingHorizontal: posSpacing.md,
+    paddingTop: posSpacing.sm,
+    paddingBottom: posSpacing.md,
+    gap: 10,
+    backgroundColor: posColors.secondary
+  },
+  totals: { gap: 4 },
+  totalRow: { flexDirection: "row", justifyContent: "space-between" },
+  totalLabel: { fontSize: 13, fontWeight: "600", color: posColors.textSecondary },
+  totalValue: { fontSize: 13, fontWeight: "700", color: posColors.text },
+  totalLabelMuted: { fontSize: 12, fontWeight: "600", color: posColors.textDim },
+  totalValueMuted: { fontSize: 12, fontWeight: "600", color: posColors.textDim },
+  grandRow: {
+    marginTop: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: posColors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  grandLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
   grandLabel: { fontSize: 15, fontWeight: "800", color: posColors.text },
-  grandValue: { fontSize: 26, fontWeight: "900", color: posColors.success, letterSpacing: -0.5 },
-  payGrid: { flexDirection: "row", flexWrap: "wrap", gap: posSpacing.xs },
-  payBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    minWidth: "30%" as unknown as number,
-    flexGrow: 1,
-    borderRadius: posRadius.md,
+  discountIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     backgroundColor: posColors.card,
     borderWidth: 1,
     borderColor: posColors.border,
-    alignItems: "center"
-  },
-  payBtnOn: { backgroundColor: posColors.primary, borderColor: posColors.primary },
-  payBtnText: { fontSize: 12, fontWeight: "800", color: posColors.text },
-  payBtnTextOn: { color: "#fff" },
-  discountModes: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  actions: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: posSpacing.md,
-    gap: posSpacing.xs,
-    backgroundColor: posColors.secondary,
-    borderTopWidth: 1,
-    borderTopColor: posColors.border
-  },
-  actionRow: { flexDirection: "row", gap: posSpacing.xs },
-  actionBtn: {
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: posRadius.md
+    justifyContent: "center"
   },
-  actionEmoji: { fontSize: 12 },
-  actionLabel: { fontSize: 13, fontWeight: "800", color: "#fff" },
-  heldBlock: { paddingHorizontal: posSpacing.md, paddingBottom: posSpacing.sm, gap: posSpacing.xs },
-  heldRow: { ...posCard(), flexDirection: "row", alignItems: "center", padding: posSpacing.sm, gap: posSpacing.sm },
-  heldResume: { fontSize: 12, fontWeight: "800", color: posColors.primary },
-  tablePicker: { padding: posSpacing.md, gap: posSpacing.sm },
-  tableRow: { gap: posSpacing.sm, paddingVertical: 4 },
-  tableChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+  discountIconText: { fontSize: 12, fontWeight: "900", color: posColors.warning },
+  grandValue: { fontSize: 24, fontWeight: "900", color: posColors.success, letterSpacing: -0.4 },
+  payMethods: { flexDirection: "row", gap: 6 },
+  payMethod: {
+    flex: 1,
+    minHeight: 44,
     borderRadius: posRadius.md,
     borderWidth: 1,
     borderColor: posColors.border,
-    backgroundColor: posColors.bg
+    backgroundColor: posColors.card,
+    alignItems: "center",
+    justifyContent: "center"
   },
-  tableChipOn: { backgroundColor: posColors.primary, borderColor: posColors.primary },
-  tableChipBusy: { borderColor: posColors.warning, opacity: 0.85 },
-  tableChipText: { fontSize: 12, fontWeight: "800", color: posColors.textSecondary },
-  tableChipTextOn: { color: "#fff" },
+  payMethodOn: { backgroundColor: posColors.primary, borderColor: posColors.primary },
+  payMethodText: { fontSize: 13, fontWeight: "800", color: posColors.textSecondary },
+  payMethodTextOn: { color: "#fff" },
+  actionStack: { gap: 8 },
+  primaryBtn: {
+    minHeight: 56,
+    borderRadius: posRadius.lg,
+    backgroundColor: posColors.success,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  primaryBtnDisabled: { opacity: 0.45 },
+  primaryBtnText: { fontSize: 18, fontWeight: "900", color: "#fff", letterSpacing: 0.3 },
+  secondaryRow: { flexDirection: "row", gap: 6 },
+  secondaryBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: posRadius.md,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: posColors.card
+  },
+  holdBtn: { borderColor: "rgba(245,158,11,0.45)" },
+  draftBtn: { borderColor: "rgba(59,130,246,0.45)" },
+  cancelBtn: { borderColor: "rgba(239,68,68,0.45)" },
+  secondaryBtnText: { fontSize: 13, fontWeight: "800" },
+  heldBlock: { gap: 4 },
+  heldRow: {
+    ...posCard(),
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 8
+  },
+  heldLabel: { flex: 1, fontSize: 12, fontWeight: "600", color: posColors.textSecondary },
+  heldResume: { fontSize: 12, fontWeight: "800", color: posColors.primary },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.55)",
@@ -767,32 +848,28 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: "100%",
+    maxWidth: 360,
     ...posCard(),
     padding: posSpacing.lg,
     gap: posSpacing.sm
   },
   modalTitle: { ...posType.h2, fontSize: 16 },
-  modalSubtitle: { ...posType.small, marginBottom: posSpacing.xs },
-  modGrid: { flexDirection: "row", flexWrap: "wrap", gap: posSpacing.xs },
-  modChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: posRadius.pill,
+  discountModes: { flexDirection: "row", gap: 6 },
+  discountModeChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: posRadius.md,
     borderWidth: 1,
     borderColor: posColors.border,
+    alignItems: "center",
     backgroundColor: posColors.bg
   },
-  modChipOn: { backgroundColor: posColors.primaryMuted, borderColor: posColors.primary },
-  modChipText: { fontSize: 11, fontWeight: "700", color: posColors.textSecondary },
-  modChipTextOn: { color: posColors.primary },
-  modalNote: { marginTop: posSpacing.xs },
-  modalActions: { flexDirection: "row", gap: posSpacing.sm, marginTop: posSpacing.sm },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: posRadius.md,
-    alignItems: "center"
-  },
+  discountModeChipOn: { backgroundColor: posColors.primaryMuted, borderColor: posColors.primary },
+  discountModeText: { fontSize: 13, fontWeight: "800", color: posColors.textSecondary },
+  discountModeTextOn: { color: posColors.primary },
+  couponError: { fontSize: 11, color: posColors.danger, fontWeight: "600" },
+  modalActions: { flexDirection: "row", gap: posSpacing.sm, marginTop: posSpacing.xs },
+  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: posRadius.md, alignItems: "center" },
   modalBtnGhost: { backgroundColor: posColors.card, borderWidth: 1, borderColor: posColors.border },
   modalBtnPrimary: { backgroundColor: posColors.primary },
   modalBtnGhostText: { fontSize: 13, fontWeight: "800", color: posColors.textSecondary },

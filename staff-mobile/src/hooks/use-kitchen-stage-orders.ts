@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   mapStaffOrderToHistory,
@@ -49,108 +49,126 @@ function mapQueueRows(rows: StaffOrderRow[]) {
 }
 
 /**
- * One live KDS listener + optional history listener (no duplicate stage queries).
+ * One stable KDS queue listener for the kitchen shell lifetime.
+ * Stage changes only re-filter client-side — never re-subscribe (avoids
+ * Firestore "Target ID already exists").
+ * History uses a separate listener only while the History tab is open.
  */
 export function useKitchenStageOrders(stage: KitchenStage, enabled = true) {
-  const [orders, setOrders] = useState<KitchenOrder[]>([]);
+  const [queueRows, setQueueRows] = useState<StaffOrderRow[]>([]);
   const [historyOrders, setHistoryOrders] = useState<KitchenHistoryOrder[]>([]);
-  const [rowsById, setRowsById] = useState<Map<string, StaffOrderRow>>(new Map());
   const [counts, setCounts] = useState<KitchenNavCounts>({ active: 0, ready: 0 });
-  const [loading, setLoading] = useState(true);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const knownNewIdsRef = useRef<Set<string>>(new Set());
   const initialActiveLoadRef = useRef(true);
-  const queueRowsRef = useRef<StaffOrderRow[]>([]);
   const stageRef = useRef(stage);
 
   useEffect(() => {
     stageRef.current = stage;
   }, [stage]);
 
+  // Stable queue listener — depends only on `enabled`.
   useEffect(() => {
     if (!enabled) {
-      setOrders([]);
-      setHistoryOrders([]);
-      setRowsById(new Map());
+      setQueueRows([]);
       setCounts({ active: 0, ready: 0 });
-      setLoading(false);
+      setQueueLoading(false);
+      setError(null);
+      knownNewIdsRef.current = new Set();
+      initialActiveLoadRef.current = true;
       return;
     }
 
-    setLoading(true);
+    setQueueLoading(true);
     setError(null);
 
-    const applyQueue = (rows: StaffOrderRow[]) => {
-      queueRowsRef.current = rows;
-      const { rowMap, mapped } = mapQueueRows(rows);
-      setCounts(computeCounts(rows));
-
-      const currentStage = stageRef.current;
-      if (currentStage !== "history") {
-        setRowsById(rowMap);
-        setOrders(filterStageOrders(mapped, currentStage));
-        setHistoryOrders([]);
-        setLoading(false);
-        setError(null);
-      }
-
-      if (currentStage === "active" && !initialActiveLoadRef.current) {
-        const newIds = mapped.filter((o) => o.status === "new").map((o) => o.orderId);
-        const hasNew = newIds.some((id) => !knownNewIdsRef.current.has(id));
-        if (hasNew) void staffPhysicalAlert("kitchen_new");
-      }
-      if (currentStage === "active") {
-        knownNewIdsRef.current = new Set(
-          mapped.filter((o) => o.status === "new").map((o) => o.orderId)
-        );
-        initialActiveLoadRef.current = false;
-      }
-    };
-
     const unsubQueue = subscribeKitchenKdsOrders(
-      applyQueue,
-      (err) => {
-        if (stageRef.current !== "history") {
-          setError(err.message);
-          setLoading(false);
+      (rows) => {
+        setQueueRows(rows);
+        setCounts(computeCounts(rows));
+        setQueueLoading(false);
+        setError(null);
+
+        const { mapped } = mapQueueRows(rows);
+        if (stageRef.current === "active" && !initialActiveLoadRef.current) {
+          const newIds = mapped.filter((o) => o.status === "new").map((o) => o.orderId);
+          const hasNew = newIds.some((id) => !knownNewIdsRef.current.has(id));
+          if (hasNew) void staffPhysicalAlert("kitchen_new");
         }
+        if (stageRef.current === "active") {
+          knownNewIdsRef.current = new Set(
+            mapped.filter((o) => o.status === "new").map((o) => o.orderId)
+          );
+          initialActiveLoadRef.current = false;
+        }
+      },
+      (err) => {
+        // Ignore transient target-id races during Fast Refresh / remount.
+        if (err.message.includes("Target ID already exists")) {
+          console.warn("[kitchen] ignoring transient Firestore target race");
+          return;
+        }
+        setError(err.message);
+        setQueueLoading(false);
       }
     );
 
-    let unsubHistory: (() => void) | undefined;
-    if (stage === "history") {
-      unsubHistory = subscribeKitchenHistoryOrders(
-        (rows) => {
-          const mapped = rows
-            .map(({ order, data }) => mapStaffOrderToHistory(order, data))
-            .filter((o): o is KitchenHistoryOrder => o != null);
-          setHistoryOrders(mapped);
-          setOrders([]);
-          setRowsById(new Map());
-          setLoading(false);
-          setError(null);
-        },
-        (err) => {
-          setError(err.message);
-          setLoading(false);
-        }
-      );
-    } else if (queueRowsRef.current.length > 0) {
-      const { rowMap, mapped } = mapQueueRows(queueRowsRef.current);
-      setRowsById(rowMap);
-      setOrders(filterStageOrders(mapped, stage));
-      setHistoryOrders([]);
-      setLoading(false);
-    }
-
     return () => {
       unsubQueue();
-      unsubHistory?.();
       knownNewIdsRef.current = new Set();
       initialActiveLoadRef.current = true;
-      queueRowsRef.current = [];
     };
-  }, [stage, enabled]);
+  }, [enabled]);
+
+  // History listener — only while History tab is visible.
+  useEffect(() => {
+    if (!enabled || stage !== "history") {
+      setHistoryOrders([]);
+      setHistoryLoading(false);
+      return;
+    }
+
+    setHistoryLoading(true);
+
+    const unsubHistory = subscribeKitchenHistoryOrders(
+      (rows) => {
+        const mapped = rows
+          .map(({ order, data }) => mapStaffOrderToHistory(order, data))
+          .filter((o): o is KitchenHistoryOrder => o != null);
+        setHistoryOrders(mapped);
+        setHistoryLoading(false);
+        setError(null);
+      },
+      (err) => {
+        if (err.message.includes("Target ID already exists")) {
+          console.warn("[kitchen] ignoring transient Firestore history target race");
+          return;
+        }
+        setError(err.message);
+        setHistoryLoading(false);
+      }
+    );
+
+    return () => {
+      unsubHistory();
+    };
+  }, [enabled, stage]);
+
+  const { orders, rowsById } = useMemo(() => {
+    const { rowMap, mapped } = mapQueueRows(queueRows);
+    if (stage === "history") {
+      return { orders: [] as KitchenOrder[], rowsById: new Map<string, StaffOrderRow>() };
+    }
+    return {
+      orders: filterStageOrders(mapped, stage),
+      rowsById: rowMap
+    };
+  }, [queueRows, stage]);
+
+  const loading = stage === "history" ? historyLoading : queueLoading;
 
   return { orders, historyOrders, rowsById, counts, loading, error };
 }

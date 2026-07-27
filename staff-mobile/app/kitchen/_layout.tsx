@@ -1,6 +1,5 @@
 import { Tabs } from "expo-router";
 
-import { ProfileNavButton } from "../../components/ProfileNavButton";
 import { useRoleShellGuard } from "../../src/hooks/use-role-shell-guard";
 
 export default function KitchenLayout() {
@@ -9,12 +8,12 @@ export default function KitchenLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerTitleAlign: "center",
-        headerRight: () => <ProfileNavButton />
+        headerShown: false,
+        tabBarStyle: { display: "none" }
       }}
     >
-      <Tabs.Screen name="orders" options={{ title: "Orders" }} />
-      <Tabs.Screen name="settings" options={{ title: "Settings" }} />
+      <Tabs.Screen name="orders" options={{ title: "Kitchen" }} />
+      <Tabs.Screen name="settings" options={{ href: null, title: "Settings" }} />
     </Tabs>
   );
 }

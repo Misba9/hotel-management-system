@@ -97,6 +97,9 @@ cd customer-mobile
 
 npm install && npm run dev
 
+# USB cable required: uses localhost + adb reverse (not Wi-Fi LAN IP)
+npm run android
+
 ```
 
 ---
@@ -121,7 +124,14 @@ cd staff-mobile
 
 npm install && npm run dev
 
+# USB cable required: uses localhost + adb reverse (not Wi-Fi LAN IP)
+npm run android
+
 ```
+
+Android USB tip: `npm run android` always opens Metro as `localhost:8081` and sets
+`adb reverse`, so the phone works even on mobile data. Use `npm run android:lan`
+or `npm run start:lan` only when the phone and Mac are on the same Wi-Fi.
 
 ---
 

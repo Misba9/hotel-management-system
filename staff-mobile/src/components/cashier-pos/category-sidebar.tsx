@@ -46,6 +46,7 @@ export const CategorySidebar = memo(function CategorySidebar({
   const [catSearch, setCatSearch] = useState("");
   const layout = useResponsiveLayout();
   const isHorizontal = layout.isPhone || compact;
+  const pad = layout.padding;
 
   const visibleCategories = useMemo(() => {
     const q = catSearch.trim().toLowerCase();
@@ -53,8 +54,6 @@ export const CategorySidebar = memo(function CategorySidebar({
   }, [categories, catSearch]);
 
   const totalCount = useMemo(() => Object.values(grouped).flat().length, [grouped]);
-  const sidebarWidth =
-    typeof layout.categorySidebarWidth === "number" ? layout.categorySidebarWidth : undefined;
 
   const renderChip = (cat: string, label: string, count?: number, icon?: string) => {
     const active = selectedCategory === cat;
@@ -68,19 +67,30 @@ export const CategorySidebar = memo(function CategorySidebar({
         style={[
           isHorizontal ? styles.chip : styles.catRow,
           active && (isHorizontal ? styles.chipOn : styles.catRowOn),
-          { minHeight: layout.minTouch, borderRadius: layout.radius }
+          {
+            minHeight: layout.isTablet ? Math.max(layout.minTouch, 56) : layout.minTouch,
+            borderRadius: layout.radius
+          }
         ]}
         accessibilityRole="button"
         accessibilityState={{ selected: active }}
       >
-        <Text style={styles.catIcon}>{icon ?? iconForCategory(cat)}</Text>
+        <Text style={[styles.catIcon, layout.isTablet && styles.catIconTablet]}>
+          {icon ?? iconForCategory(cat)}
+        </Text>
         <Text
-          style={[isHorizontal ? styles.chipLabel : styles.catLabel, active && styles.catLabelOn]}
+          style={[
+            isHorizontal ? styles.chipLabel : styles.catLabel,
+            layout.isTablet && !isHorizontal && styles.catLabelTablet,
+            active && styles.catLabelOn
+          ]}
           numberOfLines={1}
         >
           {label}
         </Text>
-        {!isHorizontal && count !== undefined ? <Text style={styles.catCount}>({count})</Text> : null}
+        {!isHorizontal && count !== undefined ? (
+          <Text style={[styles.catCount, active && styles.catCountOn]}>{count}</Text>
+        ) : null}
         {!isHorizontal && active ? <View style={styles.activeBar} /> : null}
       </Pressable>
     );
@@ -88,7 +98,7 @@ export const CategorySidebar = memo(function CategorySidebar({
 
   if (isHorizontal) {
     return (
-      <View style={[styles.horizontalWrap, { paddingHorizontal: layout.padding }]}>
+      <View style={[styles.horizontalWrap, { paddingHorizontal: pad }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -102,33 +112,34 @@ export const CategorySidebar = memo(function CategorySidebar({
   }
 
   return (
-    <View
-      style={[
-        posPanel(),
-        styles.sidebar,
-        sidebarWidth !== undefined ? { width: sidebarWidth, minWidth: sidebarWidth * 0.85, maxWidth: sidebarWidth * 1.1 } : null
-      ]}
-    >
-      <View style={[styles.header, { padding: layout.padding }]}>
-        <Text style={[posType.label, { fontSize: layout.moderateScale(10) }]}>Categories</Text>
-        <View style={styles.searchWrap}>
-          <PosIcon name="search" size={layout.moderateScale(14)} color={posColors.textDim} />
+    <View style={[posPanel(), styles.sidebar]}>
+      <View style={[styles.header, { paddingHorizontal: pad, paddingVertical: pad }]}>
+        <Text style={[posType.h2, styles.sectionTitle]}>Categories</Text>
+        <View style={[styles.searchWrap, { minHeight: layout.buttonHeight }]}>
+          <PosIcon name="search" size={18} color={posColors.textDim} />
           <PosInput
             value={catSearch}
             onChangeText={setCatSearch}
             placeholder="Search category…"
-            style={[styles.search, { fontSize: layout.moderateScale(12) }]}
+            style={styles.search}
           />
+          {catSearch ? (
+            <Pressable onPress={() => setCatSearch("")} hitSlop={8} accessibilityLabel="Clear">
+              <Text style={styles.clearX}>✕</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
 
-      {renderChip("all", "All Items", totalCount, CATEGORY_ICONS.all)}
+      <View style={{ paddingHorizontal: pad * 0.5, paddingTop: posSpacing.sm }}>
+        {renderChip("all", "All Items", totalCount, CATEGORY_ICONS.all)}
+      </View>
 
       <FlatList
         data={visibleCategories}
         keyExtractor={(c) => c}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.list, { padding: layout.padding * 0.5 }]}
+        contentContainerStyle={[styles.list, { paddingHorizontal: pad * 0.5, paddingBottom: pad * 2 }]}
         renderItem={({ item: cat }) => renderChip(cat, cat, grouped[cat]?.length ?? 0)}
       />
     </View>
@@ -140,7 +151,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: posColors.border,
     backgroundColor: posColors.secondary,
-    maxHeight: 72
+    maxHeight: 80
   },
   chipRow: {
     paddingVertical: posSpacing.sm,
@@ -150,9 +161,9 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: posRadius.pill,
     borderWidth: 1,
     borderColor: posColors.border,
@@ -160,43 +171,65 @@ const styles = StyleSheet.create({
   },
   chipOn: {
     backgroundColor: posColors.primaryMuted,
-    borderColor: "rgba(255,122,0,0.35)"
+    borderColor: "rgba(79,140,255,0.45)"
   },
-  chipLabel: { fontSize: 13, fontWeight: "700", color: posColors.textSecondary, maxWidth: 120 },
+  chipLabel: { fontSize: 14, fontWeight: "700", color: posColors.textSecondary, flexShrink: 1 },
   sidebar: {
-    borderRightWidth: 1,
-    flexShrink: 0
+    flex: 1,
+    width: "100%",
+    alignSelf: "stretch",
+    borderRightWidth: 0
   },
-  header: { borderBottomWidth: 1, borderBottomColor: posColors.border, gap: posSpacing.sm },
-  searchWrap: { flexDirection: "row", alignItems: "center", gap: posSpacing.xs },
-  search: { flex: 1, paddingVertical: 8 },
-  list: { paddingBottom: posSpacing.xxl, gap: 2 },
+  header: { borderBottomWidth: 1, borderBottomColor: posColors.border, gap: posSpacing.md },
+  sectionTitle: { fontSize: 18, color: posColors.text },
+  searchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: posSpacing.sm,
+    backgroundColor: posColors.card,
+    borderRadius: posRadius.md,
+    borderWidth: 1,
+    borderColor: posColors.borderStrong,
+    paddingHorizontal: posSpacing.md
+  },
+  search: { flex: 1, paddingVertical: 10, fontSize: 14, borderWidth: 0, backgroundColor: "transparent" },
+  clearX: { color: posColors.textDim, fontSize: 14, fontWeight: "700", padding: 4 },
+  list: { paddingTop: posSpacing.xs, gap: 4 },
   catRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: posRadius.md,
     borderWidth: 1,
     borderColor: "transparent",
     position: "relative",
-    marginHorizontal: posSpacing.xs
+    marginBottom: 2
   },
   catRowOn: {
     backgroundColor: posColors.primaryMuted,
-    borderColor: "rgba(255,122,0,0.25)"
+    borderColor: "rgba(79,140,255,0.35)"
   },
-  catIcon: { fontSize: 16, width: 22, textAlign: "center" },
-  catLabel: { fontSize: 13, fontWeight: "700", color: posColors.textSecondary, flex: 1 },
+  catIcon: { fontSize: 18, width: 28, textAlign: "center" },
+  catIconTablet: { fontSize: 20, width: 32 },
+  catLabel: { fontSize: 15, fontWeight: "700", color: posColors.textSecondary, flex: 1 },
+  catLabelTablet: { fontSize: 16 },
   catLabelOn: { color: posColors.primary },
-  catCount: { fontSize: 11, color: posColors.textDim, fontWeight: "600" },
+  catCount: {
+    fontSize: 12,
+    color: posColors.textDim,
+    fontWeight: "700",
+    minWidth: 28,
+    textAlign: "right"
+  },
+  catCountOn: { color: posColors.primary },
   activeBar: {
     position: "absolute",
     left: 0,
-    top: 6,
-    bottom: 6,
-    width: 3,
+    top: 10,
+    bottom: 10,
+    width: 4,
     borderRadius: 2,
     backgroundColor: posColors.primary
   }

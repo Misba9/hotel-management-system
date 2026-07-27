@@ -7,6 +7,7 @@
  */
 import * as Print from "expo-print";
 import { Alert, Platform } from "react-native";
+import { formatItemExtrasForPrint } from "@shared/lib/format-item-extras";
 
 import type { StaffOrderRow } from "./orders";
 
@@ -62,7 +63,12 @@ export function formatKitchenKotReceipt(order: StaffOrderRow): string {
       : "-";
   const statusRaw = String(order.status ?? order.canonicalStatus ?? "-");
   const itemsBlock = order.items.length
-    ? order.items.map((i) => `${i.qty} x ${i.name}`).join("\n")
+    ? order.items
+        .map((i) => {
+          const extras = formatItemExtrasForPrint(i);
+          return extras ? `${i.qty} x ${i.name}\n   ${extras}` : `${i.qty} x ${i.name}`;
+        })
+        .join("\n")
     : "(no items)";
 
   return `

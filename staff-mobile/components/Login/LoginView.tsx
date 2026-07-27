@@ -19,7 +19,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuthStore } from "../../store/useAuthStore";
-import { friendlyAuthMessage } from "./auth-messages";
+import { resolveLoginErrorMessage } from "./auth-messages";
 import { useResponsiveLayout } from "../../src/hooks/use-responsive-layout";
 import {
   loginButtonGradient,
@@ -387,11 +387,26 @@ export function LoginView() {
       setPhase("loading_profile");
       await persistRememberEmail(email, rememberMe);
     } catch (e) {
-      const message = friendlyAuthMessage(e);
-      setFormError(message);
-      setCanRetry(message.includes("Unable to connect"));
       const state = useAuthStore.getState();
-      if (state.authError?.toLowerCase().includes("profile not found")) {
+      const storeMsg = state.authError?.trim() || "";
+      const isPermissionOrProfile =
+        storeMsg.toLowerCase().includes("permission") ||
+        storeMsg.toLowerCase().includes("profile") ||
+        storeMsg.toLowerCase().includes("inactive") ||
+        storeMsg.toLowerCase().includes("pending") ||
+        storeMsg.toLowerCase().includes("role");
+      const message = isPermissionOrProfile
+        ? storeMsg
+        : await resolveLoginErrorMessage(e, email.trim());
+      setFormError(message);
+      // Highlight the likely field for credential mistakes.
+      if (/invalid email/i.test(message)) {
+        setFieldErrors((prev) => ({ ...prev, email: message, password: undefined }));
+      } else if (/invalid password/i.test(message)) {
+        setFieldErrors((prev) => ({ ...prev, password: message, email: undefined }));
+      }
+      setCanRetry(message.includes("Unable to connect"));
+      if (storeMsg.toLowerCase().includes("profile not found")) {
         await logout().catch(() => {});
       }
     } finally {
@@ -472,6 +487,9 @@ export function LoginView() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    width: "100%",
+    height: "100%",
+    alignSelf: "stretch",
     backgroundColor: loginColors.bg,
     ...loginFont
   },

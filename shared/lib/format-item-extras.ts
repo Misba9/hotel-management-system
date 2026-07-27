@@ -14,3 +14,15 @@ export function formatItemExtrasForPrint(item: ItemWithExtras): string {
   const extras = formatItemExtras(item);
   return extras ? `+ ${extras}` : "";
 }
+
+/** One-line label for lists: `1× Juice · Extra sugar · No ice`. */
+export function formatOrderLineWithExtras(item: {
+  qty: number;
+  name: string;
+  modifications?: string[];
+  note?: string;
+}): string {
+  const base = `${item.qty}× ${item.name}`;
+  const extras = formatItemExtras(item);
+  return extras ? `${base} · ${extras}` : base;
+}

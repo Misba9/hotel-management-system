@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { hasManagerOperationalAccess } from "@shared/utils/manager-permissions";
+import { formatOrderLineWithExtras } from "@shared/lib/format-item-extras";
 
 import type { StaffRoleId } from "../src/constants/staff-roles";
 import {
@@ -95,7 +96,7 @@ export function OrderCard({
   }, [canon, order.orderType, order.status, restaurantFlow, role]);
 
   const lines = order.items
-    .map((it) => `${it.qty}× ${it.name}`)
+    .map((it) => formatOrderLineWithExtras(it))
     .slice(0, 4)
     .join("\n");
 

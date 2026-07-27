@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/customer-mobile-logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1a1f2e"
+      "backgroundColor": "#1A1F2E"
     },
     "assetBundlePatterns": [
       "**/*"

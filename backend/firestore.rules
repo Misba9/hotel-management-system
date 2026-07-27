@@ -15,9 +15,30 @@ service cloud.firestore {
       return isAuthed() && request.auth.token.role in roles;
     }
 
+    /** Active staff profile in `staff_users/{auth.uid}`. */
+    function staffUserActive() {
+      return exists(/databases/$(database)/documents/staff_users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/staff_users/$(request.auth.uid)).data.isActive == true;
+    }
+
+    /**
+     * Staff RBAC for rules: Auth custom claim OR active `staff_users.role`.
+     * App navigation uses `staff_users`; older tokens may be missing/stale claims.
+     */
+    function staffDocRole() {
+      return get(/databases/$(database)/documents/staff_users/$(request.auth.uid)).data.role;
+    }
+
+    function staffHasAnyRole(roles) {
+      return isAuthed() && (
+        request.auth.token.role in roles ||
+        (staffUserActive() && staffDocRole() in roles)
+      );
+    }
+
     /** Staff app RBAC uses `delivery`; legacy tokens may use `delivery_boy`. */
     function staffDeliveryAgent() {
-      return hasAnyRole(["delivery_boy", "delivery"]);
+      return staffHasAnyRole(["delivery_boy", "delivery"]);
     }
 
     function isOwner(userId) {
@@ -109,11 +130,6 @@ service cloud.firestore {
         request.resource.data.deliveryFee >= 0 &&
         request.resource.data.total is number &&
         request.resource.data.total >= 0;
-    }
-
-    function staffUserActive() {
-      return exists(/databases/$(database)/documents/staff_users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/staff_users/$(request.auth.uid)).data.isActive == true;
     }
 
     /** Kitchen/delivery pipeline: legacy `staff_pos`, or staff-origin tickets (`createdByUid`), or legacy staff rows without `subtotal`. */
@@ -389,8 +405,169 @@ service cloud.firestore {
         d.updatedAt == request.time;
     }
 
+    /**
+     * Waiter / cashier restaurant POS (`confirmRestaurantOrder`):
+     * status "new", optional orderType/source/table fields — used by staff-mobile Take order.
+     */
+    function validRestaurantPosOrderCreate(orderId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+            "id",
+            "tableNumber",
+            "tableId",
+            "tableName",
+            "orderType",
+            "source",
+            "items",
+            "total",
+            "status",
+            "paymentStatus",
+            "tokenNumber",
+            "createdAt",
+            "updatedAt"
+          ]) &&
+        d.id == orderId &&
+        d.tableNumber is number &&
+        d.tableNumber >= 0 &&
+        d.tableId is string &&
+        d.tableId.size() > 0 &&
+        d.tableId.size() <= 200 &&
+        d.tableName is string &&
+        d.tableName.size() > 0 &&
+        d.tableName.size() <= 200 &&
+        d.orderType in ["dine_in", "parcel", "online", "table"] &&
+        d.source is string &&
+        d.source.size() > 0 &&
+        d.source.size() <= 64 &&
+        d.items is list &&
+        d.items.size() > 0 &&
+        d.items.size() <= 200 &&
+        d.total is number &&
+        d.total >= 0 &&
+        d.status == "new" &&
+        d.paymentStatus == "pending" &&
+        d.tokenNumber is number &&
+        d.tokenNumber >= 0 &&
+        d.createdAt == request.time &&
+        d.updatedAt == request.time;
+    }
+
+    /**
+     * Cashier counter POS (`confirmCashierPosOrder`): parcel / dine-in / online,
+     * including pay-at-create (status accepted + paymentStatus paid).
+     */
+    function validCashierCounterOrderCreate(orderId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+            "id",
+            "tableNumber",
+            "tableId",
+            "tableName",
+            "orderType",
+            "source",
+            "customerName",
+            "customerPhone",
+            "items",
+            "total",
+            "totalAmount",
+            "status",
+            "paymentStatus",
+            "tokenNumber",
+            "createdAt",
+            "updatedAt",
+            "paymentMethod",
+            "paidAt",
+            "couponCode",
+            "discountAmount"
+          ]) &&
+        d.id == orderId &&
+        d.tableName is string &&
+        d.tableName.size() > 0 &&
+        d.tableName.size() <= 200 &&
+        d.orderType in ["dine_in", "parcel", "online", "table", "takeaway", "delivery"] &&
+        d.items is list &&
+        d.items.size() > 0 &&
+        d.items.size() <= 200 &&
+        d.total is number &&
+        d.total >= 0 &&
+        d.tokenNumber is number &&
+        d.tokenNumber >= 0 &&
+        d.status in ["new", "accepted", "pending"] &&
+        d.paymentStatus in ["pending", "paid"] &&
+        d.createdAt == request.time &&
+        d.updatedAt == request.time &&
+        (d.tableNumber == null || (d.tableNumber is number && d.tableNumber >= 0)) &&
+        (d.tableId == null || (d.tableId is string && d.tableId.size() <= 200)) &&
+        (!("source" in d) || (d.source is string && d.source.size() > 0 && d.source.size() <= 64)) &&
+        (!("customerName" in d) || d.customerName == null || (d.customerName is string && d.customerName.size() <= 200)) &&
+        (!("customerPhone" in d) || d.customerPhone == null || (d.customerPhone is string && d.customerPhone.size() <= 40)) &&
+        (!("totalAmount" in d) || (d.totalAmount is number && d.totalAmount >= 0)) &&
+        (!("paymentMethod" in d) || (d.paymentMethod is string && d.paymentMethod.size() > 0 && d.paymentMethod.size() <= 32)) &&
+        (!("paidAt" in d) || d.paidAt == request.time) &&
+        (!("couponCode" in d) || (d.couponCode is string && d.couponCode.size() <= 64)) &&
+        (!("discountAmount" in d) || (d.discountAmount is number && d.discountAmount >= 0)) &&
+        (
+          (d.paymentStatus == "pending" && d.status in ["new", "pending"]) ||
+          (d.paymentStatus == "paid" && d.status in ["accepted", "new"] && "paymentMethod" in d && "paidAt" in d)
+        );
+    }
+
+    /** Kitchen: restaurant POS tickets `new` → `accepted` → `preparing` → `ready` → `completed`. */
+    function restaurantPosKitchenUpdateOk() {
+      return staffHasAnyRole(["kitchen_staff", "kitchen"]) &&
+        staffUserActive() &&
+        resource.data.keys().hasAny(["status", "items"]) &&
+        resource.data.status in ["new", "accepted", "preparing", "ready"] &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          "status",
+          "updatedAt",
+          "acceptedAt",
+          "sentToKitchenAt",
+          "kitchenNotified",
+          "preparingAt",
+          "preparingStartedAt",
+          "readyAt",
+          "deliveredAt",
+          "servedAt"
+        ]) &&
+        request.resource.data.updatedAt == request.time &&
+        (!resource.data.keys().hasAny(["paymentStatus"]) ||
+          request.resource.data.paymentStatus == resource.data.paymentStatus) &&
+        (!resource.data.keys().hasAny(["tokenNumber"]) ||
+          request.resource.data.tokenNumber == resource.data.tokenNumber) &&
+        (!resource.data.keys().hasAny(["items"]) ||
+          request.resource.data.items == resource.data.items) &&
+        (!resource.data.keys().hasAny(["total"]) ||
+          request.resource.data.total == resource.data.total) &&
+        (!resource.data.keys().hasAny(["totalAmount"]) ||
+          request.resource.data.totalAmount == resource.data.totalAmount) &&
+        (
+          (resource.data.status == "new" && request.resource.data.status == "accepted") ||
+          (resource.data.status == "new" && request.resource.data.status == "preparing") ||
+          (resource.data.status == "accepted" && request.resource.data.status == "preparing") ||
+          (resource.data.status == "accepted" && request.resource.data.status == "ready") ||
+          (resource.data.status == "preparing" && request.resource.data.status == "ready") ||
+          (resource.data.status == "ready" && request.resource.data.status == "completed")
+        );
+    }
+
+    /** Kitchen pickup / handoff from Ready queue (takeaway collected or waiter served). */
+    function kitchenMarkPickedUpUpdateOk() {
+      return staffHasAnyRole(["kitchen_staff", "kitchen"]) &&
+        staffUserActive() &&
+        resource.data.status == "ready" &&
+        request.resource.data.status == "completed" &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          "status",
+          "updatedAt",
+          "deliveredAt",
+          "servedAt"
+        ]);
+    }
+
     function restaurantLifecycleKitchenUpdateOk() {
-      return hasAnyRole(["kitchen_staff", "kitchen"]) &&
+      return staffHasAnyRole(["kitchen_staff", "kitchen"]) &&
         staffUserActive() &&
         isRestaurantLifecycleOrderDoc(resource.data) &&
         request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "updatedAt"]) &&
@@ -465,6 +642,37 @@ service cloud.firestore {
         request.resource.data.total == resource.data.total &&
         (!resource.data.keys().hasAny(["tableId"]) || request.resource.data.tableId == resource.data.tableId) &&
         (!resource.data.keys().hasAny(["tableName"]) || request.resource.data.tableName == resource.data.tableName);
+    }
+
+    /**
+     * Waiter / cashier: mark restaurant POS (and similar) tickets paid.
+     * Matches client `markCashierOrderPaid` — may also complete a ready order.
+     */
+    function staffMarkOrderPaidUpdateOk() {
+      return staffHasAnyRole(["waiter", "cashier"]) &&
+        staffUserActive() &&
+        resource.data.paymentStatus in ["pending", "PENDING"] &&
+        request.resource.data.paymentStatus in ["paid", "PAID"] &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          "status",
+          "paymentStatus",
+          "paidAt",
+          "paymentMethod",
+          "updatedAt",
+          "servedAt",
+          "deliveredAt"
+        ]) &&
+        (
+          request.resource.data.status == resource.data.status ||
+          (resource.data.status == "ready" && request.resource.data.status == "completed") ||
+          (resource.data.status == "READY" && request.resource.data.status == "COMPLETED") ||
+          (resource.data.status == "served" && request.resource.data.status == "completed") ||
+          (resource.data.status == "SERVED" && request.resource.data.status == "COMPLETED") ||
+          (resource.data.status == "preparing" && request.resource.data.status == "preparing") ||
+          (resource.data.status == "accepted" && request.resource.data.status == "accepted") ||
+          (resource.data.status == "new" && request.resource.data.status == "new")
+        );
     }
 
     function validStaffUserCreate(uid) {
@@ -562,13 +770,13 @@ service cloud.firestore {
         request.resource.data.createdAt == resource.data.createdAt;
     }
 
-    /** Monotonic order token counter (`nextToken`) — incremented by waiter POS. */
+    /** Monotonic order token counter (`nextToken`) — waiter + cashier POS. */
     match /appMeta/{docId} {
       allow read: if staffUserActive() &&
-        hasAnyRole(["waiter", "cashier", "kitchen", "kitchen_staff", "manager", "admin"]);
+        staffHasAnyRole(["waiter", "cashier", "kitchen", "kitchen_staff", "manager", "admin"]);
       allow create: if docId == "orderToken" &&
         staffUserActive() &&
-        hasAnyRole(["waiter", "manager", "admin"]) &&
+        staffHasAnyRole(["waiter", "cashier", "manager", "admin"]) &&
         request.resource.data.keys().hasOnly(["nextToken", "updatedAt"]) &&
         request.resource.data.nextToken is int &&
         request.resource.data.nextToken >= 1 &&
@@ -576,7 +784,7 @@ service cloud.firestore {
         request.resource.data.updatedAt == request.time;
       allow update: if docId == "orderToken" &&
         staffUserActive() &&
-        hasAnyRole(["waiter", "manager", "admin"]) &&
+        staffHasAnyRole(["waiter", "cashier", "manager", "admin"]) &&
         request.resource.data.diff(resource.data).changedKeys().hasOnly(["nextToken", "updatedAt"]) &&
         request.resource.data.nextToken is int &&
         request.resource.data.nextToken == resource.data.nextToken + 1 &&
@@ -693,7 +901,7 @@ service cloud.firestore {
 
     /** Kitchen: table tickets PLACED → PREPARING → READY (Auth claim may be `kitchen_staff`). */
     function kitchenTableOrderProgressUpdate() {
-      return hasAnyRole(["kitchen_staff", "kitchen"]) &&
+      return staffHasAnyRole(["kitchen_staff", "kitchen"]) &&
         staffUserActive() &&
         resource.data.orderType == "table" &&
         (
@@ -711,7 +919,7 @@ service cloud.firestore {
      * Client sets `printed: true` after a successful auto-print; does not change `status`.
      */
     function kitchenMarkKotPrintedUpdateOk() {
-      return hasAnyRole(["kitchen_staff", "kitchen"]) &&
+      return staffHasAnyRole(["kitchen_staff", "kitchen"]) &&
         staffUserActive() &&
         request.resource.data.printed is bool &&
         request.resource.data.printed == true &&
@@ -719,14 +927,13 @@ service cloud.firestore {
         request.resource.data.status == resource.data.status &&
         request.resource.data.diff(resource.data).changedKeys().hasOnly(["printed", "updatedAt"]) &&
         request.resource.data.updatedAt == request.time &&
-        resource.data.status in ["pending", "created", "confirmed", "PLACED"];
+        resource.data.status in ["pending", "created", "confirmed", "PLACED", "new", "accepted"];
     }
 
     match /orders/{orderId} {
       allow read: if isAuthed() && (
         resource.data.userId == request.auth.uid ||
-        hasAnyRole(["admin", "manager"]) ||
-        (staffUserActive() && hasAnyRole(["kitchen_staff", "waiter", "cashier", "delivery_boy", "delivery"]))
+        staffHasAnyRole(["admin", "manager", "kitchen", "kitchen_staff", "waiter", "cashier", "delivery_boy", "delivery"])
       );
       allow create: if isAuthed() && (
         (request.resource.data.userId == request.auth.uid && validOrderWrite()) ||
@@ -734,14 +941,23 @@ service cloud.firestore {
         (hasRole("waiter") && staffUserActive() && validUnifiedWaiterOrderCreate(orderId)) ||
         (hasRole("waiter") && staffUserActive() && validWaiterTableOrderCreate(orderId)) ||
         (staffUserActive() &&
-          hasAnyRole(["waiter", "cashier", "manager", "admin"]) &&
-          validRestaurantLifecycleOrderCreate(orderId))
+          staffHasAnyRole(["waiter", "cashier", "manager", "admin"]) &&
+          validRestaurantLifecycleOrderCreate(orderId)) ||
+        (staffUserActive() &&
+          staffHasAnyRole(["waiter", "cashier", "manager", "admin"]) &&
+          validRestaurantPosOrderCreate(orderId)) ||
+        (staffUserActive() &&
+          staffHasAnyRole(["cashier", "manager", "admin"]) &&
+          validCashierCounterOrderCreate(orderId))
       );
       allow update: if isAuthed() && (
         restaurantLifecycleKitchenUpdateOk() ||
         restaurantLifecycleWaiterAcceptUpdateOk() ||
         restaurantLifecycleWaiterUpdateOk() ||
         restaurantLifecycleCashierPaymentUpdateOk() ||
+        staffMarkOrderPaidUpdateOk() ||
+        restaurantPosKitchenUpdateOk() ||
+        kitchenMarkPickedUpUpdateOk() ||
         kitchenMarkKotPrintedUpdateOk() ||
         kitchenTableOrderProgressUpdate() ||
         waiterTableOrderBillRequestUpdate() ||
@@ -754,7 +970,7 @@ service cloud.firestore {
             pipelineRiderLocationUpdateOk() ||
             pipelineManagerUpdateOk()
           )) ||
-        (!usesKitchenDeliveryPipeline(resource.data) && hasAnyRole(["kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy", "delivery"]) && validOrderWrite())
+        (!usesKitchenDeliveryPipeline(resource.data) && staffHasAnyRole(["kitchen", "kitchen_staff", "waiter", "cashier", "manager", "admin", "delivery_boy", "delivery"]) && validOrderWrite())
       );
     }
 
@@ -1052,10 +1268,10 @@ service cloud.firestore {
 
     /** Floor plan: waiter + cashier read; managers/admins maintain; waiter/cashier may patch `status`. */
     match /tables/{tableId} {
-      allow read: if staffUserActive() && hasAnyRole(["waiter", "cashier", "manager", "admin"]);
-      allow create, delete: if staffUserActive() && hasAnyRole(["manager", "admin"]);
-      allow update: if (staffUserActive() && hasAnyRole(["manager", "admin"])) ||
-        (staffUserActive() && hasRole("waiter") &&
+      allow read: if staffHasAnyRole(["waiter", "cashier", "manager", "admin"]);
+      allow create, delete: if staffHasAnyRole(["manager", "admin"]) && staffUserActive();
+      allow update: if (staffHasAnyRole(["manager", "admin"]) && staffUserActive()) ||
+        (staffHasAnyRole(["waiter"]) && staffUserActive() &&
           request.resource.data.diff(resource.data).changedKeys().hasOnly(["status", "currentOrderId"]) &&
           request.resource.data.status in ["OCCUPIED", "FREE", "free", "occupied", "available", "AVAILABLE"] &&
           (
@@ -1063,7 +1279,7 @@ service cloud.firestore {
             request.resource.data.currentOrderId == null ||
             request.resource.data.currentOrderId is string
           )) ||
-        (staffUserActive() && hasRole("cashier") &&
+        (staffHasAnyRole(["cashier"]) && staffUserActive() &&
           request.resource.data.diff(resource.data).changedKeys().hasOnly(["status"]) &&
           request.resource.data.status in ["FREE", "free", "available", "AVAILABLE"]);
     }

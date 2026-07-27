@@ -84,13 +84,14 @@ export async function confirmRestaurantOrder(params: {
   const orderId = orderRef.id;
   const items = linesToFirestoreItems(params.lines);
   const ts = serverTimestamp();
+  const tableNumber = Math.max(0, Math.floor(Number(params.tableNumber) || 0));
   const tableLabel =
     (params.tableDisplayName ?? "").trim() ||
-    (params.tableNumber > 0 ? `Table ${params.tableNumber}` : "Walk-in");
+    (tableNumber > 0 ? `Table ${tableNumber}` : "Walk-in");
 
   await setDoc(orderRef, {
     id: orderId,
-    tableNumber: params.tableNumber,
+    tableNumber,
     tableId: params.tableFirestoreId,
     tableName: tableLabel,
     orderType: "dine_in",
@@ -99,7 +100,7 @@ export async function confirmRestaurantOrder(params: {
     total,
     status: "new",
     paymentStatus: "pending",
-    tokenNumber,
+    tokenNumber: Math.floor(Number(tokenNumber) || 0),
     createdAt: ts,
     updatedAt: ts
   });
@@ -116,7 +117,7 @@ export async function confirmRestaurantOrder(params: {
   return {
     orderId,
     tokenNumber,
-    tableNumber: params.tableNumber,
+    tableNumber,
     tableLabel,
     items: params.lines,
     total
@@ -159,10 +160,11 @@ export async function confirmCashierPosOrder(params: {
 
   await setDoc(orderRef, {
     id: orderId,
-    tableNumber: params.orderType === "dine_in" ? tableNum : null,
-    tableId: params.tableFirestoreId ?? null,
+    tableNumber: params.orderType === "dine_in" ? tableNum : 0,
+    tableId: params.tableFirestoreId ?? "",
     tableName: tableLabel,
     orderType: params.orderType,
+    source: params.source?.trim() || "cashier",
     customerName: params.customerName?.trim() || null,
     customerPhone: params.phone?.trim() || null,
     items,
@@ -170,11 +172,12 @@ export async function confirmCashierPosOrder(params: {
     totalAmount: total,
     status: params.markPaid ? "accepted" : "new",
     paymentStatus: params.markPaid ? "paid" : "pending",
-    tokenNumber,
+    tokenNumber: Math.floor(Number(tokenNumber) || 0),
     createdAt: ts,
     updatedAt: ts,
-    ...(params.source ? { source: params.source } : {}),
-    ...(params.markPaid && params.paymentMethod ? { paymentMethod: params.paymentMethod, paidAt: ts } : {}),
+    ...(params.markPaid && params.paymentMethod
+      ? { paymentMethod: params.paymentMethod, paidAt: ts }
+      : {}),
     ...(params.couponCode ? { couponCode: params.couponCode } : {}),
     ...(params.discountAmount && params.discountAmount > 0 ? { discountAmount: params.discountAmount } : {})
   });

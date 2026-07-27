@@ -15,8 +15,11 @@ import {
 } from "firebase/firestore";
 import { EXPECTED_NATIVE_PROJECT_ID } from "../config/firebase-project-lock.js";
 
-function env(name: string): string | undefined {
-  let raw = process.env[name];
+/**
+ * Metro/Expo only inlines *static* `process.env.EXPO_PUBLIC_*` reads into release
+ * bundles. Dynamic `process.env[name]` is undefined in production APKs and crashes.
+ */
+function cleanEnv(raw: string | undefined): string | undefined {
   if (raw == null) return undefined;
   let s = String(raw).replace(/^\uFEFF/, "").trim();
   if (
@@ -28,15 +31,15 @@ function env(name: string): string | undefined {
   return s.length ? s : undefined;
 }
 
-const measurementId = env("EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID");
+const measurementId = cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID);
 
 const firebaseConfig = {
-  apiKey: env("EXPO_PUBLIC_FIREBASE_API_KEY"),
-  authDomain: env("EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN"),
-  projectId: env("EXPO_PUBLIC_FIREBASE_PROJECT_ID"),
-  storageBucket: env("EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET"),
-  messagingSenderId: env("EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"),
-  appId: env("EXPO_PUBLIC_FIREBASE_APP_ID"),
+  apiKey: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_API_KEY),
+  authDomain: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN),
+  projectId: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID),
+  storageBucket: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET),
+  messagingSenderId: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
+  appId: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_APP_ID),
   ...(measurementId ? { measurementId } : {})
 };
 
@@ -95,7 +98,7 @@ function getStaffFirestoreInstance(): Firestore {
     return firestoreSingleton;
   }
 
-  const useLongPolling = env("EXPO_PUBLIC_FIRESTORE_LONG_POLLING") !== "false";
+  const useLongPolling = cleanEnv(process.env.EXPO_PUBLIC_FIRESTORE_LONG_POLLING) !== "false";
   if (!useLongPolling) {
     firestoreSingleton = getFirestore(firebaseApp);
     return firestoreSingleton;

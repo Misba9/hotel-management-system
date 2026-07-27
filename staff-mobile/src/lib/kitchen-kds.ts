@@ -26,6 +26,7 @@ export type KitchenOrder = {
   waiterName?: string;
   acceptedAt?: string;
   preparingAt?: string;
+  preparingStartedAt?: string;
   readyAt?: string;
   items: KitchenOrderItem[];
 };
@@ -41,17 +42,41 @@ export function resolveKitchenQueueStatus(order: StaffOrderRow): KitchenOrderSta
 }
 
 export function minutesSince(iso: string): number {
-  const ms = Date.now() - new Date(iso).getTime();
-  return Math.max(0, Math.floor(ms / 60000));
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return 0;
+  const ms = Date.now() - t;
+  if (!Number.isFinite(ms) || ms < 0) return 0;
+  return Math.floor(ms / 60000);
 }
 
 export function formatElapsed(iso: string): string {
   const m = minutesSince(iso);
   if (m < 1) return "Just now";
-  if (m < 60) return `${m}m`;
+  if (m < 60) return `${m} min`;
+  // Cap absurd values from bad/legacy timestamps (e.g. epoch misreads).
+  if (m > 24 * 60) return "Just now";
   const h = Math.floor(m / 60);
   const rem = m % 60;
   return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
+}
+
+/** Ready-queue wait clock — minutes-first, keyed off readyAt only. */
+export function formatReadyWaiting(iso: string): string {
+  const m = minutesSince(iso);
+  if (m < 1) return "Waiting • just now";
+  if (m > 24 * 60) return "Waiting • just now";
+  return `Waiting • ${m} min`;
+}
+
+/** Kitchen prep clock — minutes only, keyed off preparingStartedAt / preparingAt. */
+export function formatPreparingElapsed(iso: string): string {
+  const m = minutesSince(iso);
+  if (m < 1) return "Preparing • just now";
+  return `Preparing • ${m} min`;
+}
+
+export function resolvePreparingStartedIso(order: Pick<KitchenOrder, "preparingStartedAt" | "preparingAt">): string | null {
+  return order.preparingStartedAt ?? order.preparingAt ?? null;
 }
 
 export function formatSource(source: KitchenOrder["source"]): string {

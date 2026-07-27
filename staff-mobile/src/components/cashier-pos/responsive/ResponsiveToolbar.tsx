@@ -17,8 +17,9 @@ export const ResponsiveToolbar = memo(function ResponsiveToolbar({ children }: P
         styles.bar,
         {
           paddingHorizontal: layout.padding,
-          paddingVertical: layout.isTablet ? posSpacing.sm : posSpacing.xs,
-          minHeight: layout.isTablet ? layout.minTouch : undefined
+          paddingVertical: layout.isTablet ? posSpacing.md : posSpacing.sm,
+          minHeight: layout.isTablet ? layout.buttonHeight + 16 : undefined,
+          gap: layout.isTablet ? posSpacing.md : posSpacing.sm
         }
       ]}
     >
@@ -31,11 +32,11 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     flexWrap: "wrap",
-    gap: posSpacing.md,
     backgroundColor: posColors.secondary,
     borderTopWidth: 1,
-    borderTopColor: posColors.border
+    borderTopColor: posColors.borderStrong,
+    width: "100%"
   }
 });

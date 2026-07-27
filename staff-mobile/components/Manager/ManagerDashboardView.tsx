@@ -20,6 +20,8 @@ import {
 } from "../../services/manager";
 import { subscribeRecentOrders, type StaffOrderRow } from "../../services/orders";
 import { useAuthStore } from "../../store/useAuthStore";
+import { useResponsiveLayout } from "../../src/hooks/use-responsive-layout";
+import { getGridColumnCount } from "../../src/lib/responsive";
 
 type StatusFilter = "all" | "pending" | "preparing" | "ready" | "served" | "other";
 
@@ -184,6 +186,8 @@ function DashboardListHeader({ metrics, staff, staffErr, statusFilter, onFilter,
 
 export function ManagerDashboardView() {
   const role = useAuthStore((s) => s.role);
+  const { padding, width } = useResponsiveLayout();
+  const listColumns = getGridColumnCount(width, { phone: 1, tablet: 2, largeTablet: 3 });
   const [orders, setOrders] = useState<StaffOrderRow[]>([]);
   const [staff, setStaff] = useState<StaffDirectoryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -309,21 +313,26 @@ export function ManagerDashboardView() {
 
       <FlatList
         data={filteredOrders}
+        key={`manager-${listColumns}`}
+        numColumns={listColumns}
         keyExtractor={(o) => o.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingHorizontal: padding }]}
+        columnWrapperStyle={listColumns > 1 ? styles.gridRow : undefined}
         ListHeaderComponent={listHeader}
         renderItem={({ item }) => (
-          <View style={styles.orderWrap}>
-            <OrderCard
-              order={item}
-              role={effectiveRole}
-              busyAction={busy}
-              onBusy={setBusy}
-              onUpdated={() => undefined}
-            />
-            <Pressable style={styles.assignBtn} onPress={() => setAssignOrder(item)}>
-              <Text style={styles.assignBtnText}>Assign delivery rider…</Text>
-            </Pressable>
+          <View style={listColumns > 1 ? styles.gridCell : styles.gridCellSingle}>
+            <View style={styles.orderWrap}>
+              <OrderCard
+                order={item}
+                role={effectiveRole}
+                busyAction={busy}
+                onBusy={setBusy}
+                onUpdated={() => undefined}
+              />
+              <Pressable style={styles.assignBtn} onPress={() => setAssignOrder(item)}>
+                <Text style={styles.assignBtnText}>Assign delivery rider…</Text>
+              </Pressable>
+            </View>
           </View>
         )}
         ListEmptyComponent={
@@ -385,7 +394,7 @@ export function ManagerDashboardView() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, width: "100%", backgroundColor: "#f8fafc" },
+  screen: { flex: 1, width: "100%", height: "100%", alignSelf: "stretch", backgroundColor: "#f8fafc" },
   headerBlock: { paddingBottom: 8 },
   heading: { fontSize: 24, fontWeight: "800", color: "#0f172a", paddingHorizontal: 16, paddingTop: 16 },
   sub: { fontSize: 13, color: "#64748b", paddingHorizontal: 16, marginBottom: 10, lineHeight: 18 },
@@ -452,9 +461,12 @@ const styles = StyleSheet.create({
   filterChipOn: { backgroundColor: "#0f172a", borderColor: "#0f172a" },
   filterChipText: { fontSize: 13, fontWeight: "700", color: "#475569" },
   filterChipTextOn: { color: "#fff" },
-  list: { paddingBottom: 32 },
+  list: { paddingBottom: 32, width: "100%", flexGrow: 1 },
+  gridRow: { gap: 12 },
+  gridCell: { flex: 1, minWidth: 0, marginBottom: 8 },
+  gridCellSingle: { width: "100%", marginBottom: 8 },
   orderWrap: { marginBottom: 4 },
-  assignBtn: { marginHorizontal: 16, marginBottom: 10, paddingVertical: 10, paddingHorizontal: 12 },
+  assignBtn: { marginBottom: 10, paddingVertical: 10, paddingHorizontal: 12 },
   assignBtnText: { fontSize: 14, fontWeight: "800", color: "#2563eb" },
   empty: { textAlign: "center", marginTop: 24, color: "#64748b", paddingHorizontal: 16 },
   loaderWrap: { paddingVertical: 24, alignItems: "center" },
@@ -468,7 +480,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    maxHeight: "70%"
+    maxHeight: "70%",
+    width: "100%",
+    alignSelf: "stretch"
   },
   modalTitle: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
   modalSub: { fontSize: 14, color: "#64748b", marginTop: 6, marginBottom: 12 },

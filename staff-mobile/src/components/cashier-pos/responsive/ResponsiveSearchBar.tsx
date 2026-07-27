@@ -34,6 +34,7 @@ export const ResponsiveSearchBar = memo(function ResponsiveSearchBar({
 }: Props) {
   const layout = useResponsiveLayout();
   const pad = layout.padding;
+  const searchHeight = layout.isTablet ? Math.max(layout.buttonHeight, 56) : 48;
 
   const rowStyle: ViewStyle =
     layout.isLargeTablet
@@ -43,26 +44,45 @@ export const ResponsiveSearchBar = memo(function ResponsiveSearchBar({
         : styles.rowPhone;
 
   return (
-    <View style={[styles.section, { paddingHorizontal: pad }]}>
+    <View style={[styles.section, { paddingHorizontal: pad, paddingTop: pad * 0.75 }]}>
       <View style={rowStyle}>
-        <View style={[styles.searchWrap, layout.isPhone && styles.searchWrapFull]}>
-          <PosIcon name="search" size={layout.iconSize * 0.85} color={posColors.textDim} />
+        <View
+          style={[
+            styles.searchWrap,
+            layout.isPhone && styles.searchWrapFull,
+            { minHeight: searchHeight, borderRadius: layout.radius }
+          ]}
+        >
+          <PosIcon name="search" size={layout.isTablet ? 22 : 18} color={posColors.textDim} />
           <PosInput
             ref={searchInputRef}
             value={search}
             onChangeText={onSearchChange}
             onFocus={onFocus}
             onBlur={onBlur}
-            placeholder="Search product…  ( / )"
-            style={[styles.search, { fontSize: layout.moderateScale(15) }]}
+            placeholder={
+              layout.isTablet
+                ? "Search products, SKU…  ·  / focus  ·  ⌗ barcode  ·  🎤 voice"
+                : "Search product…  ( / )"
+            }
+            style={[styles.search, { fontSize: layout.isTablet ? 16 : 15 }]}
           />
+          {search.length > 0 ? (
+            <Pressable
+              onPress={() => onSearchChange("")}
+              style={[styles.clearBtn, { minWidth: 40, minHeight: 40 }]}
+              accessibilityLabel="Clear search"
+            >
+              <Text style={styles.clearText}>✕</Text>
+            </Pressable>
+          ) : null}
           {onBarcodeScan ? (
             <Pressable
               onPress={onBarcodeScan}
               style={[styles.scanBtn, { minWidth: layout.minTouch, minHeight: layout.minTouch }]}
               accessibilityLabel="Scan barcode"
             >
-              <Text style={[styles.scanText, { fontSize: layout.moderateScale(16) }]}>⌗</Text>
+              <Text style={[styles.scanText, { fontSize: layout.isTablet ? 18 : 16 }]}>⌗</Text>
             </Pressable>
           ) : null}
         </View>
@@ -81,9 +101,9 @@ export const ResponsiveSearchBar = memo(function ResponsiveSearchBar({
             <Pressable
               key={name}
               onPress={() => onSuggestionSelect?.(name)}
-              style={styles.suggestionRow}
+              style={[styles.suggestionRow, { minHeight: layout.minTouch }]}
             >
-              <PosIcon name="search" size={12} color={posColors.textDim} />
+              <PosIcon name="search" size={14} color={posColors.textDim} />
               <Text style={styles.suggestionText}>{name}</Text>
             </Pressable>
           ))}
@@ -95,11 +115,11 @@ export const ResponsiveSearchBar = memo(function ResponsiveSearchBar({
 
 const styles = StyleSheet.create({
   section: {
-    paddingTop: posSpacing.md,
-    paddingBottom: posSpacing.sm,
+    paddingBottom: posSpacing.md,
     borderBottomWidth: 1,
     borderBottomColor: posColors.border,
-    zIndex: 10
+    zIndex: 10,
+    width: "100%"
   },
   rowPhone: {
     flexDirection: "column",
@@ -109,7 +129,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: posSpacing.sm
+    gap: posSpacing.md
   },
   rowLargeTablet: {
     flexDirection: "row",
@@ -121,16 +141,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: posSpacing.sm,
     backgroundColor: posColors.card,
-    borderRadius: posRadius.md,
     borderWidth: 1,
     borderColor: posColors.borderStrong,
-    paddingHorizontal: posSpacing.md,
-    minHeight: 48,
+    paddingHorizontal: posSpacing.lg,
     flex: 1,
     minWidth: 0
   },
   searchWrapFull: { width: "100%" },
-  search: { flex: 1, borderWidth: 0, backgroundColor: "transparent", paddingVertical: 12 },
+  search: { flex: 1, borderWidth: 0, backgroundColor: "transparent", paddingVertical: 14 },
+  clearBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: posRadius.sm
+  },
+  clearText: { color: posColors.textDim, fontWeight: "800", fontSize: 14 },
   scanBtn: {
     borderRadius: posRadius.sm,
     backgroundColor: posColors.bg,
@@ -142,23 +166,23 @@ const styles = StyleSheet.create({
   scanText: { fontWeight: "800", color: posColors.textSecondary },
   headerAction: { flexShrink: 0 },
   orderToolbar: { paddingTop: posSpacing.sm, alignItems: "flex-end", width: "100%" },
-  orderToolbarInline: { paddingTop: 0, flex: 1, minWidth: "30%" },
+  orderToolbarInline: { paddingTop: 0, flex: 1, minWidth: 0 },
   suggestions: {
-    marginTop: posSpacing.xs,
+    marginTop: posSpacing.sm,
     backgroundColor: posColors.card,
     borderRadius: posRadius.md,
     borderWidth: 1,
-    borderColor: posColors.border,
+    borderColor: posColors.borderStrong,
     overflow: "hidden"
   },
   suggestionRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: posSpacing.sm,
-    paddingHorizontal: posSpacing.md,
+    paddingHorizontal: posSpacing.lg,
     paddingVertical: posSpacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: posColors.border
   },
-  suggestionText: { fontSize: 13, fontWeight: "600", color: posColors.text }
+  suggestionText: { fontSize: 15, fontWeight: "600", color: posColors.text }
 });

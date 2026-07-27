@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import type { PlatformTab } from "../../lib/pos/cashier-pos-store";
 import type { OrderStatusFilter } from "../../lib/pos/order-source";
-import { posCard, posColors, posRadius, posSpacing } from "./pos-theme";
+import { posColors, posRadius, posSpacing } from "./pos-theme";
 
 type PlatformDef = {
   id: PlatformTab;
@@ -34,6 +34,10 @@ export const PosOrderSourceBar = memo(function PosOrderSourceBar({
   const layout = useResponsiveLayout();
   const useEqualWidth = layout.isTablet;
   const useTwoRowGrid = layout.isLargePhone && !layout.isLandscape;
+  const tabMinH = layout.isTablet ? 36 : 40;
+  const emojiSize = layout.isTablet ? 13 : 14;
+  const labelSize = layout.isTablet ? 11 : 12;
+  const hPad = Math.max(8, Math.round(layout.padding * 0.65));
 
   const tabs = PLATFORM_TABS.map((tab) => {
     const on = activePlatform === tab.id;
@@ -46,16 +50,15 @@ export const PosOrderSourceBar = memo(function PosOrderSourceBar({
         accessibilityState={{ selected: on }}
         style={[
           styles.tab,
-          posCard(),
           on && styles.tabOn,
           on && { borderColor: tab.color },
           useEqualWidth && styles.tabEqual,
           useTwoRowGrid && styles.tabGrid,
-          { minHeight: layout.minTouch, borderRadius: layout.radius }
+          { minHeight: tabMinH }
         ]}
       >
-        <Text style={[styles.emoji, { fontSize: layout.moderateScale(16) }]}>{tab.emoji}</Text>
-        <Text style={[styles.label, { fontSize: layout.moderateScale(12) }, on && { color: tab.color }]}>
+        <Text style={[styles.emoji, { fontSize: emojiSize }]}>{tab.emoji}</Text>
+        <Text style={[styles.label, { fontSize: labelSize }, on && { color: tab.color }]} numberOfLines={1}>
           {tab.label}
         </Text>
         <View style={[styles.countBadge, on && { backgroundColor: tab.color }]}>
@@ -67,7 +70,7 @@ export const PosOrderSourceBar = memo(function PosOrderSourceBar({
 
   if (useEqualWidth) {
     return (
-      <View style={[styles.wrap, { paddingHorizontal: layout.padding }]}>
+      <View style={[styles.wrap, { paddingHorizontal: hPad }]}>
         <View style={styles.tabletRow}>{tabs}</View>
       </View>
     );
@@ -75,7 +78,7 @@ export const PosOrderSourceBar = memo(function PosOrderSourceBar({
 
   if (useTwoRowGrid) {
     return (
-      <View style={[styles.wrap, { paddingHorizontal: layout.padding }]}>
+      <View style={[styles.wrap, { paddingHorizontal: hPad }]}>
         <View style={styles.twoRowGrid}>{tabs}</View>
       </View>
     );
@@ -86,7 +89,7 @@ export const PosOrderSourceBar = memo(function PosOrderSourceBar({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollRow, { paddingHorizontal: layout.padding }]}
+        contentContainerStyle={[styles.scrollRow, { paddingHorizontal: hPad }]}
       >
         {tabs}
       </ScrollView>
@@ -116,58 +119,63 @@ const styles = StyleSheet.create({
   wrap: {
     borderBottomWidth: 1,
     borderBottomColor: posColors.border,
-    backgroundColor: posColors.secondary
+    backgroundColor: posColors.secondary,
+    flexShrink: 0
   },
   scrollRow: {
-    paddingVertical: posSpacing.sm,
-    gap: posSpacing.sm,
+    paddingVertical: 6,
+    gap: 6,
     alignItems: "center"
   },
   tabletRow: {
     flexDirection: "row",
-    paddingVertical: posSpacing.sm,
-    gap: posSpacing.sm,
+    paddingVertical: 6,
+    gap: 6,
     alignItems: "stretch"
   },
   twoRowGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    paddingVertical: posSpacing.sm,
-    gap: posSpacing.sm
+    paddingVertical: 6,
+    gap: 6
   },
   tab: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: posRadius.lg,
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: posRadius.md,
     borderWidth: 1,
     borderColor: posColors.border,
-    flexShrink: 0
+    backgroundColor: posColors.card,
+    flexShrink: 1,
+    minWidth: 0
   },
-  tabEqual: { flex: 1, justifyContent: "center" },
-  tabGrid: { flexBasis: "48%", flexGrow: 1, justifyContent: "center" },
+  tabEqual: { flex: 1 },
+  tabGrid: { flexBasis: "48%", flexGrow: 1 },
   tabOn: {
     backgroundColor: posColors.primaryMuted,
     borderWidth: 1.5
   },
-  emoji: {},
+  emoji: { lineHeight: 16 },
   label: {
-    fontWeight: "800",
+    fontWeight: "700",
     color: posColors.textSecondary,
-    letterSpacing: 0.2
+    letterSpacing: 0.1,
+    flexShrink: 1
   },
   countBadge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: posColors.bg,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 6,
-    marginLeft: 2
+    paddingHorizontal: 4,
+    marginLeft: 1
   },
-  countText: { fontSize: 10, fontWeight: "900", color: posColors.textDim },
+  countText: { fontSize: 9, fontWeight: "800", color: posColors.textDim },
   countTextOn: { color: "#fff" }
 });

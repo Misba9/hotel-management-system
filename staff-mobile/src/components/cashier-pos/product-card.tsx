@@ -42,12 +42,13 @@ export const ProductCard = memo(function ProductCard({
   const img = item.imageUrl ?? item.image;
   const stock = stockLabel(item);
   const outOfStock = item.available === false || (typeof item.stockQty === "number" && item.stockQty <= 0);
-  const btnSize = layout.scale(32);
+  const btnSize = layout.isTablet ? 44 : layout.scale(36);
+  const cardPad = layout.isTablet ? 16 : layout.padding * 0.75;
 
   const tileStyle: ViewStyle = {
     ...styles.tile,
     borderRadius: layout.radius,
-    padding: layout.padding * 0.75,
+    padding: cardPad,
     flex: 1,
     ...(outOfStock ? styles.tileDisabled : null)
   };
@@ -89,20 +90,32 @@ export const ProductCard = memo(function ProductCard({
       <View style={styles.spacer} />
 
       <View style={styles.qtyRow}>
-        <Pressable
-          onPress={onDec}
-          disabled={qty <= 0}
-          style={[styles.qtyBtn, { width: btnSize, height: btnSize }, qty <= 0 && styles.qtyBtnOff]}
-        >
-          <PosIcon name="minus" size={layout.moderateScale(14)} color={qty <= 0 ? posColors.textDim : posColors.text} />
-        </Pressable>
-        <Text style={[styles.qty, { fontSize: fonts.qty }]}>{qty}</Text>
+        {qty > 0 ? (
+          <>
+            <Pressable
+              onPress={onDec}
+              style={[styles.qtyBtn, { width: btnSize, height: btnSize }]}
+            >
+              <PosIcon name="minus" size={layout.moderateScale(14)} color={posColors.text} />
+            </Pressable>
+            <Text style={[styles.qty, { fontSize: fonts.qty }]}>{qty}</Text>
+          </>
+        ) : (
+          <View style={styles.qtySpacer} />
+        )}
         <Pressable
           onPress={onAdd}
           disabled={outOfStock}
-          style={[styles.qtyBtn, styles.qtyBtnAdd, { width: btnSize, height: btnSize }, outOfStock && styles.qtyBtnOff]}
+          style={[
+            styles.qtyBtn,
+            styles.qtyBtnAdd,
+            styles.qtyBtnAddLarge,
+            { width: btnSize + 4, height: btnSize + 4 },
+            outOfStock && styles.qtyBtnOff
+          ]}
+          accessibilityLabel={`Add ${item.name}`}
         >
-          <PosIcon name="plus" size={layout.moderateScale(14)} color="#fff" />
+          <PosIcon name="plus" size={layout.moderateScale(16)} color="#fff" />
         </Pressable>
       </View>
     </PosHoverCard>
@@ -114,6 +127,9 @@ const styles = StyleSheet.create({
     flexDirection: "column",
     overflow: "hidden",
     minHeight: 0,
+    backgroundColor: posColors.card,
+    borderWidth: 1,
+    borderColor: posColors.borderStrong,
     ...Platform.select({
       web: { ...posTransition, transition: "transform 180ms ease, box-shadow 180ms ease" } as ViewStyle,
       default: {}
@@ -131,7 +147,9 @@ const styles = StyleSheet.create({
     backgroundColor: posColors.bg,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: posSpacing.sm
+    marginBottom: posSpacing.sm,
+    borderWidth: 1,
+    borderColor: posColors.border
   },
   name: {
     fontWeight: "800",
@@ -139,52 +157,66 @@ const styles = StyleSheet.create({
   },
   category: {
     color: posColors.textDim,
-    marginTop: 2,
+    marginTop: 4,
     fontWeight: "600"
   },
   price: {
     fontWeight: "900",
     color: posColors.primary,
-    marginTop: posSpacing.xs
+    marginTop: posSpacing.sm
   },
   stockRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    marginTop: 4
+    gap: 6,
+    marginTop: 6
   },
-  stockEmoji: { fontSize: 8 },
+  stockEmoji: { fontSize: 10 },
   stockText: { fontWeight: "700", flex: 1 },
-  spacer: { flex: 1, minHeight: 4 },
+  spacer: { flex: 1, minHeight: 8 },
   qtyRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: posSpacing.sm
+    justifyContent: "flex-end",
+    gap: posSpacing.sm,
+    marginTop: posSpacing.md
   },
+  qtySpacer: { flex: 1 },
   qtyBtn: {
     borderRadius: posRadius.pill,
     backgroundColor: posColors.bg,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: posColors.border
+    borderColor: posColors.borderStrong
   },
   qtyBtnOff: { opacity: 0.4 },
-  qtyBtnAdd: { backgroundColor: posColors.primary, borderColor: posColors.primary },
-  qty: { fontWeight: "900", color: posColors.text, minWidth: 28, textAlign: "center" },
-  favBtn: { position: "absolute", top: 8, right: 8, zIndex: 2, padding: 4 },
+  qtyBtnAdd: { backgroundColor: posColors.success, borderColor: posColors.success },
+  qtyBtnAddLarge: {
+    ...Platform.select({
+      ios: {
+        shadowColor: "#22C55E",
+        shadowOpacity: 0.35,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 }
+      },
+      android: { elevation: 3 },
+      default: {}
+    })
+  },
+  qty: { fontWeight: "900", color: posColors.text, minWidth: 32, textAlign: "center" },
+  favBtn: { position: "absolute", top: 10, right: 10, zIndex: 2, padding: 6 },
   bestBadge: {
     position: "absolute",
-    top: 8,
-    left: 8,
+    top: 10,
+    left: 10,
     zIndex: 2,
-    backgroundColor: "rgba(245,158,11,0.2)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    backgroundColor: "rgba(245,158,11,0.22)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: posRadius.pill,
     borderWidth: 1,
-    borderColor: "rgba(245,158,11,0.4)"
+    borderColor: "rgba(245,158,11,0.45)"
   },
   bestText: { fontWeight: "800", color: posColors.warning }
 });

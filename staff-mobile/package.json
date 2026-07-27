@@ -12,15 +12,17 @@
     }
   },
   "scripts": {
-    "dev": "expo start --clear",
-    "start": "expo start",
+    "dev": "REACT_NATIVE_PACKAGER_HOSTNAME=localhost expo start --localhost --clear",
+    "start": "REACT_NATIVE_PACKAGER_HOSTNAME=localhost expo start --localhost",
     "start:lan": "expo start --lan",
     "dev:tunnel": "expo start --tunnel",
-    "dev:clear": "expo start --clear",
-    "android": "JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}\" expo run:android",
-    "android:reverse": "adb reverse tcp:8081 tcp:8081",
+    "dev:clear": "REACT_NATIVE_PACKAGER_HOSTNAME=localhost expo start --localhost --clear",
+    "android": "bash scripts/run-android-usb.sh",
+    "android:lan": "JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}\" expo run:android",
+    "android:reverse": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:8082 tcp:8082",
     "ios": "expo run:ios",
     "build:android": "JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}\" expo run:android --variant release",
+    "build:apk": "bash -lc 'set -a; source .env; set +a; export JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}\"; cd android && ./gradlew :app:assembleRelease'",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

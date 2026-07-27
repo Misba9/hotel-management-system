@@ -28,14 +28,19 @@ import { usePrinters } from "../../hooks/use-printers";
 import { useTables } from "../../hooks/use-tables";
 import { formatOrderTypeLabel, isOrderPaid } from "../../lib/cashier-order-filters";
 import { printCashierOrderDocuments } from "../../lib/pos/cashier-print";
+import {
+  getReceiptPrintPreference,
+  receiptPrintPreferenceLabel,
+  setReceiptPrintPreference,
+  type ReceiptPrintPreference
+} from "../../lib/pos/receipt-print-preference";
 import { validateCouponCode } from "../../lib/pos/coupon-validate";
 import { BillPaymentPanel, type BillMode } from "./bill-payment-panel";
+import { PaymentSuccessPrintDialog } from "./payment-success-print-dialog";
 import { MenuPanel } from "./menu-panel";
-import { PosBottomBar } from "./pos-bottom-bar";
 import { PosNavbar } from "./pos-navbar";
 import { PosNotificationsPanel } from "./pos-notifications";
 import { PosOrderSourceBar } from "./pos-order-source-bar";
-import { PosPlatformStatusFilter } from "./pos-platform-status-filter";
 import { PosQuickFab } from "./pos-quick-fab";
 import { PosPlatformOrdersPanel } from "./pos-platform-orders-panel";
 import { PosOrderDetailModal } from "./pos-order-detail-modal";
@@ -58,10 +63,13 @@ function showToast(msg: string) {
   if (Platform.OS === "android") ToastAndroid.show(msg, ToastAndroid.SHORT);
 }
 
+/** Remember last bill order type across new orders (fast POS default). */
+let lastBillOrderChannel: PosOrderChannel = "parcel";
+
 export function PosDashboard() {
   const router = useRouter();
   const layout = useResponsiveLayout();
-  const { isPhone, isTablet, isLargeTablet, showSplitBill, billSplitRatio } = layout;
+  const { isPhone, isTablet, isLargeTablet, showSplitBill, posPanels } = layout;
 
   useCashierOrdersSubscription(true);
   const ordersHub = useCashierOrders();
@@ -121,7 +129,11 @@ export function PosDashboard() {
   const [menuQuickFilter, setMenuQuickFilter] = useState<MenuQuickFilter>("all");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [recentProductIds, setRecentProductIds] = useState<string[]>([]);
-  const [orderChannel, setOrderChannel] = useState<PosOrderChannel>("parcel");
+  const [orderChannel, setOrderChannelState] = useState<PosOrderChannel>(lastBillOrderChannel);
+  const setOrderChannel = useCallback((ch: PosOrderChannel) => {
+    lastBillOrderChannel = ch;
+    setOrderChannelState(ch);
+  }, []);
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [guestCount, setGuestCount] = useState("");
@@ -137,6 +149,12 @@ export function PosDashboard() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationsRead, setNotificationsRead] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [receiptPrintPref, setReceiptPrintPref] = useState<ReceiptPrintPreference>("ask");
+  const [printPrompt, setPrintPrompt] = useState<{
+    order: StaffOrderRow;
+    method: PaymentMethodId;
+    orderNumber: string;
+  } | null>(null);
 
   const menuSearchRef = useRef<TextInput | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -151,6 +169,10 @@ export function PosDashboard() {
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
   }, [fadeAnim]);
+
+  useEffect(() => {
+    void getReceiptPrintPreference().then(setReceiptPrintPref);
+  }, []);
 
   const populateCustomerFromOrder = useCallback((order: StaffOrderRow) => {
     setCustomerName(order.customer?.name ?? "");
@@ -419,7 +441,7 @@ export function PosDashboard() {
       selectOrder(null);
       setCart(orderToCart(order));
       populateCustomerFromOrder(order);
-      setOrderChannel("parcel");
+      setOrderChannel(lastBillOrderChannel);
       if (isPhone) setMobileTab("menu");
     },
     [selectOrder, orderToCart, populateCustomerFromOrder, isPhone]
@@ -493,7 +515,7 @@ export function PosDashboard() {
     setAddress("");
     setPaymentMethod(null);
     setDiscountPercent(0);
-    setOrderChannel("parcel");
+    setOrderChannel(lastBillOrderChannel);
     if (isPhone || isTablet) setMobileTab("menu");
   }, [isPhone, isTablet, isParcelMode]);
 
@@ -526,6 +548,55 @@ export function PosDashboard() {
     [taxPercent, printers, posSettings]
   );
 
+  /** After Confirm payment — reset bill to a fresh empty order (print already handled separately). */
+  const resetBillAfterSuccessfulPay = useCallback(() => {
+    setCart([]);
+    setCashReceived("");
+    setCouponCode("");
+    setCouponDiscount(0);
+    setDiscountPercent(0);
+    setDiscountFlatAmount(0);
+    setPaymentMethod(null);
+    setCustomerName("");
+    setPhone("");
+    setGuestCount("");
+    setGstNumber("");
+    setAddress("");
+    setSelectedTable(null);
+    setBillMode("new");
+    setSelectedOrderId(null);
+    setOrderChannel(lastBillOrderChannel);
+    if (isPhone || isTablet) setMobileTab("menu");
+  }, [isPhone, isTablet]);
+
+  const openReceiptPrintSettings = useCallback(() => {
+    Alert.alert(
+      "Receipt printing",
+      `Current: ${receiptPrintPreferenceLabel(receiptPrintPref)}\n\nChoose what happens after Confirm payment.`,
+      [
+        {
+          text: "Ask each time",
+          onPress: () => {
+            void setReceiptPrintPreference("ask").then(() => setReceiptPrintPref("ask"));
+          }
+        },
+        {
+          text: "Always print",
+          onPress: () => {
+            void setReceiptPrintPreference("always").then(() => setReceiptPrintPref("always"));
+          }
+        },
+        {
+          text: "Skip printing",
+          onPress: () => {
+            void setReceiptPrintPreference("never").then(() => setReceiptPrintPref("never"));
+          }
+        },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
+  }, [receiptPrintPref]);
+
   const handlePayAndComplete = useCallback(async () => {
     if (!isParcelMode) return;
     if (cart.length === 0) {
@@ -536,18 +607,10 @@ export function PosDashboard() {
       Alert.alert("Payment", "Select a payment method first.");
       return;
     }
-    if (paymentMethod === "cash") {
-      const received = Number(cashReceived) || 0;
-      const due = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
-      if (received < due) {
-        Alert.alert("Cash", "Enter cash received (must cover total).");
-        return;
-      }
-    }
     setBusy(true);
     try {
       const method = resolvePaymentMethod();
-      const { orderType, source } = channelToBackendOrder("parcel");
+      const { orderType, source } = channelToBackendOrder(orderChannel);
       const placed = await confirmCashierPosOrder({
         orderType,
         source,
@@ -560,7 +623,8 @@ export function PosDashboard() {
         paymentMethod: method,
         markPaid: true,
         couponCode: discountMode === "coupon" && couponCode ? couponCode : undefined,
-        discountAmount: discountMode === "coupon" ? couponDiscount : discountMode === "flat" ? discountFlatAmount : undefined
+        discountAmount:
+          discountMode === "coupon" ? couponDiscount : discountMode === "flat" ? discountFlatAmount : undefined
       });
       const orderRow: StaffOrderRow = {
         id: placed.orderId,
@@ -573,21 +637,36 @@ export function PosDashboard() {
         totalAmount: placed.total,
         tokenNumber: placed.tokenNumber,
         tableName: placed.tableLabel,
-        orderType: "parcel",
+        orderType,
         paymentStatus: "paid",
         status: "completed",
         canonicalStatus: "preparing"
       } as StaffOrderRow;
-      await printOrderDocs(orderRow, method);
-      setCart([]);
-      setCashReceived("");
-      setCouponCode("");
-      setCouponDiscount(0);
-      setPaymentMethod(null);
-      showToast(`Paid · Token #${placed.tokenNumber} · Printed`);
-      setBillMode("existing");
-      setSelectedOrderId(placed.orderId);
-      if (isPhone) setMobileTab("orders");
+      const orderNumber =
+        typeof placed.tokenNumber === "number" && placed.tokenNumber > 0
+          ? String(placed.tokenNumber)
+          : placed.orderId.slice(0, 8).toUpperCase();
+
+      showToast(`Paid · Token #${orderNumber}`);
+
+      const pref = await getReceiptPrintPreference();
+      setReceiptPrintPref(pref);
+
+      if (pref === "always") {
+        try {
+          await printOrderDocs(orderRow, method);
+        } catch (printErr) {
+          Alert.alert("Print failed", printErr instanceof Error ? printErr.message : "Unknown error");
+        }
+        resetBillAfterSuccessfulPay();
+        return;
+      }
+      if (pref === "never") {
+        resetBillAfterSuccessfulPay();
+        return;
+      }
+
+      setPrintPrompt({ order: orderRow, method, orderNumber });
     } catch (e) {
       Alert.alert("Payment failed", e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -596,21 +675,54 @@ export function PosDashboard() {
   }, [
     cart,
     paymentMethod,
-    cashReceived,
     selectedTable,
     customerName,
     phone,
-    isPhone,
     isParcelMode,
+    orderChannel,
     buildCartLinesForOrder,
     resolvePaymentMethod,
     printOrderDocs,
     discountMode,
     couponCode,
     couponDiscount,
-    discountFlatAmount
+    discountFlatAmount,
+    resetBillAfterSuccessfulPay
   ]);
 
+  const handlePrintPromptNow = useCallback(
+    async (dontAskAgain: boolean) => {
+      const pending = printPrompt;
+      setPrintPrompt(null);
+      if (!pending) return;
+      if (dontAskAgain) {
+        await setReceiptPrintPreference("always");
+        setReceiptPrintPref("always");
+      }
+      setBusy(true);
+      try {
+        await printOrderDocs(pending.order, pending.method);
+      } catch (e) {
+        Alert.alert("Print failed", e instanceof Error ? e.message : "Unknown error");
+      } finally {
+        setBusy(false);
+        resetBillAfterSuccessfulPay();
+      }
+    },
+    [printPrompt, printOrderDocs, resetBillAfterSuccessfulPay]
+  );
+
+  const handlePrintPromptLater = useCallback(
+    async (dontAskAgain: boolean) => {
+      setPrintPrompt(null);
+      if (dontAskAgain) {
+        await setReceiptPrintPreference("never");
+        setReceiptPrintPref("never");
+      }
+      resetBillAfterSuccessfulPay();
+    },
+    [resetBillAfterSuccessfulPay]
+  );
   const handlePayRazorpay = useCallback(async () => {
     Alert.alert(
       "Razorpay",
@@ -836,14 +948,12 @@ export function PosDashboard() {
       grouped={grouped}
       categories={categories}
       selectedCategory={selectedCategory}
-      quickFilter={menuQuickFilter}
       search={menuSearch}
       cartQtyById={cartQtyById}
       recentProductIds={recentProductIds}
       loading={menuLoading}
       error={menuError}
       onCategorySelect={setSelectedCategory}
-      onQuickFilter={setMenuQuickFilter}
       onSearchChange={setMenuSearch}
       onAdd={(item) => addToCart(item)}
       onDec={(item) => decFromCart(item)}
@@ -853,23 +963,11 @@ export function PosDashboard() {
       searchInputRef={menuSearchRef}
       showCategoryTabs={isPhone}
       onBarcodeScan={handleBarcodeScan}
-      onQuickDiscount={handleQuickDiscount}
       headerAction={
         isParcelMode ? (
           <RecentParcelOrdersButton
             count={todayParcelCount}
             onPress={() => setShowRecentParcelDrawer(true)}
-          />
-        ) : undefined
-      }
-      orderToolbar={
-        isParcelMode ? (
-          <PosPlatformStatusFilter
-            platform="parcel"
-            activeStatus={statusFilters.parcel}
-            statusCounts={platformStatusCounts.parcel}
-            onStatusChange={(s) => setPlatformStatusFilter("parcel", s)}
-            fullWidth={isPhone}
           />
         ) : undefined
       }
@@ -879,65 +977,96 @@ export function PosDashboard() {
   return (
     <SafeAreaView style={styles.safe} edges={["left", "right"]}>
       <Animated.View style={[styles.root, { opacity: fadeAnim }]}>
-        <PosNavbar
-          restaurantName="Nausheen Fruits Juice Center"
-          branchName="Main Branch"
-          cashierName={cashierName}
-          counterNumber={2}
-          unreadCount={unreadCount}
-          onMenuToggle={isLargeTablet ? () => setSidebarCollapsed((v) => !v) : undefined}
-          onHistory={() => setShowHistory(true)}
-          onNotifications={() => setShowNotifications(true)}
-          onDelivery={() => setShowDeliveryHub(true)}
-          onSettings={() => Alert.alert("Settings", "Cashier settings are read-only. Contact manager for changes.")}
-          onProfile={() => router.push("/profile")}
-          onLogout={() => void handleLogout()}
-          onHelp={shortcutHandlers.onShowShortcuts}
-        />
+        {showSplitBill && posPanels ? (
+          <View style={styles.workspace}>
+            <View style={[styles.leftWorkspace, { flex: 1 - posPanels.bill }]}>
+              <PosNavbar
+                restaurantName="Nausheen Fruits Juice Center"
+                branchName="Main Branch"
+                cashierName={cashierName}
+                counterNumber={2}
+                unreadCount={unreadCount}
+                onMenuToggle={isLargeTablet ? () => setSidebarCollapsed((v) => !v) : undefined}
+                onHistory={() => setShowHistory(true)}
+                onNotifications={() => setShowNotifications(true)}
+                onDelivery={() => setShowDeliveryHub(true)}
+                onSettings={openReceiptPrintSettings}
+                onProfile={() => router.push("/profile")}
+                onLogout={() => void handleLogout()}
+                onHelp={shortcutHandlers.onShowShortcuts}
+              />
 
-        <PosOrderSourceBar
-          activePlatform={platformFilter}
-          platformCounts={platformCounts}
-          onPlatformChange={setPlatformFilter}
-        />
+              <PosOrderSourceBar
+                activePlatform={platformFilter}
+                platformCounts={platformCounts}
+                onPlatformChange={setPlatformFilter}
+              />
 
-        <View style={styles.main}>
-          {!isParcelMode ? (
-            platformOrdersPanel
-          ) : showSplitBill ? (
-            <View style={styles.splitRoot}>
-              {isPhone ? categorySidebar : null}
-              <View style={styles.splitRow}>
-                {!isPhone ? categorySidebar : null}
-                <View style={[styles.colMenu, { flex: billSplitRatio }]}>{menuPanel}</View>
-                <View style={[styles.colBill, { flex: 1 - billSplitRatio }]}>{billPanel}</View>
+              <View style={styles.leftMain}>
+                {!isParcelMode ? (
+                  platformOrdersPanel
+                ) : (
+                  <View style={styles.parcelWorkspace}>
+                    {categorySidebar && posPanels.category <= 0 ? categorySidebar : null}
+                    <View style={styles.splitRow}>
+                      {categorySidebar && posPanels.category > 0 ? (
+                        <View
+                          style={[
+                            styles.colCategory,
+                            {
+                              flex: posPanels.category / (posPanels.category + posPanels.menu)
+                            }
+                          ]}
+                        >
+                          {categorySidebar}
+                        </View>
+                      ) : null}
+                      <View style={[styles.colMenu, { flex: 1 }]}>{menuPanel}</View>
+                    </View>
+                  </View>
+                )}
               </View>
             </View>
-          ) : (
-            <>
-              {categorySidebar}
-              <View style={styles.mobileBody}>
-                {mobileTab === "menu" ? menuPanel : billPanel}
-              </View>
-            </>
-          )}
-        </View>
 
-        {isParcelMode ? (
-          <PosBottomBar
-            onNewOrder={handleNewOrder}
-            onPrint={() => selectedOrder && void runPrint(selectedOrder)}
-            onPay={() => void handleAcceptPayment()}
-            onMore={shortcutHandlers.onShowShortcuts}
-            onMenu={() => setMobileTab("menu")}
-            onBill={() => setMobileTab("bill")}
-            showFabActions={isTablet}
-            onNewCustomer={() => setMobileTab("bill")}
-            onExpense={() => Alert.alert("Expense", "Record drawer expense with manager PIN.")}
-            onCashIn={() => Alert.alert("Cash In", "Record cash added to drawer.")}
-            onCashOut={() => Alert.alert("Cash Out", "Record cash removed from drawer.")}
-          />
-        ) : null}
+            <View style={[styles.rightWorkspace, { flex: posPanels.bill }]}>{billPanel}</View>
+          </View>
+        ) : (
+          <>
+            <PosNavbar
+              restaurantName="Nausheen Fruits Juice Center"
+              branchName="Main Branch"
+              cashierName={cashierName}
+              counterNumber={2}
+              unreadCount={unreadCount}
+              onHistory={() => setShowHistory(true)}
+              onNotifications={() => setShowNotifications(true)}
+              onDelivery={() => setShowDeliveryHub(true)}
+              onSettings={openReceiptPrintSettings}
+              onProfile={() => router.push("/profile")}
+              onLogout={() => void handleLogout()}
+              onHelp={shortcutHandlers.onShowShortcuts}
+            />
+
+            <PosOrderSourceBar
+              activePlatform={platformFilter}
+              platformCounts={platformCounts}
+              onPlatformChange={setPlatformFilter}
+            />
+
+            <View style={styles.main}>
+              {!isParcelMode ? (
+                platformOrdersPanel
+              ) : (
+                <>
+                  {categorySidebar}
+                  <View style={styles.mobileBody}>
+                    {mobileTab === "menu" ? menuPanel : billPanel}
+                  </View>
+                </>
+              )}
+            </View>
+          </>
+        )}
 
         {isPhone && isParcelMode ? (
           <PosQuickFab
@@ -976,6 +1105,13 @@ export function PosDashboard() {
           onPrint={() => selectedOrder && void runPrint(selectedOrder)}
         />
 
+        <PaymentSuccessPrintDialog
+          visible={printPrompt != null}
+          orderNumber={printPrompt?.orderNumber ?? ""}
+          onPrintNow={(dontAsk) => void handlePrintPromptNow(dontAsk)}
+          onLater={(dontAsk) => void handlePrintPromptLater(dontAsk)}
+        />
+
         <TransactionHistoryPanel
           visible={showHistory}
           orders={allOrders}
@@ -1005,12 +1141,32 @@ export function PosDashboard() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: posColors.bg },
-  root: { flex: 1, backgroundColor: posColors.bg },
-  main: { flex: 1, minHeight: 0 },
-  splitRoot: { flex: 1, minHeight: 0 },
-  splitRow: { flex: 1, flexDirection: "row", minHeight: 0 },
-  colMenu: { minWidth: 0 },
-  colBill: { minWidth: 0, borderLeftWidth: 1, borderLeftColor: posColors.border },
+  safe: { flex: 1, width: "100%", height: "100%", alignSelf: "stretch", backgroundColor: posColors.bg },
+  root: { flex: 1, width: "100%", alignSelf: "stretch", backgroundColor: posColors.bg, minHeight: 0 },
+  workspace: {
+    flex: 1,
+    flexDirection: "row",
+    minHeight: 0,
+    width: "100%",
+    alignSelf: "stretch"
+  },
+  leftWorkspace: {
+    flexDirection: "column",
+    minWidth: 0,
+    minHeight: 0,
+    borderRightWidth: 1,
+    borderRightColor: posColors.border
+  },
+  leftMain: { flex: 1, minHeight: 0, width: "100%" },
+  parcelWorkspace: { flex: 1, minHeight: 0, width: "100%" },
+  rightWorkspace: {
+    minWidth: 0,
+    minHeight: 0,
+    alignSelf: "stretch"
+  },
+  main: { flex: 1, minHeight: 0, width: "100%" },
+  splitRow: { flex: 1, flexDirection: "row", minHeight: 0, width: "100%" },
+  colCategory: { minWidth: 0, borderRightWidth: 1, borderRightColor: posColors.border },
+  colMenu: { minWidth: 0, flex: 1 },
   mobileBody: { flex: 1, minHeight: 0 }
 });

@@ -5,19 +5,16 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
-  Text,
   View,
   type TextInput
 } from "react-native";
 import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import type { CartLine, MenuItemDoc, MenuQuickFilter } from "./pos-types";
-import { PosComboSection } from "./pos-combo-section";
 import { ProductCard } from "./product-card";
 import { ResponsiveSearchBar } from "./responsive/ResponsiveSearchBar";
 import { PosEmpty } from "./pos-ui";
-import { posColors, posPanel, posSpacing, posType } from "./pos-theme";
+import { posColors, posPanel, posSpacing } from "./pos-theme";
 
 const GRID_GAP = 12;
 
@@ -26,14 +23,14 @@ type Props = {
   grouped: Record<string, MenuItemDoc[]>;
   categories: readonly string[];
   selectedCategory: string;
-  quickFilter: MenuQuickFilter;
+  quickFilter?: MenuQuickFilter;
   search: string;
   cartQtyById: Record<string, number>;
   recentProductIds: string[];
   loading: boolean;
   error: string | null;
   onCategorySelect: (cat: string) => void;
-  onQuickFilter: (f: MenuQuickFilter) => void;
+  onQuickFilter?: (f: MenuQuickFilter) => void;
   onSearchChange: (v: string) => void;
   onAdd: (item: MenuItemDoc) => void;
   onDec: (item: MenuItemDoc) => void;
@@ -71,23 +68,18 @@ export function MenuPanel({
   products,
   grouped,
   selectedCategory,
-  quickFilter,
   search,
   cartQtyById,
-  recentProductIds,
   loading,
   error,
   onSearchChange,
   onAdd,
   onDec,
-  onAddCombo,
   favoriteIds,
   onToggleFavorite,
   searchInputRef,
   onBarcodeScan,
-  onQuickDiscount,
-  headerAction,
-  orderToolbar
+  headerAction
 }: Props) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const layout = useResponsiveLayout();
@@ -101,21 +93,9 @@ export function MenuPanel({
         ? products.filter((p) => p.available !== false)
         : (grouped[selectedCategory] ?? []).filter((p) => p.available !== false);
 
-    if (quickFilter === "favorites") list = list.filter((p) => favoriteIds.has(p.id));
-    if (quickFilter === "popular") {
-      list = [...list]
-        .sort((a, b) => (b.isBestSeller ? 1 : 0) - (a.isBestSeller ? 1 : 0) || b.price - a.price)
-        .slice(0, 48);
-    }
-    if (quickFilter === "recent") {
-      const set = new Set(recentProductIds);
-      list = list.filter((p) => set.has(p.id));
-      if (list.length === 0) list = products.slice(0, 8);
-    }
-
     if (q) list = list.filter((p) => p.name.toLowerCase().includes(q) || (p.category ?? "").toLowerCase().includes(q));
     return list;
-  }, [products, grouped, selectedCategory, search, quickFilter, recentProductIds, favoriteIds]);
+  }, [products, grouped, selectedCategory, search]);
 
   const suggestions = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -147,18 +127,6 @@ export function MenuPanel({
 
   const keyExtractor = useCallback((item: MenuItemDoc) => item.id, []);
 
-  if (quickFilter === "combos") {
-    return (
-      <View style={[posPanel(), styles.panel]}>
-        <View style={[styles.header, { padding: pad }]}>
-          <Text style={[posType.h3, { fontSize: layout.moderateScale(15) }]}>Combo Builder</Text>
-          <Text style={posType.small}>One-click meal deals</Text>
-        </View>
-        <PosComboSection products={products} onAddCombo={onAddCombo} />
-      </View>
-    );
-  }
-
   return (
     <KeyboardAvoidingView
       style={[posPanel(), styles.panel]}
@@ -174,7 +142,6 @@ export function MenuPanel({
         onBarcodeScan={onBarcodeScan}
         searchInputRef={searchInputRef}
         headerAction={headerAction}
-        orderToolbar={orderToolbar}
         suggestions={suggestions}
         showSuggestions={showSuggestions}
         onSuggestionSelect={(name) => {
@@ -184,14 +151,6 @@ export function MenuPanel({
         onFocus={() => setShowSuggestions(search.trim().length >= 2)}
         onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
       />
-
-      <View style={[styles.toolbar, { paddingHorizontal: pad }]}>
-        <Text style={[posType.h3, { fontSize: layout.moderateScale(15) }]}>Products</Text>
-        <Text style={posType.small}>{visibleProducts.length} items</Text>
-        <Pressable onPress={onQuickDiscount} style={[styles.discBtn, { minHeight: layout.minTouch }]}>
-          <Text style={[styles.discText, { fontSize: layout.moderateScale(10) }]}>F6 Discount</Text>
-        </Pressable>
-      </View>
 
       {loading ? (
         <View style={styles.loader}>
@@ -224,25 +183,7 @@ export function MenuPanel({
 }
 
 const styles = StyleSheet.create({
-  panel: { borderRightWidth: 0, flex: 1, minHeight: 0 },
-  header: { borderBottomWidth: 1, borderBottomColor: posColors.border },
-  toolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: posSpacing.sm,
-    paddingVertical: posSpacing.sm
-  },
-  discBtn: {
-    marginLeft: "auto",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: posColors.border,
-    backgroundColor: posColors.card,
-    justifyContent: "center"
-  },
-  discText: { fontWeight: "800", color: posColors.warning },
+  panel: { borderRightWidth: 0, flex: 1, minHeight: 0, width: "100%" },
   loader: { flex: 1, alignItems: "center", justifyContent: "center" },
   gridList: { flex: 1, minHeight: 0 },
   gridContent: { paddingBottom: posSpacing.huge },
